@@ -1,0 +1,85 @@
+# Studio EX
+
+A modern, external editor for **Koikatsu CharaStudio**. Studio keeps doing what it's good at
+(rendering, characters, every mod and zipmod you have installed); Studio EX gives you a fast,
+keyboard-driven animation editor in its own window — ideal on a second monitor.
+
+```
+┌───────────────────── CharaStudio (game) ─────────────────────┐        ┌──────────── Studio EX (Electron) ────────────┐
+│  BepInEx + all your mods + Timeline + KKPE + …              │        │  Outliner · Dope sheet · Curve editor        │
+│  KKStudioEX.Bridge.dll  ── ws://127.0.0.1:47615 ────────────┼───────▶│  Inspector · Track browser · Undo/redo       │
+└──────────────────────────────────────────────────────────────┘        └──────────────────────────────────────────────┘
+```
+
+Nothing is replaced in-game: animations are stored by the existing **Timeline** plugin, so scenes
+stay compatible with vanilla Timeline, and you can still open Timeline's own window at any time.
+
+## Layout
+
+| Folder | What |
+| --- | --- |
+| `plugin/StudioBridge` | BepInEx plugin (C#, .NET 3.5 / Unity 5.6). Local WebSocket server exposing scene + Timeline. |
+| `app` | Studio EX desktop app (Electron + React + TypeScript + Vite). |
+
+## Install / run
+
+**Plugin** (needs the .NET SDK; builds against your game's own DLLs):
+
+```powershell
+cd plugin/StudioBridge
+dotnet build -c Release -p:Deploy=true                       # copies to D:\Games\Koikatsu\BepInEx\plugins\KKStudioEX
+dotnet build -c Release -p:Deploy=true -p:GameDir="E:\KK"    # other install location
+```
+
+**App:**
+
+```powershell
+cd app
+npm install
+npm run dev      # hot-reloading dev mode (Vite + Electron)
+npm start        # production build + run
+```
+
+Start CharaStudio; Studio EX connects automatically (status bar turns green).
+The port is configurable in `BepInEx/config/studioex.bridge.cfg`.
+
+## Animation workflow
+
+1. Select an object (Scene tab, or click it in Studio).
+2. **Tracks** tab → click a property (e.g. a bone, position, expression). It's added with a key at the playhead.
+3. Move the playhead, pose in Studio, press **K** (selected tracks) or **Shift+K** (whole object).
+4. Drag keys to retime, box-select, **1–5** for easing presets, or shape the curve in the Inspector.
+5. **Ctrl+Z** undoes any edit made from Studio EX.
+
+Press **?** in the app for every shortcut.
+
+## Protocol
+
+JSON over WebSocket. Request `{"id":1,"cmd":"timeline.seek","args":{"t":1.5}}` →
+`{"id":1,"ok":true,"result":…}`. Server pushes `{"event":"timeline.tick"|"timeline.changed"|"scene.changed"|"selection"|"scene.reset","data":…}`.
+Commands live in `plugin/StudioBridge/src/Api/*.cs`; wire types in `app/src/bridge/types.ts`.
+
+## Features
+
+| Area | What you get |
+| --- | --- |
+| **Dope sheet** | Tracks grouped per object with summary keys, drag/box select, frame snapping, copy/paste/duplicate, easing hotkeys, context menus, undo/redo |
+| **Graph editor** (`Tab`) | Real value curves over time. Rotations shown as X/Y/Z degrees (Unity order, unwrapped). Drag keys ↕ to change values, ↔ to retime; double-click a curve to insert a key; normalize mode to overlay different units |
+| **Curve editor** | Per-key easing with tangent handles, multi-point curves and presets matching Timeline's |
+| **Character** tab | Animation browser (33k+ clips incl. mods, searchable), speed/options, FK/IK + parts, eyebrows/eyes/mouth, eye & neck look, blush/tears, hands, outfit + per-slot clothing state, accessories (MoreAccessories slots), ABMX bone sliders. Multi-select applies to all selected characters |
+| **Poses** tab | Studio-compatible pose library (`.dat` and PNG poses, folders, thumbnails), save, apply, **mirror** (`M`), copy pose between characters |
+| **Scene browser** (`Ctrl+O`) | Thumbnail grid of `UserData/studio/scene`, folders, search, load, import (merge), save, new |
+| **Folders** | Timeline's own folders in the dope sheet (Objects/Folders switch): create from selected tracks (`Ctrl+G`), rename, move tracks in/out, ungroup, collapse (saved in the scene) |
+| **Key changes / Auto-key** | Studio EX notices what you changed in Studio since the last seek (any track type, plus bones/objects without tracks) — `K` with nothing selected or **Key changes** keys exactly that; **Auto** (`R`) keys it automatically when you release the mouse. Self-animating things (spinning items, physics bones) are detected and ignored |
+| **Undo everywhere** | One history for timeline, character panel, ABMX, transform, light and item edits; a slider drag is one undo step |
+| **Object** tab | Transform for any object (multi-select edits only the axis you touch), item colors/alpha/glow/FK/anim speed, light color/intensity/range/spot/shadows, folder & camera names, view-through-camera |
+| **Camera** tab | Viewport snapshot, Studio's 10 saved views with thumbnails, FOV, **Key camera** / **Cut here** (hard cut), shot list with thumbnails, scene cameras |
+| **Look** tab | Every render setting in one place: color grade (LUT + KK_TwoLut second LUT + blend), bloom, depth of field, SSAO, vignette, fog, sun shafts, shadows, global toon shading (ramp, outline darkness/width, shadow color/depth, face options), character & map light. **Look presets** (UserData/StudioEX/looks, JSON + thumbnail): six starters, save your own, apply all or only some groups, at any strength (blend), undoable. **Materials**: bulk-edit any shader property across the selected characters/items through KK_MaterialEditor (saved like MaterialEditor edits) and include those tweaks in presets |
+| **Mod settings** (`Ctrl+,` / ⚙) | Every BepInEx plugin setting (100+ plugins) searchable in one window, typed editors, changed-only filter, reset to default |
+| **Translations** (Library) | Every Japanese string Studio EX has shown, tagged Yours / Machine / Game. **Auto-translate** new names in the background with Google (free, no setup), DeepL (free API key) or a local AI (Ollama / LM Studio, any OpenAI-compatible server). Machine results go to `zy_StudioEX_Machine.txt`, your edits to `zz_StudioEX_Overrides.txt` (always win); both are pushed into AutoTranslator so the in-game UI improves too. "Improve all" re-translates Game/Machine rows with a better engine |
+
+## Roadmap
+
+- [x] Motion paths + onion skin (ghosts) in Studio's viewport — top bar **Paths** / **Ghosts**
+- [x] Rename objects (F2 / double-click / right-click; multi-select numbers them; persisted via KK_TreeNodeNaming)
+- [ ] Git repository + Windows installer (single .exe, plugin bundled)

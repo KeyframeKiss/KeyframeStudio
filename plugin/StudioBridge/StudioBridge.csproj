@@ -1,0 +1,44 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net35</TargetFramework>
+    <AssemblyName>KKStudioEX.Bridge</AssemblyName>
+    <RootNamespace>StudioEX.Bridge</RootNamespace>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <DebugType>none</DebugType>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <!-- Override with: dotnet build -p:GameDir="E:\Path\To\Koikatsu" -->
+    <GameDir Condition="'$(GameDir)' == ''">D:\Games\Koikatsu</GameDir>
+    <ManagedDir>$(GameDir)\CharaStudio_Data\Managed</ManagedDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies.net35" Version="1.0.3" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="BepInEx"><HintPath>$(GameDir)\BepInEx\core\BepInEx.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="0Harmony"><HintPath>$(GameDir)\BepInEx\core\0Harmony.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine"><HintPath>$(ManagedDir)\UnityEngine.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.UI"><HintPath>$(ManagedDir)\UnityEngine.UI.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Assembly-CSharp"><HintPath>$(ManagedDir)\Assembly-CSharp.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Assembly-CSharp-firstpass"><HintPath>$(ManagedDir)\Assembly-CSharp-firstpass.dll</HintPath><Private>false</Private></Reference>
+    <!-- Soft dependencies: only touched after a runtime presence check -->
+    <Reference Include="Timeline"><HintPath>$(GameDir)\BepInEx\plugins\Timeline.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="KKABMX"><HintPath>$(GameDir)\BepInEx\plugins\KKABMX.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="KK_MaterialEditor"><HintPath>$(GameDir)\BepInEx\plugins\KK_Plugins\KK_MaterialEditor.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="KKAPI"><HintPath>$(GameDir)\BepInEx\plugins\KKAPI.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="XUnity.AutoTranslator.Plugin.Core"><HintPath>$(GameDir)\BepInEx\plugins\XUnity.AutoTranslator\XUnity.AutoTranslator.Plugin.Core.dll</HintPath><Private>false</Private></Reference>
+  </ItemGroup>
+
+  <!-- dotnet build -p:Deploy=true  copies the plugin into the game -->
+  <Target Name="DeployToGame" AfterTargets="Build" Condition="'$(Deploy)' == 'true'">
+    <MakeDir Directories="$(GameDir)\BepInEx\plugins\KKStudioEX" />
+    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(GameDir)\BepInEx\plugins\KKStudioEX" />
+    <Message Importance="high" Text="Deployed $(TargetFileName) -> $(GameDir)\BepInEx\plugins\KKStudioEX" />
+  </Target>
+
+</Project>

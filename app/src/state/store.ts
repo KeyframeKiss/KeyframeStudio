@@ -1,0 +1,666 @@
+import { create } from 'zustand';
+import { useShallow } from 'zustand/react/shallow';
+import { bridge, type ConnectionStatus } from '../bridge/client';
+import type { Hello, KeyRef, SceneData, SceneNode, TimelineData, TimelineState, TrackModel, WireGroup, WireTrack } from '../bridge/types';
+import { snapToFrame } from '../lib/time';
+
+export type KeyId = string;
+export const keyId = (track: number, t: number): KeyId => `${track}|${t}`;
+export const parseKeyId = (id: KeyId): KeyRef => {
+  const i = id.indexOf('|');
+  return { track: Number(id.slice(0, i)), t: Number(id.slice(i + 1)) };
+};
+
+export interface Toast {
+  id: number;
+  kind: 'error' | 'info';
+  text: string;
+}
+
+export interface AppState {
+  status: ConnectionStatus;
+  hello: Hello | null;
+
+  nodes: Record<number, SceneNode>;
+  roots: number[];
+  studioSelection: number[];
+
+  tl: TimelineState | null;
+  tickAt: number;
+  tracks: WireTrack[];
+  groups: WireGroup[];
+
+  selKeys: Set<KeyId>;
+  selTracks: Set<number>;
+  filter: 'selected' | 'all';
+  search: string;
+  collapsed: Set<number>;
+  snap: boolean;
+  showEnglish: boolean;
+  clipboard: { refs: KeyRef[]; base: number } | null;
+
+  toasts: Toast[];
+
+  centerView: 'dope' | 'graph';
+  leftTab: 'scene' | 'tracks' | 'poses' | 'camera';
+  rightTab: 'inspector' | 'object' | 'character' | 'look' | 'translate';
+  sceneBrowser: boolean;
+  translateQuery: string;
+  /** Bumped on every timeline/scene refresh so panels can re-fetch derived data. */
+  revision: number;
+
+  autoKey: boolean;
+  autoKeyNew: boolean;
+  /** Changes in Studio since the last seek/key that aren't keyed yet. */
+  pending: number;
+  groupMode: 'objects' | 'folders';
+  settingsOpen: boolean;
+
+  workspace: Workspace;
+  libraryPage: LibraryPage;
+  paletteOpen: boolean;
+  helpOpen: boolean;
+  /** Experimental live preview window (roadmap Phase 3 spike). */
+  previewOpen: boolean;
+  /** Material tweaks queued to be saved with the next look preset. */
+  lookRules: { shader: string; prop: string; type: 'float' | 'color'; value: number | number[]; parts?: string[] }[];
+  /** Running batch translation (Library > Translations), shown as progress in the status bar. */
+  translateJob: { done: number; total: number; engine: string } | null;
+}
+
+export type Workspace = 'animate' | 'pose' | 'look' | 'library';
+export type LibraryPage = 'scenes' | 'translate' | 'settings' | 'shortcuts';
+
+export function setWorkspace(w: Workspace) {
+  set({ workspace: w });
+  lsSet('studioex.workspace', w);
+}
+
+/** Library pages replace the old pop-up dialogs (scene browser, mod settings). */
+export function openLibrary(page: LibraryPage) {
+  set({ workspace: 'library', libraryPage: page });
+  lsSet('studioex.workspace', 'library');
+}
+
+export const useStore = create<AppState>(() => ({
+  status: 'closed',
+  hello: null,
+  nodes: {},
+  roots: [],
+  studioSelection: [],
+  tl: null,
+  tickAt: 0,
+  tracks: [],
+  groups: [],
+  selKeys: new Set(),
+  selTracks: new Set(),
+  filter: (lsGet('studioex.filter') as 'selected' | 'all') || 'selected',
+  search: '',
+  collapsed: new Set(),
+  snap: true,
+  showEnglish: lsGet('studioex.english') !== '0',
+  clipboard: null,
+  toasts: [],
+  centerView: (lsGet('studioex.view') as 'dope' | 'graph') || 'dope',
+  leftTab: 'scene',
+  rightTab: 'inspector',
+  sceneBrowser: false,
+  translateQuery: '',
+  translateJob: null,
+  revision: 0,
+  autoKey: false,
+  autoKeyNew: lsGet('studioex.autoKeyNew') !== '0',
+  pending: 0,
+  groupMode: (lsGet('studioex.groupMode') as 'objects' | 'folders') || 'objects',
+  settingsOpen: false,
+  workspace: (lsGet('studioex.workspace') as Workspace) || 'animate',
+  libraryPage: 'scenes',
+  paletteOpen: false,
+  helpOpen: false,
+  previewOpen: false,
+  lookRules: [],
+}));
+
+// ---------------------------------------------------------------------------
+// Key what changed / auto-key
+// ---------------------------------------------------------------------------
+export async function keyChanged() {
+  const n = await call<number>('timeline.keyChanged', { includeNew: get().autoKeyNew });
+  if (n === undefined) return;
+  if (n === 0) toast('Nothing changed since the last key — move something in Studio first');
+  else toast(`Keyed ${n} change${n > 1 ? 's' : ''}`);
+  set({ pending: 0 });
+  await refreshTimeline();
+}
+
+export async function setAutoKey(on: boolean, newTracks = get().autoKeyNew) {
+  const r = await call<{ on: boolean; newTracks: boolean }>('timeline.setAutoKey', { on, newTracks });
+  if (r) {
+    set({ autoKey: r.on, autoKeyNew: r.newTracks });
+    lsSet('studioex.autoKeyNew', r.newTracks ? '1' : '0');
+    toast(r.on ? 'Auto-key ON — anything you move in Studio is keyed at the playhead' : 'Auto-key off');
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Timeline folders
+// ---------------------------------------------------------------------------
+export async function createFolder(name: string, trackIds: number[]) {
+  if (!trackIds.length) return toast('Select tracks first (click track names, Ctrl/Shift for several)');
+  await call('timeline.groupCreate', { name, tracks: trackIds });
+  await refreshTimeline();
+}
+export async function moveToFolder(trackIds: number[], group: number) {
+  await call('timeline.groupMove', { tracks: trackIds, group });
+  await refreshTimeline();
+}
+export async function renameFolder(group: number, name: string) {
+  await call('timeline.groupRename', { group, name });
+  await refreshTimeline();
+}
+export async function ungroupFolder(group: number) {
+  await call('timeline.groupDelete', { group });
+  await refreshTimeline();
+}
+export function setFolderExpanded(group: number, expanded: boolean) {
+  set((s) => ({ groups: s.groups.map((g) => (g.id === group ? { ...g, expanded } : g)) }));
+  call('timeline.groupExpand', { group, expanded });
+}
+
+/** Characters among the objects selected in Studio. */
+/**
+ * Timeline settings without the fast-changing playhead time. Subscribing to `s.tl` directly re-renders on
+ * every tick (30 Hz while playing) — use this in components that only show settings / play state.
+ */
+export function useTlInfo() {
+  return useStore(
+    useShallow((s) => ({
+      has: !!s.tl,
+      duration: s.tl?.duration ?? 0,
+      fps: s.tl?.fps ?? 60,
+      speed: s.tl?.speed ?? 1,
+      playing: !!s.tl?.playing,
+      uiVisible: !!s.tl?.uiVisible,
+    })),
+  );
+}
+
+export function selectedCharacters(): number[] {
+  const { studioSelection, nodes } = get();
+  return studioSelection.filter((id) => nodes[id]?.type === 'Char');
+}
+
+/** Open the Translate tab focused on a specific string. */
+export function editTranslation(text: string) {
+  set({ translateQuery: text });
+  openLibrary('translate');
+}
+
+/** Switch workspace and bring a specific panel tab forward. */
+export function showPanel(workspace: Workspace, panel: string, tab: string) {
+  try {
+    localStorage.setItem(`studioex.tab.${panel}`, tab);
+  } catch {
+    /* ignore */
+  }
+  setWorkspace(workspace);
+  requestAnimationFrame(() => window.dispatchEvent(new CustomEvent('studioex:tab', { detail: { panel, tab } })));
+}
+
+const set = useStore.setState;
+const get = useStore.getState;
+
+function lsGet(k: string) {
+  try {
+    return localStorage.getItem(k);
+  } catch {
+    return null;
+  }
+}
+export function lsSet(k: string, v: string) {
+  try {
+    localStorage.setItem(k, v);
+  } catch {
+    /* private mode */
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Toasts
+// ---------------------------------------------------------------------------
+let toastId = 1;
+export function toast(text: string, kind: Toast['kind'] = 'info') {
+  const id = toastId++;
+  set((s) => ({ toasts: [...s.toasts.slice(-3), { id, kind, text }] }));
+  window.setTimeout(() => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })), kind === 'error' ? 5000 : 2500);
+}
+
+export async function call<T>(cmd: string, args?: Record<string, unknown>): Promise<T | undefined> {
+  try {
+    return await bridge.request<T>(cmd, args);
+  } catch (e) {
+    toast((e as Error).message, 'error');
+    return undefined;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Live time (extrapolated between ticks so the playhead moves smoothly)
+// ---------------------------------------------------------------------------
+export function liveTime(): number {
+  const { tl, tickAt } = get();
+  if (!tl) return 0;
+  if (!tl.playing || tl.duration <= 0) return tl.time;
+  // Ticks come at ~30 Hz; never extrapolate more than a short gap (stalled/lagging connection).
+  const dt = Math.min(0.5, (performance.now() - tickAt) / 1000);
+  const t = tl.time + dt * tl.speed;
+  return ((t % tl.duration) + tl.duration) % tl.duration;
+}
+
+// ---------------------------------------------------------------------------
+// Fetching
+// ---------------------------------------------------------------------------
+let tlInFlight = false;
+let tlQueued = false;
+let pendingReselect: KeyRef[] | null = null;
+let lastTimelineError = '';
+
+export async function refreshTimeline() {
+  if (tlInFlight) {
+    tlQueued = true;
+    return;
+  }
+  tlInFlight = true;
+  try {
+    const data = await bridge.request<TimelineData>('timeline.get');
+    const { groups, tracks, ...state } = data;
+    set((s) => ({ tl: state, tickAt: performance.now(), tracks, groups, revision: s.revision + 1 }));
+    reconcileSelection();
+    lastTimelineError = '';
+  } catch (e) {
+    // Disconnects are covered by the status UI; anything else must be visible, not an empty sheet.
+    const msg = (e as Error).message;
+    if (get().status === 'open' && msg !== lastTimelineError && !/not connected|disconnected/i.test(msg)) {
+      lastTimelineError = msg;
+      toast(`Couldn't read the timeline from Studio: ${msg}`, 'error');
+    }
+  } finally {
+    tlInFlight = false;
+    if (tlQueued) {
+      tlQueued = false;
+      refreshTimeline();
+    }
+  }
+}
+
+function reconcileSelection() {
+  const { tracks, selKeys, selTracks } = get();
+  const byId = new Map(tracks.map((t) => [t.id, t]));
+  const next = new Set<KeyId>();
+  const findNear = (r: KeyRef) => {
+    const tr = byId.get(r.track);
+    if (!tr) return;
+    let best: number | undefined;
+    for (const k of tr.keys) if (Math.abs(k[0] - r.t) < 1e-3 && (best === undefined || Math.abs(k[0] - r.t) < Math.abs(best - r.t))) best = k[0];
+    if (best !== undefined) next.add(keyId(r.track, best));
+  };
+  if (pendingReselect) {
+    pendingReselect.forEach(findNear);
+    pendingReselect = null;
+  } else {
+    selKeys.forEach((id) => findNear(parseKeyId(id)));
+  }
+  const nextTracks = new Set([...selTracks].filter((id) => byId.has(id)));
+  set({ selKeys: next, selTracks: nextTracks });
+}
+
+export async function refreshScene() {
+  try {
+    const data = await bridge.request<SceneData>('scene.get');
+    const nodes: Record<number, SceneNode> = {};
+    for (const n of data.nodes) {
+      if (n.type.startsWith('Char')) n.type = 'Char'; // older bridge builds sent CharFemale/CharMale
+      nodes[n.id] = n;
+    }
+    set((s) => ({ nodes, roots: data.roots, studioSelection: data.selected, revision: s.revision + 1 }));
+  } catch {
+    /* ignore */
+  }
+}
+
+let refreshTimer: number | undefined;
+function scheduleTimelineRefresh() {
+  window.clearTimeout(refreshTimer);
+  refreshTimer = window.setTimeout(refreshTimeline, 40);
+}
+let sceneTimer: number | undefined;
+function scheduleSceneRefresh() {
+  window.clearTimeout(sceneTimer);
+  sceneTimer = window.setTimeout(refreshScene, 80);
+}
+
+let bridgeStarted = false;
+export function initBridge() {
+  if (bridgeStarted) return;
+  bridgeStarted = true;
+  bridge.on('$status', async (s) => {
+    set({ status: s as ConnectionStatus });
+    // Offline: stop extrapolating the playhead (and the canvases redrawing every frame for it).
+    if (s !== 'open') {
+      const tl = get().tl;
+      if (tl?.playing) set({ tl: { ...tl, playing: false, time: liveTime() } });
+    }
+    if (s === 'open') {
+      const hello = await call<Hello>('hello');
+      set({ hello: hello ?? null });
+      // Plugin state survives app restarts; read auto-key back instead of assuming off.
+      if (hello?.timeline) call<{ on: boolean; newTracks: boolean }>('timeline.setAutoKey', {}).then((r) => r && set({ autoKey: r.on }));
+      refreshScene();
+      if (hello?.timeline) refreshTimeline();
+      else if (hello) toast('Timeline plugin not found in this Studio install', 'error');
+    }
+  });
+  bridge.on('timeline.tick', (d) => {
+    const tick = d as TimelineState;
+    // While scrubbing, ticks echoing *earlier* seeks arrive after the newer optimistic position:
+    // keep our time for a moment so the playhead doesn't jump backwards.
+    if (!tick.playing && performance.now() - lastLocalSeek < 250) {
+      const cur = get().tl;
+      if (cur) {
+        set({ tl: { ...cur, ...tick, time: cur.time }, tickAt: performance.now() });
+        return;
+      }
+    }
+    set({ tl: { ...(get().tl ?? {}), ...tick }, tickAt: performance.now() });
+  });
+  bridge.on('timeline.changed', scheduleTimelineRefresh);
+  bridge.on('scene.changed', scheduleSceneRefresh);
+  bridge.on('scene.reset', () => {
+    set({ selKeys: new Set(), selTracks: new Set(), clipboard: null });
+    window.dispatchEvent(new CustomEvent('studioex:scene-reset'));
+    scheduleSceneRefresh();
+    scheduleTimelineRefresh();
+  });
+  bridge.on('selection', (ids) => set({ studioSelection: ids as number[] }));
+  bridge.on('timeline.pending', (n) => set({ pending: n as number }));
+  bridge.on('autokey', (n) => {
+    set({ pending: 0 });
+    toast(`Auto-keyed ${n} change${(n as number) > 1 ? 's' : ''}`);
+    scheduleTimelineRefresh();
+  });
+  bridge.connect();
+}
+
+// ---------------------------------------------------------------------------
+// Transport
+// ---------------------------------------------------------------------------
+export function togglePlay() {
+  const tl = get().tl;
+  if (!tl) return;
+  call(tl.playing ? 'timeline.pause' : 'timeline.play');
+}
+
+export function stop() {
+  call('timeline.stop');
+}
+
+let seekRaf = 0;
+let seekTarget = 0;
+/** Optimistic, rAF-throttled seek — safe to call on every mouse move while scrubbing. */
+let lastLocalSeek = 0;
+
+export function seek(t: number) {
+  const tl = get().tl;
+  if (!tl) return;
+  lastLocalSeek = performance.now();
+  seekTarget = Math.max(0, Math.min(tl.duration, t));
+  set({ tl: { ...tl, time: seekTarget }, tickAt: performance.now() });
+  if (!seekRaf)
+    seekRaf = requestAnimationFrame(() => {
+      seekRaf = 0;
+      bridge.send('timeline.seek', { t: seekTarget });
+    });
+}
+
+/** Seek and wait until Studio has applied the pose (needed before capturing values). */
+export async function seekNow(t: number) {
+  const tl = get().tl;
+  if (!tl) return;
+  const target = Math.max(0, Math.min(tl.duration, t));
+  set({ tl: { ...tl, time: target }, tickAt: performance.now() });
+  await call('timeline.seek', { t: target });
+}
+
+export function stepFrames(n: number) {
+  const tl = get().tl;
+  if (!tl) return;
+  seek(snapToFrame(liveTime(), tl.fps) + n / tl.fps);
+}
+
+export function jumpKey(dir: 1 | -1) {
+  const now = liveTime();
+  const times = new Set<number>();
+  for (const tr of visibleTracks()) for (const k of tr.keys) times.add(k[0]);
+  const sorted = [...times].sort((a, b) => a - b);
+  const target = dir > 0 ? sorted.find((t) => t > now + 1e-4) : [...sorted].reverse().find((t) => t < now - 1e-4);
+  if (target !== undefined) seek(target);
+}
+
+export function setSettings(s: Partial<Pick<TimelineState, 'duration' | 'fps' | 'speed'>>) {
+  call<TimelineState>('timeline.setSettings', s).then((st) => st && set({ tl: { ...get().tl!, ...st } }));
+}
+
+// ---------------------------------------------------------------------------
+// Filtering — which tracks are on screen
+// ---------------------------------------------------------------------------
+export function displayName(n: { name: string; nameEn?: string; alias?: string } | undefined): string {
+  if (!n) return '';
+  if (n.alias) return n.alias;
+  return get().showEnglish && n.nameEn ? n.nameEn : n.name;
+}
+
+export function visibleTracks(): WireTrack[] {
+  const { tracks, filter, studioSelection, search, nodes } = get();
+  const q = search.trim().toLowerCase();
+  const sel = new Set(studioSelection);
+  return tracks.filter((t) => {
+    if (filter === 'selected' && studioSelection.length > 0 && t.oci !== -1 && !sel.has(t.oci)) return false;
+    if (q) {
+      const hay = `${t.name} ${t.nameEn ?? ''} ${t.alias} ${t.owner} ${nodes[t.oci]?.name ?? ''} ${nodes[t.oci]?.nameEn ?? ''}`.toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Selection
+// ---------------------------------------------------------------------------
+export function selectKeys(ids: Iterable<KeyId>, mode: 'replace' | 'add' | 'toggle' = 'replace') {
+  const cur = get().selKeys;
+  const next = mode === 'replace' ? new Set<KeyId>() : new Set(cur);
+  for (const id of ids) {
+    if (mode === 'toggle' && next.has(id)) next.delete(id);
+    else next.add(id);
+  }
+  set({ selKeys: next });
+}
+
+export function selectTracks(ids: Iterable<number>, mode: 'replace' | 'add' | 'toggle' = 'replace') {
+  const cur = get().selTracks;
+  const next = mode === 'replace' ? new Set<number>() : new Set(cur);
+  for (const id of ids) {
+    if (mode === 'toggle' && next.has(id)) next.delete(id);
+    else next.add(id);
+  }
+  set({ selTracks: next });
+}
+
+export function selectAllKeys() {
+  const ids: KeyId[] = [];
+  for (const tr of visibleTracks()) for (const k of tr.keys) ids.push(keyId(tr.id, k[0]));
+  selectKeys(ids);
+}
+
+export function selectedKeyRefs(): KeyRef[] {
+  return [...get().selKeys].map(parseKeyId);
+}
+
+export function studioSelect(ids: number[], additive = false) {
+  call<number[]>('scene.select', { ids, additive }).then((sel) => sel && set({ studioSelection: sel }));
+}
+
+// ---------------------------------------------------------------------------
+// Edits (all undoable on the plugin side)
+// ---------------------------------------------------------------------------
+async function edit<T>(cmd: string, args: Record<string, unknown>, reselect?: KeyRef[]) {
+  const r = await call<T>(cmd, args);
+  if (r !== undefined && reselect) pendingReselect = reselect;
+  await refreshTimeline();
+  return r;
+}
+
+export function moveSelectedKeys(dt: number) {
+  const refs = selectedKeyRefs();
+  if (!refs.length || dt === 0) return;
+  // Keep the whole selection inside the timeline (not just the key under the mouse).
+  let lo = Infinity, hi = -Infinity;
+  for (const r of refs) {
+    if (r.t < lo) lo = r.t;
+    if (r.t > hi) hi = r.t;
+  }
+  dt = Math.max(dt, -lo);
+  const dur = get().tl?.duration;
+  if (dur && dur > 0) dt = Math.min(dt, dur - hi);
+  if (Math.abs(dt) < 1e-6) return;
+  // Optimistic: shift locally so the drag doesn't snap back while waiting.
+  const moved = new Set(get().selKeys);
+  set((s) => ({
+    tracks: s.tracks.map((tr) => ({
+      ...tr,
+      keys: tr.keys.map((k) => (moved.has(keyId(tr.id, k[0])) ? ([k[0] + dt, ...k.slice(1)] as typeof k) : k)),
+    })),
+    selKeys: new Set(refs.map((r) => keyId(r.track, r.t + dt))),
+  }));
+  edit('timeline.moveKeys', { keys: refs, dt }, refs.map((r) => ({ track: r.track, t: r.t + dt })));
+}
+
+export function deleteSelectedKeys() {
+  const refs = selectedKeyRefs();
+  if (!refs.length) return;
+  edit('timeline.deleteKeys', { keys: refs });
+  set({ selKeys: new Set() });
+}
+
+/** Tracks the user means: explicitly selected rows + rows owning selected keys. */
+export function targetTracks(): number[] {
+  const { selTracks, selKeys } = get();
+  const ids = new Set(selTracks);
+  selKeys.forEach((k) => ids.add(parseKeyId(k).track));
+  return [...ids];
+}
+
+export async function keyTracks(trackIds: number[], t = liveTime()) {
+  if (!trackIds.length) {
+    toast('Select one or more tracks (click a track name) to key them');
+    return;
+  }
+  const tl = get().tl;
+  const at = tl && get().snap ? snapToFrame(t, tl.fps) : t;
+  await edit('timeline.addKeys', { tracks: trackIds, t: at }, trackIds.map((track) => ({ track, t: at })));
+}
+
+export function keySelected() {
+  return keyTracks(targetTracks());
+}
+
+/** Key every visible track of the objects selected in Studio. */
+export function keyAllOfSelectedObjects() {
+  const sel = new Set(get().studioSelection);
+  const ids = get().tracks.filter((t) => sel.has(t.oci)).map((t) => t.id);
+  if (!ids.length) {
+    toast('The selected object has no tracks yet — add one from the Tracks panel');
+    return;
+  }
+  return keyTracks(ids);
+}
+
+export function applyCurveToSelected(flat: number[]) {
+  const refs = selectedKeyRefs();
+  if (!refs.length) return;
+  return edit('timeline.setCurve', { keys: refs, curve: flat }, refs);
+}
+
+export function copySelected() {
+  const refs = selectedKeyRefs();
+  if (!refs.length) return;
+  set({ clipboard: { refs, base: Math.min(...refs.map((r) => r.t)) } });
+  toast(`Copied ${refs.length} key${refs.length > 1 ? 's' : ''}`);
+}
+
+export async function pasteAtPlayhead() {
+  const clip = get().clipboard;
+  const tl = get().tl;
+  if (!clip || !tl) return;
+  const at = get().snap ? snapToFrame(liveTime(), tl.fps) : liveTime();
+  const dt = at - clip.base;
+  await edit('timeline.copyKeys', { keys: clip.refs, dt }, clip.refs.map((r) => ({ track: r.track, t: r.t + dt })));
+}
+
+export async function duplicateSelectedToPlayhead() {
+  copySelected();
+  await pasteAtPlayhead();
+}
+
+// Undo covers timeline, character, ABMX and object edits (one shared history in the plugin).
+export async function undo() {
+  const r = await call<string | false>('undo');
+  if (r === false) toast('Nothing to undo');
+  else if (r) toast(`Undid: ${r}`);
+  await Promise.all([refreshTimeline(), refreshScene()]);
+}
+export async function redo() {
+  const r = await call<string | false>('redo');
+  if (r === false) toast('Nothing to redo');
+  else if (r) toast(`Redid: ${r}`);
+  await Promise.all([refreshTimeline(), refreshScene()]);
+}
+
+export function setTrackProps(track: number, props: { enabled?: boolean; alias?: string; color?: number[] }) {
+  return edit('timeline.setTrack', { track, ...props });
+}
+
+export function removeTracks(ids: number[]) {
+  if (!ids.length) return;
+  set({ selTracks: new Set() });
+  return edit('timeline.removeTracks', { tracks: ids });
+}
+
+export async function listModels(oci: number | null): Promise<TrackModel[]> {
+  return (await call<TrackModel[]>('timeline.models', oci == null ? {} : { oci })) ?? [];
+}
+
+export async function addTrack(model: TrackModel, oci: number | null, keyNow = true) {
+  const tl = get().tl;
+  const args: Record<string, unknown> = { owner: model.owner, model: model.id };
+  if (oci != null) args.oci = oci;
+  if (keyNow && tl) args.keyAt = get().snap ? snapToFrame(liveTime(), tl.fps) : liveTime();
+  const id = await edit<number>('timeline.addTrack', args);
+  if (id !== undefined) {
+    selectTracks([id]);
+    toast(`Added track “${displayName(model)}”`);
+  }
+  return id;
+}
+
+export function getKeyInfo(ref: KeyRef) {
+  return bridge.request<import('../bridge/types').KeyInfo>('timeline.keyInfo', { track: ref.track, t: ref.t });
+}
+
+export function setTimelineUiVisible(visible: boolean) {
+  call<TimelineState>('timeline.setUiVisible', { visible }).then((st) => st && set({ tl: { ...get().tl!, ...st } }));
+}
+
+export function setNodeVisible(id: number, visible: boolean) {
+  call('scene.setVisible', { id, visible }).then(scheduleSceneRefresh);
+}

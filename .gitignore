@@ -1,0 +1,18 @@
+# dependencies and build output
+node_modules/
+dist/
+bin/
+obj/
+release/
+
+# editor / OS
+*.user
+.vs/
+.vscode/*.log
+Thumbs.db
+desktop.ini
+
+# logs and local env
+*.log
+.env
+.env.*
