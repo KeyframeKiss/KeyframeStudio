@@ -543,6 +543,7 @@ namespace StudioEX.Bridge.Api
         {
             var c = CharaApi.Chara(a.GetInt("id"));
             if (c.charInfo == null) throw new BridgeException("That character isn't loaded");
+            FaceBaker.Want(c);
             var t = new Target { Chara = c, Root = c.charInfo.transform };
             var head = Bone(t, "cf_j_head") ?? Bone(t, "cf_J_FaceRoot");
             if (head == null) throw new BridgeException("Couldn't find this character's head");
@@ -571,6 +572,10 @@ namespace StudioEX.Bridge.Api
             if (panX != 0f || panY != 0f)
                 _cam.transform.position += (_cam.transform.right * panX + _cam.transform.up * panY) * faceH;
             _cam.fieldOfView = fov;
+            // The close-up is square. Pin the aspect: once the render target is released Unity would fall back
+            // to the screen's aspect, and every later picture-space projection (picking, highlight) would be
+            // squeezed horizontally.
+            _cam.aspect = 1f;
             // Clip everything between the camera and the head (furniture, walls) instead of rendering it.
             _cam.nearClipPlane = Mathf.Max(0.01f, dist - faceH * 0.75f);
             _cam.farClipPlane = dist * 20f + 10f;
@@ -918,7 +923,6 @@ namespace StudioEX.Bridge.Api
         // app can paint a soft highlight over exactly that part of the picture.
 
         private static readonly Dictionary<int, BoneWeight[]> WeightCache = new Dictionary<int, BoneWeight[]>();
-        private static readonly Dictionary<int, Mesh> BakeCache = new Dictionary<int, Mesh>();
 
         /// <summary>args: {id, bones:[names]} → {points:[[u,v,w]...]} in the last close-up (0..1, top-left origin)</summary>
         private static object Region(Dictionary<string, object> a)
@@ -937,31 +941,19 @@ namespace StudioEX.Bridge.Api
                 foreach (var d in b.GetComponentsInChildren<Transform>(true)) set.Add(d);
             }
             if (set.Count == 0) return result;
-            var head = c.charInfo.objHead != null ? c.charInfo.objHead.transform : c.charInfo.transform;
+            var camPos = _cam.transform.position;
             const int budget = 900;
-            foreach (var smr in head.GetComponentsInChildren<SkinnedMeshRenderer>(false))
+            foreach (var snap in FaceBaker.Get(c))
             {
-                if (!smr.enabled || smr.sharedMesh == null || smr.bones == null) continue;
+                var smr = snap.Renderer;
+                if (smr == null || smr.bones == null) continue;
                 var bones = smr.bones;
                 var inSet = new bool[bones.Length];
                 bool any = false;
                 for (int i = 0; i < bones.Length; i++) if (bones[i] != null && set.Contains(bones[i])) { inSet[i] = true; any = true; }
                 if (!any) continue;
-                BoneWeight[] bw;
-                int key = smr.sharedMesh.GetInstanceID();
-                if (!WeightCache.TryGetValue(key, out bw))
-                {
-                    try { bw = smr.sharedMesh.boneWeights; } catch { bw = null; } // unreadable mesh: no highlight
-                    WeightCache[key] = bw;
-                }
-                if (bw == null || bw.Length == 0) continue;
-                if (!BakeCache.TryGetValue(smr.GetInstanceID(), out var baked) || baked == null)
-                    BakeCache[smr.GetInstanceID()] = baked = new Mesh { hideFlags = HideFlags.HideAndDontSave };
-                smr.BakeMesh(baked);
-                var verts = baked.vertices;
-                if (verts.Length != bw.Length) continue;
-                // baked vertices are in the renderer's space with scale already applied
-                var m = Matrix4x4.TRS(smr.transform.position, smr.transform.rotation, Vector3.one);
+                var bw = Weights(smr);
+                if (bw == null || bw.Length != snap.Pos.Length) continue;
                 var hits = new List<int>();
                 var ws = new List<float>();
                 for (int v = 0; v < bw.Length; v++)
@@ -969,12 +961,16 @@ namespace StudioEX.Bridge.Api
                     var w = bw[v];
                     float sum = (inSet[w.boneIndex0] ? w.weight0 : 0) + (inSet[w.boneIndex1] ? w.weight1 : 0) +
                                 (inSet[w.boneIndex2] ? w.weight2 : 0) + (inSet[w.boneIndex3] ? w.weight3 : 0);
-                    if (sum > 0.2f) { hits.Add(v); ws.Add(sum); }
+                    if (sum <= 0.2f) continue;
+                    // only surfaces facing the camera (the far ear/eye doesn't show through the head)
+                    if (Vector3.Dot(snap.Normal[v], camPos - snap.Pos[v]) <= 0f) continue;
+                    hits.Add(v);
+                    ws.Add(sum);
                 }
                 int step = Mathf.Max(1, hits.Count / budget);
                 for (int k = 0; k < hits.Count; k += step)
                 {
-                    var vp = _cam.WorldToViewportPoint(m.MultiplyPoint3x4(verts[hits[k]]));
+                    var vp = _cam.WorldToViewportPoint(snap.Pos[hits[k]]);
                     if (vp.z <= 0f || vp.x < -0.1f || vp.x > 1.1f || vp.y < -0.1f || vp.y > 1.1f) continue;
                     pts.Add(new List<object> { Math.Round(vp.x, 4), Math.Round(1f - vp.y, 4), Math.Round(Mathf.Min(1f, ws[k]), 2) });
                 }
@@ -982,71 +978,66 @@ namespace StudioEX.Bridge.Api
             return result;
         }
 
+        private static BoneWeight[] Weights(SkinnedMeshRenderer smr)
+        {
+            int key = smr.sharedMesh.GetInstanceID();
+            if (!WeightCache.TryGetValue(key, out var bw))
+            {
+                try { bw = smr.sharedMesh.boneWeights; } catch { bw = null; } // unreadable mesh: no highlight/pick
+                WeightCache[key] = bw;
+            }
+            return bw;
+        }
+
         /// <summary>
         /// args: {id, x, y (0..1, top-left, in the last close-up), bones:[candidate parts]} → {bone} or null.
-        /// Finds the front-most face-mesh vertex under the cursor, then the most specific candidate part that
-        /// moves it (skin weights, counting bones under each part) — i.e. what you are actually pointing at.
+        /// Finds the front-most head-mesh vertex under the cursor (face, brows, eyes, hair — hair blocks what's
+        /// behind it), then the bone that moves it most, walked up to the nearest part that has a card.
         /// </summary>
         private static object Pick(Dictionary<string, object> a)
         {
             if (_cam == null) return null;
             var c = CharaApi.Chara(a.GetInt("id"));
             if (c.charInfo == null) return null;
-            var t = new Target { Chara = c, Root = c.charInfo.transform };
             float px = a.GetFloat("x"), py = 1f - a.GetFloat("y");
-            var cands = new List<KeyValuePair<string, HashSet<Transform>>>();
-            foreach (var o in a.GetList("bones"))
-            {
-                var b = Bone(t, o as string);
-                if (b != null) cands.Add(new KeyValuePair<string, HashSet<Transform>>(b.name, new HashSet<Transform>(b.GetComponentsInChildren<Transform>(true))));
-            }
-            if (cands.Count == 0) return null;
-            var head = c.charInfo.objHead != null ? c.charInfo.objHead.transform : c.charInfo.transform;
+            var names = new HashSet<string>(a.GetList("bones").Select(o => o as string).Where(n => n != null));
+            if (names.Count == 0) return null;
+            var camPos = _cam.transform.position;
 
-            SkinnedMeshRenderer bestSmr = null;
+            FaceBaker.Snap bestSnap = null;
             int bestV = -1;
             float bestScore = float.MaxValue;
             const float radius = 0.02f; // in picture units
-            // Every visible mesh on the head (face, brows, eyelines, eyes, hair): the front-most one under the
-            // cursor wins, so hair in front of an ear blocks it just like in the picture.
-            var headBone = Bone(t, "cf_j_head");
-            var meshes = c.charInfo.GetComponentsInChildren<SkinnedMeshRenderer>(false)
-                .Where(r => r.transform.IsChildOf(head) || (headBone != null && r.transform.IsChildOf(headBone)));
-            foreach (var smr in meshes)
+            foreach (var snap in FaceBaker.Get(c))
             {
-                if (!smr.enabled || smr.sharedMesh == null || smr.bones == null) continue;
-                int key = smr.sharedMesh.GetInstanceID();
-                if (!WeightCache.TryGetValue(key, out var bw)) { try { bw = smr.sharedMesh.boneWeights; } catch { bw = null; } WeightCache[key] = bw; }
-                if (bw == null || bw.Length == 0) continue;
-                if (!BakeCache.TryGetValue(smr.GetInstanceID(), out var baked) || baked == null)
-                    BakeCache[smr.GetInstanceID()] = baked = new Mesh { hideFlags = HideFlags.HideAndDontSave };
-                smr.BakeMesh(baked);
-                var verts = baked.vertices;
-                var m = Matrix4x4.TRS(smr.transform.position, smr.transform.rotation, Vector3.one);
-                for (int v = 0; v < verts.Length; v++)
+                if (snap.Renderer == null || snap.Renderer.bones == null) continue;
+                var bw = Weights(snap.Renderer);
+                if (bw == null || bw.Length != snap.Pos.Length) continue;
+                for (int v = 0; v < snap.Pos.Length; v++)
                 {
-                    var vp = _cam.WorldToViewportPoint(m.MultiplyPoint3x4(verts[v]));
+                    if (Vector3.Dot(snap.Normal[v], camPos - snap.Pos[v]) <= 0f) continue; // back-facing
+                    var vp = _cam.WorldToViewportPoint(snap.Pos[v]);
                     if (vp.z <= 0f) continue;
                     float dx = vp.x - px, dy = vp.y - py, d2 = dx * dx + dy * dy;
                     if (d2 > radius * radius) continue;
-                    // front-most wins (depth), with a little preference for being right under the cursor
-                    float score = vp.z + Mathf.Sqrt(d2) * 2f;
-                    if (score < bestScore) { bestScore = score; bestSmr = smr; bestV = v; }
+                    float score = vp.z + Mathf.Sqrt(d2) * 2f; // front-most, then closest to the cursor
+                    if (score < bestScore) { bestScore = score; bestSnap = snap; bestV = v; }
                 }
             }
-            if (bestSmr == null) return null;
-            // The bone that moves this vertex the most, then up to the nearest part that has a card.
-            var w = WeightCache[bestSmr.sharedMesh.GetInstanceID()][bestV];
-            var bones = bestSmr.bones;
+            if (bestSnap == null) return null;
+            var w = Weights(bestSnap.Renderer)[bestV];
+            var bones = bestSnap.Renderer.bones;
             int top = w.boneIndex0;
             float topW = w.weight0;
             if (w.weight1 > topW) { top = w.boneIndex1; topW = w.weight1; }
             if (w.weight2 > topW) { top = w.boneIndex2; topW = w.weight2; }
             if (w.weight3 > topW) { top = w.boneIndex3; topW = w.weight3; }
-            var names = new HashSet<string>(cands.Select(kv => kv.Key));
             string pick = null;
-            for (var tr = top < bones.Length ? bones[top] : null; tr != null && tr != head; tr = tr.parent)
+            for (var tr = top < bones.Length ? bones[top] : null; tr != null; tr = tr.parent)
+            {
                 if (names.Contains(tr.name)) { pick = tr.name; break; }
+                if (tr.name == "cf_j_head") break;
+            }
             return pick == null ? null : new Dictionary<string, object> { { "bone", pick } };
         }
 
@@ -1087,8 +1078,7 @@ namespace StudioEX.Bridge.Api
             BoneCache.Clear();
             Frames.Clear();
             WeightCache.Clear();
-            foreach (var m in BakeCache.Values) if (m != null) UnityEngine.Object.Destroy(m);
-            BakeCache.Clear();
+            FaceBaker.Clear();
         }
     }
 }

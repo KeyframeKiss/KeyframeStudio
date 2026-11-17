@@ -39,6 +39,7 @@ namespace StudioEX.Bridge
 
             gameObject.AddComponent<ViewportTools>();
             ViewportTools.Register(_router);
+            gameObject.AddComponent<FaceBaker>();
             gameObject.AddComponent<PoseThumbs>();
             PoseThumbs.Register(_router);
             gameObject.AddComponent<PreviewStream>(); // experimental live preview (roadmap Phase 3 spike)
