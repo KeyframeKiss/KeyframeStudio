@@ -32,7 +32,8 @@ const ANGLES: { label: string; value: number; title: string }[] = [
 ];
 
 /** Parts covering a whole area (head shape, both eyes/brows, cheek base): picked from their tabs, not by pointing. */
-const BROAD = new Set(['cf_J_FaceBase', 'cf_J_FaceUp_ty', 'cf_J_FaceUp_tz', 'cf_J_FaceLow_tz', 'cf_J_FaceLow_sx', 'cf_J_Eye_tz', 'cf_J_Mayu_ty', 'cf_J_CheekUpBase', 'cf_J_NoseBase']);
+// (Eye tilt deforms the whole eye area, so pointing at an eye should give "Eye" instead.)
+const BROAD = new Set(['cf_J_FaceBase', 'cf_J_FaceUp_ty', 'cf_J_FaceUp_tz', 'cf_J_FaceLow_tz', 'cf_J_FaceLow_sx', 'cf_J_Eye_tz', 'cf_J_Mayu_ty', 'cf_J_CheekUpBase', 'cf_J_Eye_rz_L', 'cf_J_Eye_rz_R']);
 
 const lsGet = (k: string, d: string) => {
   try {
@@ -69,7 +70,6 @@ export function FaceStudio() {
   const [bones, setBones] = useState<Record<string, BoneState>>({});
   const [img, setImg] = useState<string | null>(null);
   const [before, setBefore] = useState(false); // hold "Before" to see the original face
-  const [points, setPoints] = useState<Record<string, [number, number]>>({});
   const [hover, setHover] = useState<{ bone: string; x: number; y: number } | null>(null);
   const [cardHover, setCardHover] = useState<string | null>(null); // hovering a part's card highlights it too
   const [region, setRegion] = useState<[number, number, number][]>([]);
@@ -115,12 +115,8 @@ export function FaceStudio() {
     const cid = id;
     const wasRecenter = recenter.current;
     bridge
-      .request<{ img: string; points: Record<string, [number, number]> }>('face.view', { id: cid, ...viewArgs.current, recenter: recenter.current, size: 640, points: ALL_FACE_BONES })
-      .then((r) => {
-        if (want.current !== cid) return;
-        setImg(r.img);
-        setPoints(r.points ?? {});
-      })
+      .request<string>('face.view', { id: cid, ...viewArgs.current, recenter: recenter.current, size: 640 })
+      .then((url) => want.current === cid && setImg(url))
       .catch(() => {})
       .finally(() => {
         if (wasRecenter) recenter.current = false;
@@ -134,23 +130,6 @@ export function FaceStudio() {
   useEffect(refreshView, [refreshView, angle, zoom, plain, pitch, pan, before, revision]);
 
   // ---------------- click a face part in the close-up → open its controls ----------------
-  const nearest = (el: Element, cx: number, cy: number) => {
-    const r = imgRect(el);
-    const u = (cx - r.left) / r.width,
-      v = (cy - r.top) / r.height;
-    let best: string | null = null,
-      bd = 0.06 * 0.06; // within ~6% of the picture
-    for (const [name, [px, py]] of Object.entries(points)) {
-      if (BROAD.has(name)) continue; // whole-area parts are picked from their tabs, not by pointing
-      const d = (px - u) ** 2 + (py - v) ** 2;
-      if (d < bd) {
-        bd = d;
-        best = name;
-      }
-    }
-    const box = el.getBoundingClientRect();
-    return best ? { bone: best, x: cx - box.left, y: cy - box.top } : null;
-  };
   const featureOfBone = (name: string) => {
     const base = name.endsWith('_R') ? twinOf(name) : name;
     for (const f of FACE_FEATURES) {
@@ -171,6 +150,30 @@ export function FaceStudio() {
     window.setTimeout(() => setFlash(null), 1200);
   };
   const downAt = useRef<{ x: number; y: number } | null>(null);
+
+  const PICKABLE = useMemo(() => ALL_FACE_BONES.filter((n) => !BROAD.has(n)), []);
+  const picking = useRef<{ busy: boolean; next: { u: number; v: number; x: number; y: number } | null }>({ busy: false, next: null });
+  const pickAt = (el: Element, cx: number, cy: number) => {
+    const r = imgRect(el),
+      box = el.getBoundingClientRect();
+    const u = (cx - r.left) / r.width,
+      v = (cy - r.top) / r.height;
+    if (u < 0 || u > 1 || v < 0 || v > 1) return setHover(null);
+    picking.current.next = { u, v, x: cx - box.left, y: cy - box.top };
+    if (picking.current.busy || id == null) return;
+    const run = () => {
+      const job = picking.current.next;
+      picking.current.next = null;
+      if (!job) return void (picking.current.busy = false);
+      picking.current.busy = true;
+      bridge
+        .request<{ bone: string } | null>('face.pick', { id, x: job.u, y: job.v, bones: PICKABLE })
+        .then((r) => setHover((o) => (r?.bone ? (o?.bone === r.bone ? { ...o, x: job.x, y: job.y } : { bone: r.bone, x: job.x, y: job.y }) : null)))
+        .catch(() => setHover(null))
+        .finally(run);
+    };
+    run();
+  };
 
   // ---------------- highlight: the mesh area the hovered part moves ----------------
   const hiBone = hover?.bone ?? cardHover;
@@ -206,22 +209,42 @@ export function FaceStudio() {
     const ctx = c.getContext('2d')!;
     ctx.clearRect(0, 0, c.width, c.height);
     if (!region.length) return;
-    // solid blobs on an offscreen layer, then blurred onto the picture: one even, soft-edged area
+    // Selection look: build a smooth mask of the area (blobs → blur → threshold), then a faint tint inside
+    // and a crisp outline along its edge. Cool blue reads as "selected" on skin tones.
+    const W = c.width,
+      H = c.height;
     const off = document.createElement('canvas');
-    off.width = c.width;
-    off.height = c.height;
+    off.width = W;
+    off.height = H;
     const o = off.getContext('2d')!;
-    o.fillStyle = '#ffb547';
-    const rad = Math.max(3, c.width * 0.012 * Math.min(2.2, Math.max(0.7, zoom)));
-    for (const [u, v, w] of region) {
-      o.globalAlpha = Math.min(1, 0.35 + w);
+    const rad = Math.max(3, W * 0.011 * Math.min(2.2, Math.max(0.7, zoom)));
+    o.filter = `blur(${Math.round(rad * 0.8)}px)`;
+    o.fillStyle = '#fff';
+    for (const [u, v] of region) {
       o.beginPath();
-      o.arc(u * c.width, v * c.height, rad, 0, Math.PI * 2);
+      o.arc(u * W, v * H, rad, 0, Math.PI * 2);
       o.fill();
     }
-    ctx.filter = `blur(${Math.round(rad * 0.9)}px)`;
-    ctx.globalAlpha = 0.5;
-    ctx.drawImage(off, 0, 0);
+    const src = o.getImageData(0, 0, W, H).data;
+    const inside = new Uint8Array(W * H);
+    for (let i = 0; i < W * H; i++) inside[i] = src[i * 4 + 3] > 110 ? 1 : 0;
+    const outImg = ctx.createImageData(W, H);
+    const d = outImg.data;
+    const line = Math.max(1, Math.round(dpr * 1.5));
+    for (let y = 0; y < H; y++)
+      for (let x = 0; x < W; x++) {
+        const i = y * W + x;
+        if (!inside[i]) continue;
+        let edge = false;
+        for (let k = 1; k <= line && !edge; k++)
+          edge = x < k || y < k || x >= W - k || y >= H - k || !inside[i - k] || !inside[i + k] || !inside[i - k * W] || !inside[i + k * W];
+        const j = i * 4;
+        d[j] = 120;
+        d[j + 1] = 190;
+        d[j + 2] = 255;
+        d[j + 3] = edge ? 235 : 46;
+      }
+    ctx.putImageData(outImg, 0, 0);
   }, [region, img, zoom]);
 
   // ---------------- close-up navigation: drag = move, right-drag = turn, wheel = zoom at cursor ----------------
@@ -313,8 +336,7 @@ export function FaceStudio() {
           onPointerMove={(e) => {
             const n = nav.current;
             if (!n) {
-              const h = nearest(e.currentTarget, e.clientX, e.clientY);
-              setHover((o) => (o?.bone === h?.bone ? o : h));
+              pickAt(e.currentTarget, e.clientX, e.clientY);
               return;
             }
             if (e.buttons === 0) return void (nav.current = null);
@@ -337,12 +359,12 @@ export function FaceStudio() {
             nav.current = null;
             const d = downAt.current;
             downAt.current = null;
-            if (d && Math.abs(e.clientX - d.x) + Math.abs(e.clientY - d.y) < 5) {
-              const h = nearest(e.currentTarget, e.clientX, e.clientY);
-              if (h) jumpTo(h.bone);
-            }
+            if (d && Math.abs(e.clientX - d.x) + Math.abs(e.clientY - d.y) < 5 && hover) jumpTo(hover.bone);
           }}
-          onPointerLeave={() => setHover(null)}
+          onPointerLeave={() => {
+            picking.current.next = null;
+            setHover(null);
+          }}
           onPointerCancel={() => (nav.current = null)}
           onWheel={(e) => {
             // zoom towards the point under the cursor (it stays put)

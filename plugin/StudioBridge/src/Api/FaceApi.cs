@@ -81,6 +81,7 @@ namespace StudioEX.Bridge.Api
             r.Add("face.updatePreset", a => UpdatePreset(a));
             r.Add("face.shapes", a => Shapes(a));
             r.Add("face.region", a => Region(a));
+            r.Add("face.pick", a => Pick(a));
             r.Add("face.setShape", a => SetShape(a));
             r.Add("face.resetShapes", a => ResetShapes(a));
         }
@@ -979,6 +980,74 @@ namespace StudioEX.Bridge.Api
                 }
             }
             return result;
+        }
+
+        /// <summary>
+        /// args: {id, x, y (0..1, top-left, in the last close-up), bones:[candidate parts]} → {bone} or null.
+        /// Finds the front-most face-mesh vertex under the cursor, then the most specific candidate part that
+        /// moves it (skin weights, counting bones under each part) — i.e. what you are actually pointing at.
+        /// </summary>
+        private static object Pick(Dictionary<string, object> a)
+        {
+            if (_cam == null) return null;
+            var c = CharaApi.Chara(a.GetInt("id"));
+            if (c.charInfo == null) return null;
+            var t = new Target { Chara = c, Root = c.charInfo.transform };
+            float px = a.GetFloat("x"), py = 1f - a.GetFloat("y");
+            var cands = new List<KeyValuePair<string, HashSet<Transform>>>();
+            foreach (var o in a.GetList("bones"))
+            {
+                var b = Bone(t, o as string);
+                if (b != null) cands.Add(new KeyValuePair<string, HashSet<Transform>>(b.name, new HashSet<Transform>(b.GetComponentsInChildren<Transform>(true))));
+            }
+            if (cands.Count == 0) return null;
+            var head = c.charInfo.objHead != null ? c.charInfo.objHead.transform : c.charInfo.transform;
+
+            SkinnedMeshRenderer bestSmr = null;
+            int bestV = -1;
+            float bestScore = float.MaxValue;
+            const float radius = 0.02f; // in picture units
+            // Every visible mesh on the head (face, brows, eyelines, eyes, hair): the front-most one under the
+            // cursor wins, so hair in front of an ear blocks it just like in the picture.
+            var headBone = Bone(t, "cf_j_head");
+            var meshes = c.charInfo.GetComponentsInChildren<SkinnedMeshRenderer>(false)
+                .Where(r => r.transform.IsChildOf(head) || (headBone != null && r.transform.IsChildOf(headBone)));
+            foreach (var smr in meshes)
+            {
+                if (!smr.enabled || smr.sharedMesh == null || smr.bones == null) continue;
+                int key = smr.sharedMesh.GetInstanceID();
+                if (!WeightCache.TryGetValue(key, out var bw)) { try { bw = smr.sharedMesh.boneWeights; } catch { bw = null; } WeightCache[key] = bw; }
+                if (bw == null || bw.Length == 0) continue;
+                if (!BakeCache.TryGetValue(smr.GetInstanceID(), out var baked) || baked == null)
+                    BakeCache[smr.GetInstanceID()] = baked = new Mesh { hideFlags = HideFlags.HideAndDontSave };
+                smr.BakeMesh(baked);
+                var verts = baked.vertices;
+                var m = Matrix4x4.TRS(smr.transform.position, smr.transform.rotation, Vector3.one);
+                for (int v = 0; v < verts.Length; v++)
+                {
+                    var vp = _cam.WorldToViewportPoint(m.MultiplyPoint3x4(verts[v]));
+                    if (vp.z <= 0f) continue;
+                    float dx = vp.x - px, dy = vp.y - py, d2 = dx * dx + dy * dy;
+                    if (d2 > radius * radius) continue;
+                    // front-most wins (depth), with a little preference for being right under the cursor
+                    float score = vp.z + Mathf.Sqrt(d2) * 2f;
+                    if (score < bestScore) { bestScore = score; bestSmr = smr; bestV = v; }
+                }
+            }
+            if (bestSmr == null) return null;
+            // The bone that moves this vertex the most, then up to the nearest part that has a card.
+            var w = WeightCache[bestSmr.sharedMesh.GetInstanceID()][bestV];
+            var bones = bestSmr.bones;
+            int top = w.boneIndex0;
+            float topW = w.weight0;
+            if (w.weight1 > topW) { top = w.boneIndex1; topW = w.weight1; }
+            if (w.weight2 > topW) { top = w.boneIndex2; topW = w.weight2; }
+            if (w.weight3 > topW) { top = w.boneIndex3; topW = w.weight3; }
+            var names = new HashSet<string>(cands.Select(kv => kv.Key));
+            string pick = null;
+            for (var tr = top < bones.Length ? bones[top] : null; tr != null && tr != head; tr = tr.parent)
+                if (names.Contains(tr.name)) { pick = tr.name; break; }
+            return pick == null ? null : new Dictionary<string, object> { { "bone", pick } };
         }
 
         /// <summary>Front close-up on a plain backdrop (thumbnails for saved faces/expressions).</summary>
