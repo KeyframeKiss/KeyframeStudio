@@ -19,8 +19,11 @@ function thumbHandler(request) {
     const p = new URL(request.url).searchParams.get('p') || '';
     const norm = path.normalize(p);
     // Local drive paths only (a \\server\share path would make Windows send credentials to that server),
-    // a .png inside a UserData\studio folder — checked again after resolving junctions/symlinks.
-    const allowed = (f) => /^[a-z]:\\/i.test(f) && /\.png$/i.test(f) && /[\\/]userdata[\\/]studio[\\/]/i.test(f);
+    // a .png inside a UserData\studio folder, or one of Studio EX's cached pose thumbnails
+    // (UserData\StudioEX\pose-thumbs\*.jpg) — checked again after resolving junctions/symlinks.
+    const allowed = (f) =>
+      /^[a-z]:\\/i.test(f) &&
+      ((/\.png$/i.test(f) && /[\\/]userdata[\\/]studio[\\/]/i.test(f)) || (/\.jpg$/i.test(f) && /[\\/]userdata[\\/]studioex[\\/]pose-thumbs[\\/]/i.test(f)));
     if (!path.isAbsolute(norm) || !allowed(norm)) return new Response('forbidden', { status: 403 });
     if (!allowed(fs.realpathSync(norm))) return new Response('forbidden', { status: 403 });
     const stat = fs.statSync(norm);

@@ -39,6 +39,8 @@ namespace StudioEX.Bridge
 
             gameObject.AddComponent<ViewportTools>();
             ViewportTools.Register(_router);
+            gameObject.AddComponent<PoseThumbs>();
+            PoseThumbs.Register(_router);
             gameObject.AddComponent<PreviewStream>(); // experimental live preview (roadmap Phase 3 spike)
             PreviewStream.Register(_router);
             CoreApi.Register(_router);
@@ -96,7 +98,7 @@ namespace StudioEX.Bridge
             }
 
             // While ghosts are baked the timeline jumps around on purpose: don't report it as user activity.
-            if (_server != null && _server.ClientCount > 0 && !ViewportTools.Busy)
+            if (_server != null && _server.ClientCount > 0 && !ViewportTools.Busy && !PoseThumbs.Running)
                 _events.Update();
         }
 

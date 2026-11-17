@@ -22,6 +22,56 @@ namespace StudioEX.Bridge.Api
             r.Add("pose.load", Load);
             r.Add("pose.copy", Copy);
             r.Add("pose.mirror", Mirror);
+            r.Add("pose.setMeta", SetMeta);
+        }
+
+        // ---------------- favorites / tags / last used ----------------
+        // Kept in UserData/StudioEX/pose-meta.json (keyed by path relative to the pose folder), so Studio's
+        // own pose files are never modified.
+
+        private static Dictionary<string, object> _meta;
+        private static string MetaFile => Path.GetFullPath(Path.Combine(UserData.Path, "StudioEX/pose-meta.json"));
+
+        private static Dictionary<string, object> UserMeta()
+        {
+            if (_meta != null) return _meta;
+            try { _meta = File.Exists(MetaFile) ? Json.Parse(File.ReadAllText(MetaFile, System.Text.Encoding.UTF8)) as Dictionary<string, object> : null; }
+            catch (Exception e) { StudioBridgePlugin.Logger.LogWarning("pose-meta.json unreadable: " + e.Message); }
+            return _meta ?? (_meta = new Dictionary<string, object>());
+        }
+
+        private static void SaveUserMeta()
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(MetaFile));
+            File.WriteAllText(MetaFile, Json.Serialize(UserMeta()), new System.Text.UTF8Encoding(false));
+        }
+
+        private static string Rel(string f) => f.Substring(Folder.Length).TrimStart('\\', '/').Replace('\\', '/');
+
+        private static Dictionary<string, object> MetaFor(string f, bool create)
+        {
+            var all = UserMeta();
+            var key = Rel(f);
+            if (all.TryGetValue(key, out var o) && o is Dictionary<string, object> d) return d;
+            if (!create) return null;
+            d = new Dictionary<string, object>();
+            all[key] = d;
+            return d;
+        }
+
+        /// <summary>args: {path, favorite?: bool, tags?: [..]}</summary>
+        private static object SetMeta(Dictionary<string, object> a)
+        {
+            string path = a.GetString("path");
+            if (string.IsNullOrEmpty(path) || !path.StartsWith(Folder, StringComparison.OrdinalIgnoreCase) || !File.Exists(path))
+                throw new BridgeException("Pose not found");
+            var m = MetaFor(path, true);
+            if (a.Has("favorite")) m["favorite"] = a.GetBool("favorite");
+            if (a.Has("tags"))
+                m["tags"] = a.GetList("tags").Select(o => (o as string ?? "").Trim()).Where(x => x.Length > 0)
+                             .Distinct(StringComparer.OrdinalIgnoreCase).Take(20).Cast<object>().ToList();
+            SaveUserMeta();
+            return true;
         }
 
         private static string Folder => Path.GetFullPath(UserData.Path + PauseCtrl.savePath);
@@ -79,6 +129,16 @@ namespace StudioEX.Bridge.Api
                 };
                 var tr = Translation.Get(name, false, "Pose");
                 if (tr != null) d["nameEn"] = tr;
+                var thumb = PoseThumbs.ThumbPath(f);
+                if (File.Exists(thumb)) d["thumb"] = thumb;
+                var um = MetaFor(f, false);
+                if (um != null)
+                {
+                    if (um.GetBool("favorite")) d["favorite"] = true;
+                    var tags = um.GetList("tags");
+                    if (tags.Count > 0) d["tags"] = tags;
+                    if (um.Has("lastUsed")) d["lastUsed"] = um.GetDouble("lastUsed");
+                }
                 list.Add(d);
             }
             return list;
@@ -110,6 +170,10 @@ namespace StudioEX.Bridge.Api
             int n = 0;
             foreach (var c in Targets(a)) if (PauseCtrl.Load(c, path)) n++;
             if (n == 0) throw new BridgeException("Select one or more characters first");
+            if (path.StartsWith(Folder, StringComparison.OrdinalIgnoreCase))
+            {
+                try { MetaFor(path, true)["lastUsed"] = (DateTime.UtcNow - new DateTime(1970, 1, 1)).TotalMilliseconds; SaveUserMeta(); } catch { }
+            }
             return n;
         }
 

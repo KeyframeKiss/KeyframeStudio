@@ -1426,7 +1426,7 @@ select {
   margin: 40px auto 0;
 }
 .pose-head.wide {
-  max-width: 760px;
+  max-width: none;
 }
 /* No thumbnails in this list: dense name tiles instead of empty squares */
 .pose-grid.compact {
@@ -2158,5 +2158,34 @@ select {
   pointer-events: none;
 }
 .face-image:hover .face-nav-hint {
+  opacity: 1;
+}
+
+/* Pose library (wide): action row, thumbnail job */
+.pose-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+}
+.pose-actions > form,
+.pose-actions > div {
+  flex: 1 1 260px;
+}
+.pose-job {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-2);
+  font-family: var(--mono);
+}
+.pose-grid {
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+}
+.pose-card {
+  position: relative;
+}
+.pose-card:hover .face-star {
   opacity: 1;
 }

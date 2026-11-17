@@ -4,6 +4,7 @@ import { ALL_FACE_BONES, FACE_FEATURES, twinOf } from '../lib/faceBones';
 import { toast, useStore } from '../state/store';
 import { ContextMenu, type MenuItem } from './ContextMenu';
 import { Popover } from './Shell';
+import { PromptDialog, type PromptState } from './PromptDialog';
 
 /**
  * Saved faces: store the current face adjustments under a name (with a thumbnail) and switch between them
@@ -69,14 +70,6 @@ function scopeFor(features: string[]) {
 
 const featuresOf = (f: SavedFace) =>
   FACE_FEATURES.filter((ft) => ft.bones.some((b) => f.bones.includes(b.name) || f.bones.includes(twinOf(b.name)))).map((ft) => ft.label);
-
-interface PromptState {
-  title: string;
-  hint?: string;
-  value: string;
-  placeholder?: string;
-  ok: (v: string) => void;
-}
 
 export function FacePresets({ ids, onApplied }: { ids: number[]; onApplied: () => void }) {
   const status = useStore((s) => s.status);
@@ -544,36 +537,6 @@ function FaceGallery(p: {
           Click a face to apply it (the gallery stays open so you can compare) · right-click for rename, tags and more · ★ keeps a face at the front.
         </div>
       </div>
-    </div>
-  );
-}
-
-function PromptDialog({ p, onClose }: { p: PromptState; onClose: () => void }) {
-  const [v, setV] = useState(p.value);
-  return (
-    <div className="overlay" onClick={onClose}>
-      <form
-        className="dialog"
-        style={{ width: 400 }}
-        onClick={(e) => e.stopPropagation()}
-        onSubmit={(e) => {
-          e.preventDefault();
-          onClose();
-          p.ok(v);
-        }}
-      >
-        <h2>{p.title}</h2>
-        {p.hint && <p className="hint">{p.hint}</p>}
-        <input className="input" autoFocus value={v} placeholder={p.placeholder} onChange={(e) => setV(e.target.value)} onKeyDown={(e) => e.key === 'Escape' && onClose()} style={{ width: '100%', marginBottom: 12 }} />
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-          <button className="btn" type="button" onClick={onClose}>
-            Cancel
-          </button>
-          <button className="btn primary" type="submit">
-            OK
-          </button>
-        </div>
-      </form>
     </div>
   );
 }
