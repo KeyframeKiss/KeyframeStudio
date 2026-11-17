@@ -2311,3 +2311,10 @@ select {
 .face-card .chev.open {
   transform: rotate(90deg);
 }
+.face-highlight {
+  position: absolute;
+  pointer-events: none;
+}
+.face-pick {
+  transform: none;
+}

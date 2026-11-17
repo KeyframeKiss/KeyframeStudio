@@ -80,6 +80,7 @@ namespace StudioEX.Bridge.Api
             r.Add("face.deletePreset", a => DeletePreset(a));
             r.Add("face.updatePreset", a => UpdatePreset(a));
             r.Add("face.shapes", a => Shapes(a));
+            r.Add("face.region", a => Region(a));
             r.Add("face.setShape", a => SetShape(a));
             r.Add("face.resetShapes", a => ResetShapes(a));
         }
@@ -910,6 +911,76 @@ namespace StudioEX.Bridge.Api
             }
         }
 
+        // ---------------- part highlight ----------------
+        // The area a face part moves = the face-mesh vertices skinned to that bone or any bone under it.
+        // Vertices are taken from the current (baked) mesh and projected with the close-up camera, so the
+        // app can paint a soft highlight over exactly that part of the picture.
+
+        private static readonly Dictionary<int, BoneWeight[]> WeightCache = new Dictionary<int, BoneWeight[]>();
+        private static readonly Dictionary<int, Mesh> BakeCache = new Dictionary<int, Mesh>();
+
+        /// <summary>args: {id, bones:[names]} → {points:[[u,v,w]...]} in the last close-up (0..1, top-left origin)</summary>
+        private static object Region(Dictionary<string, object> a)
+        {
+            var pts = new List<object>();
+            var result = new Dictionary<string, object> { { "points", pts } };
+            if (_cam == null) return result;
+            var c = CharaApi.Chara(a.GetInt("id"));
+            if (c.charInfo == null) return result;
+            var t = new Target { Chara = c, Root = c.charInfo.transform };
+            var set = new HashSet<Transform>();
+            foreach (var o in a.GetList("bones"))
+            {
+                var b = Bone(t, o as string);
+                if (b == null) continue;
+                foreach (var d in b.GetComponentsInChildren<Transform>(true)) set.Add(d);
+            }
+            if (set.Count == 0) return result;
+            var head = c.charInfo.objHead != null ? c.charInfo.objHead.transform : c.charInfo.transform;
+            const int budget = 900;
+            foreach (var smr in head.GetComponentsInChildren<SkinnedMeshRenderer>(false))
+            {
+                if (!smr.enabled || smr.sharedMesh == null || smr.bones == null) continue;
+                var bones = smr.bones;
+                var inSet = new bool[bones.Length];
+                bool any = false;
+                for (int i = 0; i < bones.Length; i++) if (bones[i] != null && set.Contains(bones[i])) { inSet[i] = true; any = true; }
+                if (!any) continue;
+                BoneWeight[] bw;
+                int key = smr.sharedMesh.GetInstanceID();
+                if (!WeightCache.TryGetValue(key, out bw))
+                {
+                    try { bw = smr.sharedMesh.boneWeights; } catch { bw = null; } // unreadable mesh: no highlight
+                    WeightCache[key] = bw;
+                }
+                if (bw == null || bw.Length == 0) continue;
+                if (!BakeCache.TryGetValue(smr.GetInstanceID(), out var baked) || baked == null)
+                    BakeCache[smr.GetInstanceID()] = baked = new Mesh { hideFlags = HideFlags.HideAndDontSave };
+                smr.BakeMesh(baked);
+                var verts = baked.vertices;
+                if (verts.Length != bw.Length) continue;
+                // baked vertices are in the renderer's space with scale already applied
+                var m = Matrix4x4.TRS(smr.transform.position, smr.transform.rotation, Vector3.one);
+                var hits = new List<int>();
+                var ws = new List<float>();
+                for (int v = 0; v < bw.Length; v++)
+                {
+                    var w = bw[v];
+                    float sum = (inSet[w.boneIndex0] ? w.weight0 : 0) + (inSet[w.boneIndex1] ? w.weight1 : 0) +
+                                (inSet[w.boneIndex2] ? w.weight2 : 0) + (inSet[w.boneIndex3] ? w.weight3 : 0);
+                    if (sum > 0.2f) { hits.Add(v); ws.Add(sum); }
+                }
+                int step = Mathf.Max(1, hits.Count / budget);
+                for (int k = 0; k < hits.Count; k += step)
+                {
+                    var vp = _cam.WorldToViewportPoint(m.MultiplyPoint3x4(verts[hits[k]]));
+                    if (vp.z <= 0f || vp.x < -0.1f || vp.x > 1.1f || vp.y < -0.1f || vp.y > 1.1f) continue;
+                    pts.Add(new List<object> { Math.Round(vp.x, 4), Math.Round(1f - vp.y, 4), Math.Round(Mathf.Min(1f, ws[k]), 2) });
+                }
+            }
+            return result;
+        }
+
         /// <summary>Front close-up on a plain backdrop (thumbnails for saved faces/expressions).</summary>
         public static string ViewPublic(int id, int size) =>
             View(new Dictionary<string, object> { { "id", id }, { "size", size }, { "plain", true }, { "zoom", 1.05 } }) as string;
@@ -946,6 +1017,9 @@ namespace StudioEX.Bridge.Api
         {
             BoneCache.Clear();
             Frames.Clear();
+            WeightCache.Clear();
+            foreach (var m in BakeCache.Values) if (m != null) UnityEngine.Object.Destroy(m);
+            BakeCache.Clear();
         }
     }
 }

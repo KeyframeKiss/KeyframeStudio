@@ -31,6 +31,9 @@ const ANGLES: { label: string; value: number; title: string }[] = [
   { label: 'Side', value: 90, title: 'Profile (character’s left side)' },
 ];
 
+/** Parts covering a whole area (head shape, both eyes/brows, cheek base): picked from their tabs, not by pointing. */
+const BROAD = new Set(['cf_J_FaceBase', 'cf_J_FaceUp_ty', 'cf_J_FaceUp_tz', 'cf_J_FaceLow_tz', 'cf_J_FaceLow_sx', 'cf_J_Eye_tz', 'cf_J_Mayu_ty', 'cf_J_CheekUpBase', 'cf_J_NoseBase']);
+
 const lsGet = (k: string, d: string) => {
   try {
     return localStorage.getItem(k) ?? d;
@@ -68,6 +71,10 @@ export function FaceStudio() {
   const [before, setBefore] = useState(false); // hold "Before" to see the original face
   const [points, setPoints] = useState<Record<string, [number, number]>>({});
   const [hover, setHover] = useState<{ bone: string; x: number; y: number } | null>(null);
+  const [cardHover, setCardHover] = useState<string | null>(null); // hovering a part's card highlights it too
+  const [region, setRegion] = useState<[number, number, number][]>([]);
+  const imageBox = useRef<HTMLDivElement>(null);
+  const overlay = useRef<HTMLCanvasElement>(null);
   const [flash, setFlash] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [uniform, setUniform] = useState<Set<string>>(new Set());
@@ -132,15 +139,17 @@ export function FaceStudio() {
     const u = (cx - r.left) / r.width,
       v = (cy - r.top) / r.height;
     let best: string | null = null,
-      bd = 0.05 * 0.05; // within ~5% of the picture
+      bd = 0.06 * 0.06; // within ~6% of the picture
     for (const [name, [px, py]] of Object.entries(points)) {
+      if (BROAD.has(name)) continue; // whole-area parts are picked from their tabs, not by pointing
       const d = (px - u) ** 2 + (py - v) ** 2;
       if (d < bd) {
         bd = d;
         best = name;
       }
     }
-    return best ? { bone: best, x: points[best][0] * r.width + (r.left - el.getBoundingClientRect().left), y: points[best][1] * r.height + (r.top - el.getBoundingClientRect().top) } : null;
+    const box = el.getBoundingClientRect();
+    return best ? { bone: best, x: cx - box.left, y: cy - box.top } : null;
   };
   const featureOfBone = (name: string) => {
     const base = name.endsWith('_R') ? twinOf(name) : name;
@@ -163,6 +172,58 @@ export function FaceStudio() {
   };
   const downAt = useRef<{ x: number; y: number } | null>(null);
 
+  // ---------------- highlight: the mesh area the hovered part moves ----------------
+  const hiBone = hover?.bone ?? cardHover;
+  useEffect(() => {
+    if (!hiBone || id == null || status !== 'open') return setRegion([]);
+    const bones = isPaired(hiBone) && mirror ? [hiBone, twinOf(hiBone)] : [hiBone];
+    let alive = true;
+    const t = window.setTimeout(() => {
+      bridge
+        .request<{ points: [number, number, number][] }>('face.region', { id, bones })
+        .then((r) => alive && setRegion(r.points ?? []))
+        .catch(() => alive && setRegion([]));
+    }, 40);
+    return () => {
+      alive = false;
+      window.clearTimeout(t);
+    };
+  }, [hiBone, mirror, img, id, status]);
+
+  useEffect(() => {
+    const c = overlay.current,
+      box = imageBox.current;
+    if (!c || !box) return;
+    const r = imgRect(box),
+      b = box.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    c.style.left = `${r.left - b.left}px`;
+    c.style.top = `${r.top - b.top}px`;
+    c.style.width = `${r.width}px`;
+    c.style.height = `${r.height}px`;
+    c.width = Math.round(r.width * dpr);
+    c.height = Math.round(r.height * dpr);
+    const ctx = c.getContext('2d')!;
+    ctx.clearRect(0, 0, c.width, c.height);
+    if (!region.length) return;
+    // solid blobs on an offscreen layer, then blurred onto the picture: one even, soft-edged area
+    const off = document.createElement('canvas');
+    off.width = c.width;
+    off.height = c.height;
+    const o = off.getContext('2d')!;
+    o.fillStyle = '#ffb547';
+    const rad = Math.max(3, c.width * 0.012 * Math.min(2.2, Math.max(0.7, zoom)));
+    for (const [u, v, w] of region) {
+      o.globalAlpha = Math.min(1, 0.35 + w);
+      o.beginPath();
+      o.arc(u * c.width, v * c.height, rad, 0, Math.PI * 2);
+      o.fill();
+    }
+    ctx.filter = `blur(${Math.round(rad * 0.9)}px)`;
+    ctx.globalAlpha = 0.5;
+    ctx.drawImage(off, 0, 0);
+  }, [region, img, zoom]);
+
   // ---------------- close-up navigation: drag = move, right-drag = turn, wheel = zoom at cursor ----------------
   const ZMIN = 0.5,
     ZMAX = 6;
@@ -172,9 +233,11 @@ export function FaceStudio() {
     setPitch(0);
     setZoom(1);
   };
+  /** The visible square picture (the <img> box is letterboxed by object-fit: contain). */
   const imgRect = (el: Element) => {
-    const img = el.querySelector('img');
-    return (img ?? el).getBoundingClientRect();
+    const r = (el.querySelector('img') ?? el).getBoundingClientRect();
+    const side = Math.min(r.width, r.height);
+    return { left: r.left + (r.width - side) / 2, top: r.top + (r.height - side) / 2, width: side, height: side };
   };
 
   // ---------------- edits ----------------
@@ -240,6 +303,7 @@ export function FaceStudio() {
       <section className="face-view">
         <div
           className="face-image"
+          ref={imageBox}
           onContextMenu={(e) => e.preventDefault()}
           onPointerDown={(e) => {
             (e.currentTarget as Element).setPointerCapture(e.pointerId);
@@ -294,9 +358,9 @@ export function FaceStudio() {
           onDoubleClick={resetView}
         >
           {img ? <img src={img} alt="Face close-up" draggable={false} /> : <div className="empty">Rendering close-up…</div>}
+          <canvas ref={overlay} className="face-highlight" />
           {hover && (
-            <div className="face-pick" style={{ left: hover.x, top: hover.y }}>
-              <span className="face-pick-dot" />
+            <div className="face-pick" style={{ left: hover.x + 14, top: hover.y + 18 }}>
               <span className="face-pick-label">{featureOfBone(hover.bone)?.bone.label ?? hover.bone}</span>
             </div>
           )}
@@ -453,7 +517,13 @@ export function FaceStudio() {
             const channels = b.channels ?? (['pos', 'rot', 'scale'] as Channel[]);
             const locked = uniform.has(name) || channels.length === 1;
             return (
-              <div key={b.name} id={`face-card-${b.name}`} className={`face-card ${st.edited ? 'edited' : ''} ${flash === b.name ? 'flash' : ''}`}>
+              <div
+                key={b.name}
+                id={`face-card-${b.name}`}
+                className={`face-card ${st.edited ? 'edited' : ''} ${flash === b.name ? 'flash' : ''}`}
+                onMouseEnter={() => setCardHover(name)}
+                onMouseLeave={() => setCardHover((h) => (h === name ? null : h))}
+              >
                 <div className="face-card-head">
                   <strong>{b.label}</strong>
                   {isPaired(b.name) && <span className="face-tag">{mirror ? 'L + R' : side === 'L' ? 'Left' : 'Right'}</span>}
