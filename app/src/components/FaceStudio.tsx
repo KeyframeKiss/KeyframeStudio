@@ -72,9 +72,8 @@ export function FaceStudio() {
   const [before, setBefore] = useState(false); // hold "Before" to see the original face
   const [hover, setHover] = useState<{ bone: string; x: number; y: number } | null>(null);
   const [cardHover, setCardHover] = useState<string | null>(null); // hovering a part's card highlights it too
-  const [region, setRegion] = useState<[number, number, number][]>([]);
   const imageBox = useRef<HTMLDivElement>(null);
-  const overlay = useRef<HTMLCanvasElement>(null);
+
   const [flash, setFlash] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [uniform, setUniform] = useState<Set<string>>(new Set());
@@ -175,77 +174,20 @@ export function FaceStudio() {
     run();
   };
 
-  // ---------------- highlight: the mesh area the hovered part moves ----------------
+  // ---------------- highlight: a marker on each hovered part (and its twin when mirrored) ----------------
+  // Studio says where the part sits in the current picture; refreshed whenever the picture changes.
   const hiBone = hover?.bone ?? cardHover;
+  const hiKey = hiBone ? (isPaired(hiBone) && mirror ? [hiBone, twinOf(hiBone)] : [hiBone]).join(',') : '';
+  const [anchors, setAnchors] = useState<{ bone: string; x: number; y: number }[]>([]);
+  const anchorSeq = useRef(0);
   useEffect(() => {
-    if (!hiBone || id == null || status !== 'open') return setRegion([]);
-    const bones = isPaired(hiBone) && mirror ? [hiBone, twinOf(hiBone)] : [hiBone];
-    let alive = true;
-    const t = window.setTimeout(() => {
-      bridge
-        .request<{ points: [number, number, number][] }>('face.region', { id, bones })
-        .then((r) => alive && setRegion(r.points ?? []))
-        .catch(() => alive && setRegion([]));
-    }, 40);
-    return () => {
-      alive = false;
-      window.clearTimeout(t);
-    };
-  }, [hiBone, mirror, img, id, status]);
-
-  useEffect(() => {
-    const c = overlay.current,
-      box = imageBox.current;
-    if (!c || !box) return;
-    const r = imgRect(box),
-      b = box.getBoundingClientRect();
-    const dpr = window.devicePixelRatio || 1;
-    c.style.left = `${r.left - b.left}px`;
-    c.style.top = `${r.top - b.top}px`;
-    c.style.width = `${r.width}px`;
-    c.style.height = `${r.height}px`;
-    c.width = Math.round(r.width * dpr);
-    c.height = Math.round(r.height * dpr);
-    const ctx = c.getContext('2d')!;
-    ctx.clearRect(0, 0, c.width, c.height);
-    if (!region.length) return;
-    // Selection look: build a smooth mask of the area (blobs → blur → threshold), then a faint tint inside
-    // and a crisp outline along its edge. Cool blue reads as "selected" on skin tones.
-    const W = c.width,
-      H = c.height;
-    const off = document.createElement('canvas');
-    off.width = W;
-    off.height = H;
-    const o = off.getContext('2d')!;
-    const rad = Math.max(3, W * 0.011 * Math.min(2.2, Math.max(0.7, zoom)));
-    o.filter = `blur(${Math.round(rad * 0.8)}px)`;
-    o.fillStyle = '#fff';
-    for (const [u, v] of region) {
-      o.beginPath();
-      o.arc(u * W, v * H, rad, 0, Math.PI * 2);
-      o.fill();
-    }
-    const src = o.getImageData(0, 0, W, H).data;
-    const inside = new Uint8Array(W * H);
-    for (let i = 0; i < W * H; i++) inside[i] = src[i * 4 + 3] > 110 ? 1 : 0;
-    const outImg = ctx.createImageData(W, H);
-    const d = outImg.data;
-    const line = Math.max(1, Math.round(dpr * 1.5));
-    for (let y = 0; y < H; y++)
-      for (let x = 0; x < W; x++) {
-        const i = y * W + x;
-        if (!inside[i]) continue;
-        let edge = false;
-        for (let k = 1; k <= line && !edge; k++)
-          edge = x < k || y < k || x >= W - k || y >= H - k || !inside[i - k] || !inside[i + k] || !inside[i - k * W] || !inside[i + k * W];
-        const j = i * 4;
-        d[j] = 120;
-        d[j + 1] = 190;
-        d[j + 2] = 255;
-        d[j + 3] = edge ? 235 : 46;
-      }
-    ctx.putImageData(outImg, 0, 0);
-  }, [region, img, zoom]);
+    const seq = ++anchorSeq.current;
+    if (!hiKey || id == null) return void setAnchors([]);
+    bridge
+      .request<{ bone: string; x: number; y: number }[]>('face.anchors', { id, bones: hiKey.split(',') })
+      .then((r) => seq === anchorSeq.current && setAnchors(r ?? []))
+      .catch(() => seq === anchorSeq.current && setAnchors([]));
+  }, [hiKey, img, id]);
 
   // ---------------- close-up navigation: drag = move, right-drag = turn, wheel = zoom at cursor ----------------
   const ZMIN = 0.5,
@@ -380,7 +322,15 @@ export function FaceStudio() {
           onDoubleClick={resetView}
         >
           {img ? <img src={img} alt="Face close-up" draggable={false} /> : <div className="empty">Rendering close-up…</div>}
-          <canvas ref={overlay} className="face-highlight" />
+          {anchors.length > 0 &&
+            imageBox.current &&
+            (() => {
+              const r = imgRect(imageBox.current!),
+                box = imageBox.current!.getBoundingClientRect();
+              return anchors.map((a) => (
+                <div key={a.bone} className="face-anchor" style={{ left: r.left - box.left + a.x * r.width, top: r.top - box.top + a.y * r.height }} />
+              ));
+            })()}
           {hover && (
             <div className="face-pick" style={{ left: hover.x + 14, top: hover.y + 18 }}>
               <span className="face-pick-label">{featureOfBone(hover.bone)?.bone.label ?? hover.bone}</span>

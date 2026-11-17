@@ -80,8 +80,8 @@ namespace StudioEX.Bridge.Api
             r.Add("face.deletePreset", a => DeletePreset(a));
             r.Add("face.updatePreset", a => UpdatePreset(a));
             r.Add("face.shapes", a => Shapes(a));
-            r.Add("face.region", a => Region(a));
             r.Add("face.pick", a => Pick(a));
+            r.Add("face.anchors", a => Anchors(a));
             r.Add("face.setShape", a => SetShape(a));
             r.Add("face.resetShapes", a => ResetShapes(a));
         }
@@ -924,58 +924,58 @@ namespace StudioEX.Bridge.Api
 
         private static readonly Dictionary<int, BoneWeight[]> WeightCache = new Dictionary<int, BoneWeight[]>();
 
-        /// <summary>args: {id, bones:[names]} → {points:[[u,v,w]...]} in the last close-up (0..1, top-left origin)</summary>
-        private static object Region(Dictionary<string, object> a)
+        /// <summary>
+        /// args: {id, bones:[names]} → [{bone, x, y}] (0..1, top-left, in the last close-up): where each part sits
+        /// on the face, for the hover marker. The centre of the skin the part moves (weighted by how much it moves
+        /// it, surfaces facing the camera only), from the end-of-frame snapshot, so it matches the picture.
+        /// </summary>
+        private static object Anchors(Dictionary<string, object> a)
         {
-            var pts = new List<object>();
-            var result = new Dictionary<string, object> { { "points", pts } };
-            if (_cam == null) return result;
+            var list = new List<object>();
+            if (_cam == null) return list;
             var c = CharaApi.Chara(a.GetInt("id"));
-            if (c.charInfo == null) return result;
+            if (c.charInfo == null) return list;
             var t = new Target { Chara = c, Root = c.charInfo.transform };
-            var set = new HashSet<Transform>();
+            var camPos = _cam.transform.position;
+            var snaps = FaceBaker.Get(c);
             foreach (var o in a.GetList("bones"))
             {
-                var b = Bone(t, o as string);
+                var name = o as string;
+                var b = Bone(t, name);
                 if (b == null) continue;
-                foreach (var d in b.GetComponentsInChildren<Transform>(true)) set.Add(d);
-            }
-            if (set.Count == 0) return result;
-            var camPos = _cam.transform.position;
-            const int budget = 900;
-            foreach (var snap in FaceBaker.Get(c))
-            {
-                var smr = snap.Renderer;
-                if (smr == null || smr.bones == null) continue;
-                var bones = smr.bones;
-                var inSet = new bool[bones.Length];
-                bool any = false;
-                for (int i = 0; i < bones.Length; i++) if (bones[i] != null && set.Contains(bones[i])) { inSet[i] = true; any = true; }
-                if (!any) continue;
-                var bw = Weights(smr);
-                if (bw == null || bw.Length != snap.Pos.Length) continue;
-                var hits = new List<int>();
-                var ws = new List<float>();
-                for (int v = 0; v < bw.Length; v++)
+                var set = new HashSet<Transform>(b.GetComponentsInChildren<Transform>(true));
+                var sum = Vector3.zero;
+                float total = 0f;
+                foreach (var snap in snaps)
                 {
-                    var w = bw[v];
-                    float sum = (inSet[w.boneIndex0] ? w.weight0 : 0) + (inSet[w.boneIndex1] ? w.weight1 : 0) +
-                                (inSet[w.boneIndex2] ? w.weight2 : 0) + (inSet[w.boneIndex3] ? w.weight3 : 0);
-                    if (sum <= 0.2f) continue;
-                    // only surfaces facing the camera (the far ear/eye doesn't show through the head)
-                    if (Vector3.Dot(snap.Normal[v], camPos - snap.Pos[v]) <= 0f) continue;
-                    hits.Add(v);
-                    ws.Add(sum);
+                    var smr = snap.Renderer;
+                    if (smr == null || smr.bones == null) continue;
+                    var bones = smr.bones;
+                    var inSet = new bool[bones.Length];
+                    bool any = false;
+                    for (int i = 0; i < bones.Length; i++) if (bones[i] != null && set.Contains(bones[i])) { inSet[i] = true; any = true; }
+                    if (!any) continue;
+                    var bw = Weights(smr);
+                    if (bw == null || bw.Length != snap.Pos.Length) continue;
+                    for (int v = 0; v < bw.Length; v++)
+                    {
+                        var w = bw[v];
+                        float k = (inSet[w.boneIndex0] ? w.weight0 : 0) + (inSet[w.boneIndex1] ? w.weight1 : 0) +
+                                  (inSet[w.boneIndex2] ? w.weight2 : 0) + (inSet[w.boneIndex3] ? w.weight3 : 0);
+                        if (k < 0.25f) continue;
+                        if (Vector3.Dot(snap.Normal[v], camPos - snap.Pos[v]) <= 0f) continue;
+                        k *= k; // the core of the area counts most
+                        sum += snap.Pos[v] * k;
+                        total += k;
+                    }
                 }
-                int step = Mathf.Max(1, hits.Count / budget);
-                for (int k = 0; k < hits.Count; k += step)
-                {
-                    var vp = _cam.WorldToViewportPoint(snap.Pos[hits[k]]);
-                    if (vp.z <= 0f || vp.x < -0.1f || vp.x > 1.1f || vp.y < -0.1f || vp.y > 1.1f) continue;
-                    pts.Add(new List<object> { Math.Round(vp.x, 4), Math.Round(1f - vp.y, 4), Math.Round(Mathf.Min(1f, ws[k]), 2) });
-                }
+                // nothing visible from here (e.g. the far ear): fall back to the bone itself
+                var p = total > 0f ? sum / total : b.position;
+                var vp = _cam.WorldToViewportPoint(p);
+                if (vp.z <= 0f) continue;
+                list.Add(new Dictionary<string, object> { { "bone", name }, { "x", Math.Round(vp.x, 4) }, { "y", Math.Round(1f - vp.y, 4) } });
             }
-            return result;
+            return list;
         }
 
         private static BoneWeight[] Weights(SkinnedMeshRenderer smr)

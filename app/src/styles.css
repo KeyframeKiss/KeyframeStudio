@@ -2248,6 +2248,39 @@ select {
   border: 2px solid #fff;
   box-shadow: 0 0 0 2px var(--accent), 0 0 8px rgba(0, 0, 0, 0.6);
 }
+/* where the hovered part sits: a crisp ring with a soft halo, nothing painted on the face */
+.face-anchor {
+  position: absolute;
+  width: 26px;
+  height: 26px;
+  margin: -13px 0 0 -13px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  box-shadow:
+    0 0 0 2px rgba(90, 169, 255, 0.9),
+    0 0 0 6px rgba(90, 169, 255, 0.18),
+    0 1px 6px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+  animation: face-anchor-in 0.16s ease-out;
+}
+.face-anchor::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  margin: -3px 0 0 -3px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 0 0 1.5px rgba(90, 169, 255, 0.9);
+}
+@keyframes face-anchor-in {
+  from {
+    opacity: 0;
+    transform: scale(1.5);
+  }
+}
 .face-pick-label {
   padding: 2px 8px;
   border-radius: 8px;
@@ -2310,10 +2343,6 @@ select {
 }
 .face-card .chev.open {
   transform: rotate(90deg);
-}
-.face-highlight {
-  position: absolute;
-  pointer-events: none;
 }
 .face-pick {
   transform: none;
