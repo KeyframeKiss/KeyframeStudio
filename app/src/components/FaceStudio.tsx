@@ -4,6 +4,8 @@ import { ALL_FACE_BONES, FACE_FEATURES, RANGES, isPaired, twinOf, type Channel, 
 import { selectedCharacters, toast, useStore } from '../state/store';
 import { NumberField } from './TopBar';
 import { FacePresets } from './FacePresets';
+import { ExpressionControls } from './ExpressionControls';
+import { ShapesPanel } from './ShapesPanel';
 import { ErrorBoundary } from './ErrorBoundary';
 
 /**
@@ -63,6 +65,10 @@ export function FaceStudio() {
   const [plain, setPlain] = useState(() => lsGet('studioex.face.plain', '0') === '1');
   const [bones, setBones] = useState<Record<string, BoneState>>({});
   const [img, setImg] = useState<string | null>(null);
+  const [before, setBefore] = useState(false); // hold "Before" to see the original face
+  const [points, setPoints] = useState<Record<string, [number, number]>>({});
+  const [hover, setHover] = useState<{ bone: string; x: number; y: number } | null>(null);
+  const [flash, setFlash] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [uniform, setUniform] = useState<Set<string>>(new Set());
   const lastEdit = useRef(-1e9); // "long ago" (performance.now() starts at 0 when the page loads)
@@ -89,8 +95,8 @@ export function FaceStudio() {
   // ---------------- close-up (on demand, one request in flight) ----------------
   const view = useRef({ busy: false, again: false });
   const recenter = useRef(false);
-  const viewArgs = useRef({ angle, zoom, plain, pitch, panX: pan.x, panY: pan.y });
-  viewArgs.current = { angle, zoom, plain, pitch, panX: pan.x, panY: pan.y };
+  const viewArgs = useRef({ angle, zoom, plain, pitch, panX: pan.x, panY: pan.y, original: before });
+  viewArgs.current = { angle, zoom, plain, pitch, panX: pan.x, panY: pan.y, original: before };
   const refreshView = useCallback(() => {
     if (id == null || status !== 'open') return;
     const v = view.current;
@@ -102,8 +108,12 @@ export function FaceStudio() {
     const cid = id;
     const wasRecenter = recenter.current;
     bridge
-      .request<string>('face.view', { id: cid, ...viewArgs.current, recenter: recenter.current, size: 640 })
-      .then((url) => want.current === cid && setImg(url))
+      .request<{ img: string; points: Record<string, [number, number]> }>('face.view', { id: cid, ...viewArgs.current, recenter: recenter.current, size: 640, points: ALL_FACE_BONES })
+      .then((r) => {
+        if (want.current !== cid) return;
+        setImg(r.img);
+        setPoints(r.points ?? {});
+      })
       .catch(() => {})
       .finally(() => {
         if (wasRecenter) recenter.current = false;
@@ -114,7 +124,44 @@ export function FaceStudio() {
         }
       });
   }, [id, status]);
-  useEffect(refreshView, [refreshView, angle, zoom, plain, pitch, pan, revision]);
+  useEffect(refreshView, [refreshView, angle, zoom, plain, pitch, pan, before, revision]);
+
+  // ---------------- click a face part in the close-up → open its controls ----------------
+  const nearest = (el: Element, cx: number, cy: number) => {
+    const r = imgRect(el);
+    const u = (cx - r.left) / r.width,
+      v = (cy - r.top) / r.height;
+    let best: string | null = null,
+      bd = 0.05 * 0.05; // within ~5% of the picture
+    for (const [name, [px, py]] of Object.entries(points)) {
+      const d = (px - u) ** 2 + (py - v) ** 2;
+      if (d < bd) {
+        bd = d;
+        best = name;
+      }
+    }
+    return best ? { bone: best, x: points[best][0] * r.width + (r.left - el.getBoundingClientRect().left), y: points[best][1] * r.height + (r.top - el.getBoundingClientRect().top) } : null;
+  };
+  const featureOfBone = (name: string) => {
+    const base = name.endsWith('_R') ? twinOf(name) : name;
+    for (const f of FACE_FEATURES) {
+      const b = f.bones.find((x) => x.name === base);
+      if (b) return { feature: f, bone: b };
+    }
+    return null;
+  };
+  const jumpTo = (name: string) => {
+    const hit = featureOfBone(name);
+    if (!hit) return;
+    setFeature(hit.feature.id);
+    lsSet('studioex.face.feature', hit.feature.id);
+    if (name.endsWith('_R') && !mirror) setSide('R');
+    if (name.endsWith('_L') && !mirror) setSide('L');
+    setFlash(hit.bone.name);
+    window.setTimeout(() => document.getElementById(`face-card-${hit.bone.name}`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }), 30);
+    window.setTimeout(() => setFlash(null), 1200);
+  };
+  const downAt = useRef<{ x: number; y: number } | null>(null);
 
   // ---------------- close-up navigation: drag = move, right-drag = turn, wheel = zoom at cursor ----------------
   const ZMIN = 0.5,
@@ -181,6 +228,8 @@ export function FaceStudio() {
       </div>
     );
 
+  const isExpr = feature === 'expression';
+  const isShapes = feature === 'shapes';
   const feat = FACE_FEATURES.find((f) => f.id === feature) ?? FACE_FEATURES[0];
   const nameFor = (b: FaceBone) => (isPaired(b.name) && !mirror && side === 'R' ? twinOf(b.name) : b.name);
   const editedIn = (fid: string) => FACE_FEATURES.find((f) => f.id === fid)!.bones.some((b) => bones[b.name]?.edited || (isPaired(b.name) && bones[twinOf(b.name)]?.edited));
@@ -195,11 +244,17 @@ export function FaceStudio() {
           onPointerDown={(e) => {
             (e.currentTarget as Element).setPointerCapture(e.pointerId);
             nav.current = { button: e.button, x: e.clientX, y: e.clientY };
+            downAt.current = e.button === 0 ? { x: e.clientX, y: e.clientY } : null;
           }}
           onPointerMove={(e) => {
             const n = nav.current;
-            if (!n) return;
+            if (!n) {
+              const h = nearest(e.currentTarget, e.clientX, e.clientY);
+              setHover((o) => (o?.bone === h?.bone ? o : h));
+              return;
+            }
             if (e.buttons === 0) return void (nav.current = null);
+            setHover(null);
             const dx = e.clientX - n.x,
               dy = e.clientY - n.y;
             n.x = e.clientX;
@@ -214,7 +269,16 @@ export function FaceStudio() {
               setPitch((p) => Math.max(-70, Math.min(70, p + dy * 0.3)));
             }
           }}
-          onPointerUp={() => (nav.current = null)}
+          onPointerUp={(e) => {
+            nav.current = null;
+            const d = downAt.current;
+            downAt.current = null;
+            if (d && Math.abs(e.clientX - d.x) + Math.abs(e.clientY - d.y) < 5) {
+              const h = nearest(e.currentTarget, e.clientX, e.clientY);
+              if (h) jumpTo(h.bone);
+            }
+          }}
+          onPointerLeave={() => setHover(null)}
           onPointerCancel={() => (nav.current = null)}
           onWheel={(e) => {
             // zoom towards the point under the cursor (it stays put)
@@ -230,7 +294,14 @@ export function FaceStudio() {
           onDoubleClick={resetView}
         >
           {img ? <img src={img} alt="Face close-up" draggable={false} /> : <div className="empty">Rendering close-up…</div>}
-          <div className="face-nav-hint">Drag to move · Right-drag to turn · Wheel to zoom · Double-click to reset</div>
+          {hover && (
+            <div className="face-pick" style={{ left: hover.x, top: hover.y }}>
+              <span className="face-pick-dot" />
+              <span className="face-pick-label">{featureOfBone(hover.bone)?.bone.label ?? hover.bone}</span>
+            </div>
+          )}
+          {before && <div className="face-before-badge">Before</div>}
+          <div className="face-nav-hint">Click a part to edit it · Drag to move · Right-drag to turn · Wheel to zoom · Double-click to reset</div>
         </div>
         <div className="face-view-bar">
           <div className="seg">
@@ -253,6 +324,15 @@ export function FaceStudio() {
             <input type="range" min={ZMIN} max={ZMAX} step={0.05} value={zoom} onChange={(e) => setZoom(Number(e.target.value))} />
           </label>
           <button
+            className={`btn ${before ? 'on' : ''}`}
+            title="Hold to see the face without your adjustments"
+            onPointerDown={() => setBefore(true)}
+            onPointerUp={() => setBefore(false)}
+            onPointerLeave={() => setBefore(false)}
+          >
+            Before
+          </button>
+          <button
             className={`btn ${plain ? 'on' : ''}`}
             title="Show only this character's head on a plain backdrop"
             onClick={() => {
@@ -274,8 +354,10 @@ export function FaceStudio() {
             ↻
           </button>
         </div>
-        <ErrorBoundary name="Saved faces">
+        <ErrorBoundary key={isExpr ? 'expr' : 'face'} name={isExpr ? 'Saved expressions' : 'Saved faces'}>
         <FacePresets
+          key={isExpr ? 'expression' : 'face'}
+          kind={isExpr ? 'expression' : 'face'}
           ids={chars}
           onApplied={() => {
             lastEdit.current = -1e9;
@@ -288,10 +370,21 @@ export function FaceStudio() {
 
       <section className="face-controls">
         <div className="face-features">
+          <button
+            className={`face-feature expr ${isExpr ? 'on' : ''}`}
+            title="Eyebrows, eyes, mouth, blush, tears and where the character looks"
+            onClick={() => {
+              setFeature('expression');
+              lsSet('studioex.face.feature', 'expression');
+            }}
+          >
+            Expression
+          </button>
+          <span className="face-features-sep" />
           {FACE_FEATURES.map((f) => (
             <button
               key={f.id}
-              className={`face-feature ${f.id === feat.id ? 'on' : ''}`}
+              className={`face-feature ${!isExpr && !isShapes && f.id === feat.id ? 'on' : ''}`}
               onClick={() => {
                 setFeature(f.id);
                 lsSet('studioex.face.feature', f.id);
@@ -301,8 +394,25 @@ export function FaceStudio() {
               {editedIn(f.id) && <span className="face-dot" title="Has changes" />}
             </button>
           ))}
+          <span className="face-features-sep" />
+          <button
+            className={`face-feature ${isShapes ? 'on' : ''}`}
+            title="Blendshapes: the mesh shapes expressions are made of (KKPE)"
+            onClick={() => {
+              setFeature('shapes');
+              lsSet('studioex.face.feature', 'shapes');
+            }}
+          >
+            Shapes
+          </button>
         </div>
 
+        {isExpr ? (
+          <ExpressionControls ids={chars} onChanged={refreshView} />
+        ) : isShapes ? (
+          <ShapesPanel id={id} onChanged={refreshView} />
+        ) : (
+        <>
         <div className="face-options">
           <button
             className={`btn ${mirror ? 'on' : ''}`}
@@ -343,7 +453,7 @@ export function FaceStudio() {
             const channels = b.channels ?? (['pos', 'rot', 'scale'] as Channel[]);
             const locked = uniform.has(name) || channels.length === 1;
             return (
-              <div key={b.name} className={`face-card ${st.edited ? 'edited' : ''}`}>
+              <div key={b.name} id={`face-card-${b.name}`} className={`face-card ${st.edited ? 'edited' : ''} ${flash === b.name ? 'flash' : ''}`}>
                 <div className="face-card-head">
                   <strong>{b.label}</strong>
                   {isPaired(b.name) && <span className="face-tag">{mirror ? 'L + R' : side === 'L' ? 'Left' : 'Right'}</span>}
@@ -403,6 +513,8 @@ export function FaceStudio() {
             );
           })}
         </div>
+        </>
+        )}
       </section>
     </div>
   );

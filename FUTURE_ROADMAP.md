@@ -235,7 +235,8 @@ Face Studio fine-tunes the face of a character already in the scene: eyes, brows
 ### 5.4 Status (2026-11-17): first version built
 - **Done:** KKPE bridge (`face.get / set / reset`, mirrored left/right, undo/redo), on-demand close-up (`face.view`: front, ¾ and side angles, zoom, body and other characters hidden, optional plain background, objects between camera and face clipped), and the Face Studio tab in the Pose workspace with 9 features and 40 face parts. Verified live: 9/9 API checks, edits visible in the close-up, Ctrl+Z restores both sides.
 - **Saved faces (5.3) done:** save the current face with a thumbnail (UserData/StudioEX/faces), switch with one click, "Original" to go back, apply to several selected characters, choose parts and strength, replace or blend; one undo step per apply. Verified live: 9/9 checks. Library tools for large collections: search (names, tags, source character), sort (recently used / newest / name), favorites pinned first, user tags with tag filters, rename, a "Browse all" gallery with multi-select delete, and a collapsible strip. Verified live with 30 test faces (6/6 checks, tag filter, gallery, collapse).
-- **Next:** click a feature in the close-up to open it; highlight the selected part in Studio's viewport (Phase 2); before/after toggle; blendshape sliders.
+- **Expressions, Shapes, Before/after, click-to-edit done (2026-11-17):** Expression tab (eyebrows, eyes, mouth, blush, tears, look direction) with saved expressions (same library tools as saved faces); Shapes tab for KKPE blendshapes of the head meshes with readable names; hold "Before" to see the face without adjustments; click a part in the close-up to open its controls. Pose thumbnails for the whole library (Phase 1.1) also done.
+- **Next:** saved faces could also store blendshape edits; highlight the selected part in Studio's viewport (Phase 2).
 
 ---
 

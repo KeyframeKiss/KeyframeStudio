@@ -56,6 +56,7 @@ namespace StudioEX.Bridge
             AbmxApi.Register(_router);
             PoseApi.Register(_router);
             FaceApi.Register(_router);
+            ExpressionApi.Register(_router);
             Translation.Register(_router);
             _events = new EventPump(Broadcast);
             HarmonyLib.Harmony.CreateAndPatchAll(typeof(Hooks), GUID);

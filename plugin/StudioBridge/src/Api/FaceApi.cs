@@ -79,6 +79,9 @@ namespace StudioEX.Bridge.Api
             r.Add("face.applyPreset", a => ApplyPreset(a));
             r.Add("face.deletePreset", a => DeletePreset(a));
             r.Add("face.updatePreset", a => UpdatePreset(a));
+            r.Add("face.shapes", a => Shapes(a));
+            r.Add("face.setShape", a => SetShape(a));
+            r.Add("face.resetShapes", a => ResetShapes(a));
         }
 
         // ---------------- helpers ----------------
@@ -570,6 +573,10 @@ namespace StudioEX.Bridge.Api
             _cam.nearClipPlane = Mathf.Max(0.01f, dist - faceH * 0.75f);
             _cam.farClipPlane = dist * 20f + 10f;
 
+            // Before/after: render the character's original face (edited bones and blendshapes put back for this
+            // one render; KKPE re-applies its values on the next frame anyway).
+            var restore = a.GetBool("original") ? ShowOriginal(c) : null;
+
             // Isolate: hide this character's body and other characters for this one render, so hands, hair
             // of others or a nearby character don't cover the face. Head, hair and head accessories stay.
             // Plain background: only the character layer, on a neutral backdrop (items hidden as well).
@@ -589,13 +596,27 @@ namespace StudioEX.Bridge.Api
                 _cam.Render();
                 RenderTexture.active = _rt;
                 _tex.ReadPixels(new Rect(0, 0, size, size), 0, 0, false);
-                return "data:image/jpeg;base64," + Convert.ToBase64String(_tex.EncodeToJPG(88));
+                var img = "data:image/jpeg;base64," + Convert.ToBase64String(_tex.EncodeToJPG(88));
+                var want = a.GetList("points");
+                if (want.Count == 0) return img;
+                // Where each requested face bone appears in the picture (0..1, origin top-left), for click-to-select.
+                var pts = new Dictionary<string, object>();
+                foreach (var o in want)
+                {
+                    var b = Bone(t, o as string);
+                    if (b == null) continue;
+                    var vp = _cam.WorldToViewportPoint(b.position);
+                    if (vp.z <= 0f) continue;
+                    pts[b.name] = new List<object> { (double)vp.x, (double)(1f - vp.y) };
+                }
+                return new Dictionary<string, object> { { "img", img }, { "points", pts } };
             }
             finally
             {
                 RenderTexture.active = prev;
                 _cam.targetTexture = null;
                 foreach (var r in hidden) if (r != null) r.enabled = true;
+                restore?.Invoke();
             }
         }
 
@@ -675,6 +696,223 @@ namespace StudioEX.Bridge.Api
             }
             return best;
         }
+
+        /// <summary>Puts edited face bones and head blendshapes back to their originals; returns the undo.</summary>
+        private static Action ShowOriginal(OCIChar c)
+        {
+            var undo = new List<Action>();
+            try
+            {
+                var t = GetTarget(new Dictionary<string, object> { { "id", c.objectInfo.dicKey } });
+                var dict = (IDictionary)_fDirty.GetValue(t.Bones);
+                foreach (DictionaryEntry e in dict)
+                {
+                    var go = e.Key as GameObject;
+                    if (go == null) continue;
+                    var tr = go.transform;
+                    Vector3 lp = tr.localPosition, ls = tr.localScale;
+                    Quaternion lr = tr.localRotation;
+                    if (Ev(e.Value, _tdOPos, out Vector3 op)) tr.localPosition = op;
+                    if (Ev(e.Value, _tdORot, out Quaternion or)) tr.localRotation = or;
+                    if (Ev(e.Value, _tdOScale, out Vector3 os)) tr.localScale = os;
+                    undo.Add(() => { if (tr != null) { tr.localPosition = lp; tr.localRotation = lr; tr.localScale = ls; } });
+                }
+                foreach (var sh in HeadShapes(c))
+                    foreach (var kv in sh.Dirty)
+                    {
+                        int i = sh.Renderer.sharedMesh.GetBlendShapeIndex(kv.Key);
+                        if (i < 0) continue;
+                        var r = sh.Renderer;
+                        float cur = r.GetBlendShapeWeight(i);
+                        r.SetBlendShapeWeight(i, kv.Value.Original);
+                        undo.Add(() => { if (r != null) r.SetBlendShapeWeight(i, cur); });
+                    }
+            }
+            catch (Exception e) { StudioBridgePlugin.Logger.LogDebug("compare: " + e.Message); }
+            return () => { foreach (var u in undo) u(); };
+        }
+
+        // ---------------- blendshapes (KKPE BlendShapesEditor) ----------------
+        // KKPE keeps, per renderer key, a dictionary blendshape-name -> BlendShapeData{weight, originalWeight}
+        // and forces those weights on top of the expression system every frame.
+
+        private static bool _shResolved;
+        private static FieldInfo _fShapesEditor, _fSmrs, _fNames, _fDirtyShapes, _fBsWeight, _fBsOriginal;
+        private static MethodInfo _setShape;
+
+        private static bool ResolveShapes()
+        {
+            if (_shResolved) return _setShape != null;
+            _shResolved = true;
+            if (!Resolve()) return false;
+            var bse = AccessTools.TypeByName("HSPE.AMModules.BlendShapesEditor");
+            if (bse == null) return false;
+            _fShapesEditor = AccessTools.Field(_pcType, "_blendShapesEditor");
+            _fSmrs = AccessTools.Field(bse, "_skinnedMeshRenderers");
+            _fNames = AccessTools.Field(bse, "_rendererNames");
+            _fDirtyShapes = AccessTools.Field(bse, "_dirtySkinnedMeshRenderers");
+            _setShape = AccessTools.Method(bse, "SetBlendShapeWeight", new[] { typeof(SkinnedMeshRenderer), typeof(int), typeof(float) });
+            var bd = bse.GetNestedType("BlendShapeData", BindingFlags.NonPublic | BindingFlags.Public);
+            if (bd != null) { _fBsWeight = AccessTools.Field(bd, "weight"); _fBsOriginal = AccessTools.Field(bd, "originalWeight"); }
+            if (_fShapesEditor == null || _fSmrs == null || _fDirtyShapes == null || _fBsWeight == null || _fBsOriginal == null) _setShape = null;
+            if (_setShape == null) StudioBridgePlugin.Logger.LogWarning("Face Studio: KKPE blendshape editor not supported in this version");
+            return _setShape != null;
+        }
+
+        private struct ShapeEdit { public float Weight, Original; }
+
+        private sealed class HeadShapeSet
+        {
+            public string Key;
+            public SkinnedMeshRenderer Renderer;
+            public object Editor;
+            public IDictionary DirtyMap;   // name -> BlendShapeData (KKPE's own dictionary)
+            public Dictionary<string, ShapeEdit> Dirty = new Dictionary<string, ShapeEdit>();
+        }
+
+        /// <summary>The character's head meshes that have blendshapes, as KKPE knows them.</summary>
+        private static List<HeadShapeSet> HeadShapes(OCIChar c)
+        {
+            var list = new List<HeadShapeSet>();
+            if (!ResolveShapes() || c.charInfo == null) return list;
+            var pc = c.guideObject.transformTarget.GetComponent(_pcType);
+            var ed = pc != null ? _fShapesEditor.GetValue(pc) : null;
+            if (ed == null) return list;
+            var smrs = (IDictionary)_fSmrs.GetValue(ed);
+            var dirty = (IDictionary)_fDirtyShapes.GetValue(ed);
+            var head = c.charInfo.objHead != null ? c.charInfo.objHead.transform : null;
+            foreach (DictionaryEntry e in smrs)
+            {
+                var r = e.Value as SkinnedMeshRenderer;
+                if (r == null || r.sharedMesh == null || r.sharedMesh.blendShapeCount == 0) continue;
+                if (head != null && !r.transform.IsChildOf(head)) continue;
+                var set = new HeadShapeSet { Key = (string)e.Key, Renderer = r, Editor = ed, DirtyMap = dirty.Contains(e.Key) ? (IDictionary)dirty[e.Key] : null };
+                if (set.DirtyMap != null)
+                    foreach (DictionaryEntry d in set.DirtyMap)
+                        set.Dirty[(string)d.Key] = new ShapeEdit { Weight = (float)_fBsWeight.GetValue(d.Value), Original = (float)_fBsOriginal.GetValue(d.Value) };
+                list.Add(set);
+            }
+            return list;
+        }
+
+        private static readonly Dictionary<string, string> RendererLabels = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            { "cf_O_face", "Face" }, { "cf_O_mayuge", "Eyebrows" }, { "cf_O_eyeline", "Eyelines" }, { "cf_O_eyeline_low", "Lower eyelines" },
+            { "cf_O_tooth", "Teeth" }, { "cf_O_namida_L", "Tears (left)" }, { "cf_O_namida_M", "Tears" }, { "cf_O_namida_S", "Tears (small)" },
+            { "cf_Ohitomi_L", "Left eye" }, { "cf_Ohitomi_R", "Right eye" }, { "cf_Ohitomi_L02", "Left eye (2)" }, { "cf_Ohitomi_R02", "Right eye (2)" },
+            { "cf_O_noseline", "Nose line" }, { "cf_O_gag_eye_00", "Gag eyes" }, { "cf_O_gag_eye_01", "Gag eyes (2)" }, { "cf_O_gag_eye_02", "Gag eyes (3)" },
+        };
+
+        private static object Shapes(Dictionary<string, object> a)
+        {
+            var c = CharaApi.Chara(a.GetInt("id"));
+            if (!ResolveShapes()) throw new BridgeException("Blendshapes need KKPE (KK Pose Editor)");
+            var list = new List<object>();
+            foreach (var set in HeadShapes(c))
+            {
+                var mesh = set.Renderer.sharedMesh;
+                var shapes = new List<object>();
+                for (int i = 0; i < mesh.blendShapeCount; i++)
+                {
+                    string n = mesh.GetBlendShapeName(i);
+                    var d = new Dictionary<string, object> { { "i", i }, { "name", n }, { "weight", (double)set.Renderer.GetBlendShapeWeight(i) } };
+                    if (set.Dirty.TryGetValue(n, out var ed)) { d["edited"] = true; d["weight"] = (double)ed.Weight; d["original"] = (double)ed.Original; }
+                    shapes.Add(d);
+                }
+                string go = set.Renderer.name;
+                list.Add(new Dictionary<string, object> { { "key", set.Key }, { "name", go }, { "label", RendererLabels.TryGetValue(go, out var l) ? l : go }, { "shapes", shapes } });
+            }
+            return list;
+        }
+
+        private static HeadShapeSet FindSet(OCIChar c, string key)
+        {
+            var set = HeadShapes(c).FirstOrDefault(x => x.Key == key);
+            if (set == null) throw new BridgeException("That face mesh isn't available");
+            return set;
+        }
+
+        /// <summary>args: {id, key: renderer key, i: shape index, weight: 0..100}</summary>
+        private static object SetShape(Dictionary<string, object> a)
+        {
+            var c = CharaApi.Chara(a.GetInt("id"));
+            var set = FindSet(c, a.GetString("key"));
+            int i = a.GetInt("i");
+            if (i < 0 || i >= set.Renderer.sharedMesh.blendShapeCount) throw new BridgeException("No such blendshape");
+            string n = set.Renderer.sharedMesh.GetBlendShapeName(i);
+            UndoStack.Push(new ShapeUndo(c, set.Key, new[] { n }, "shape|" + set.Key + "|" + n));
+            _setShape.Invoke(set.Editor, new object[] { set.Renderer, i, Mathf.Clamp(a.GetFloat("weight"), 0f, 100f) });
+            return true;
+        }
+
+        /// <summary>args: {id, key?: renderer key (all head meshes when absent), i?: one shape}</summary>
+        private static object ResetShapes(Dictionary<string, object> a)
+        {
+            var c = CharaApi.Chara(a.GetInt("id"));
+            var sets = a.Has("key") ? new List<HeadShapeSet> { FindSet(c, a.GetString("key")) } : HeadShapes(c);
+            int n = 0;
+            foreach (var set in sets)
+            {
+                if (set.DirtyMap == null) continue;
+                var names = a.Has("i") ? new[] { set.Renderer.sharedMesh.GetBlendShapeName(a.GetInt("i")) } : set.Dirty.Keys.ToArray();
+                names = names.Where(x => set.Dirty.ContainsKey(x)).ToArray();
+                if (names.Length == 0) continue;
+                UndoStack.Push(new ShapeUndo(c, set.Key, names, null));
+                foreach (var name in names) { RemoveShape(set, name); n++; }
+            }
+            return n;
+        }
+
+        private static void RemoveShape(HeadShapeSet set, string name)
+        {
+            if (set.DirtyMap == null || !set.DirtyMap.Contains(name)) return;
+            float orig = (float)_fBsOriginal.GetValue(set.DirtyMap[name]);
+            set.DirtyMap.Remove(name);
+            int i = set.Renderer.sharedMesh.GetBlendShapeIndex(name);
+            if (i >= 0) set.Renderer.SetBlendShapeWeight(i, orig);
+        }
+
+        private sealed class ShapeUndo : IUndoEntry
+        {
+            private readonly OCIChar _c;
+            private readonly string _key;
+            private readonly Dictionary<string, ShapeEdit?> _was = new Dictionary<string, ShapeEdit?>();
+            private readonly string _merge;
+
+            public ShapeUndo(OCIChar c, string key, IEnumerable<string> names, string merge)
+            {
+                _c = c; _key = key; _merge = merge;
+                var set = HeadShapes(c).FirstOrDefault(x => x.Key == key);
+                foreach (var n in names) _was[n] = set != null && set.Dirty.TryGetValue(n, out var e) ? e : (ShapeEdit?)null;
+            }
+
+            public string Label => "Face shape";
+            public bool Absorbs(IUndoEntry newer) => _merge != null && newer is ShapeUndo n && n._merge == _merge && n._c == _c;
+
+            public IUndoEntry Restore()
+            {
+                if (_c.charInfo == null) throw new InvalidOperationException("character deleted");
+                var inverse = new ShapeUndo(_c, _key, _was.Keys, null);
+                var set = HeadShapes(_c).FirstOrDefault(x => x.Key == _key);
+                if (set == null) return inverse;
+                foreach (var kv in _was)
+                {
+                    RemoveShape(set, kv.Key);
+                    if (kv.Value == null) continue;
+                    int i = set.Renderer.sharedMesh.GetBlendShapeIndex(kv.Key);
+                    if (i < 0) continue;
+                    _setShape.Invoke(set.Editor, new object[] { set.Renderer, i, kv.Value.Value.Weight });
+                    // keep KKPE's notion of the original weight
+                    var fresh = HeadShapes(_c).FirstOrDefault(x => x.Key == _key);
+                    if (fresh?.DirtyMap != null && fresh.DirtyMap.Contains(kv.Key)) _fBsOriginal.SetValue(fresh.DirtyMap[kv.Key], kv.Value.Value.Original);
+                }
+                return inverse;
+            }
+        }
+
+        /// <summary>Front close-up on a plain backdrop (thumbnails for saved faces/expressions).</summary>
+        public static string ViewPublic(int id, int size) =>
+            View(new Dictionary<string, object> { { "id", id }, { "size", size }, { "plain", true }, { "zoom", 1.05 } }) as string;
 
         private static void EnsureCamera(int size)
         {

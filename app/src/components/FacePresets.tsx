@@ -24,6 +24,8 @@ interface SavedFace {
   lastUsed: number;
   modified: number;
   thumb?: string;
+  /** saved expressions: the expression values (chara.set fields) */
+  values?: Record<string, unknown>;
 }
 
 type Sort = 'recent' | 'newest' | 'name';
@@ -44,6 +46,7 @@ function normalize(list: unknown): SavedFace[] {
       lastUsed: Number(f.lastUsed) || 0,
       modified: Number(f.modified) || 0,
       thumb: f.thumb,
+      values: f.values && typeof f.values === 'object' ? f.values : undefined,
     }));
 }
 
@@ -71,10 +74,22 @@ function scopeFor(features: string[]) {
 const featuresOf = (f: SavedFace) =>
   FACE_FEATURES.filter((ft) => ft.bones.some((b) => f.bones.includes(b.name) || f.bones.includes(twinOf(b.name)))).map((ft) => ft.label);
 
-export function FacePresets({ ids, onApplied }: { ids: number[]; onApplied: () => void }) {
+/** The same library UI serves saved faces (KKPE bone offsets) and saved expressions (expression values). */
+export type PresetKind = 'face' | 'expression';
+const KIND = {
+  face: { cmd: 'face', noun: 'face', title: 'Saved faces', ls: 'studioex.face', empty: 'Adjust a face, then “Save current” to keep it here.' },
+  expression: { cmd: 'expr', noun: 'expression', title: 'Saved expressions', ls: 'studioex.expr', empty: 'Set an expression, then “Save current” to keep it here.' },
+} as const;
+
+/** Expression fields a saved expression stores (and that "Default" resets). */
+export const EXPRESSION_KEYS = ['eyebrowPtn', 'eyesPtn', 'mouthPtn', 'eyesOpen', 'mouthOpen', 'blink', 'lipSync', 'eyesLook', 'neckLook', 'tears', 'blush'] as const;
+const NEUTRAL_EXPRESSION = { eyebrowPtn: 0, eyesPtn: 0, mouthPtn: 0, eyesOpen: 1, mouthOpen: 0, tears: 0, blush: 0 };
+
+export function FacePresets({ ids, onApplied, kind = 'face' }: { ids: number[]; onApplied: () => void; kind?: PresetKind }) {
+  const K = KIND[kind];
   const status = useStore((s) => s.status);
   const [list, setList] = useState<SavedFace[]>([]);
-  const [collapsed, setCollapsed] = useState(() => lsGet('studioex.face.presetsCollapsed', '0') === '1');
+  const [collapsed, setCollapsed] = useState(() => lsGet(`${K.ls}.presetsCollapsed`, '0') === '1');
   const [saving, setSaving] = useState(false);
   const [name, setName] = useState('');
   const [active, setActive] = useState<string | null>(null);
@@ -84,7 +99,7 @@ export function FacePresets({ ids, onApplied }: { ids: number[]; onApplied: () =
 
   // filters (shared by the strip and the gallery)
   const [query, setQuery] = useState('');
-  const [sort, setSort] = useState<Sort>(() => (lsGet('studioex.face.sort', 'recent') as Sort) || 'recent');
+  const [sort, setSort] = useState<Sort>(() => (lsGet(`${K.ls}.sort`, 'recent') as Sort) || 'recent');
   const [favOnly, setFavOnly] = useState(false);
   const [tagFilter, setTagFilter] = useState<string[]>([]);
 
@@ -104,10 +119,10 @@ export function FacePresets({ ids, onApplied }: { ids: number[]; onApplied: () =
   const load = useCallback(() => {
     if (status !== 'open') return;
     bridge
-      .request<SavedFace[]>('face.presets')
+      .request<SavedFace[]>(`${K.cmd}.presets`)
       .then((r) => setList(normalize(r)))
       .catch(() => {});
-  }, [status]);
+  }, [status, K.cmd]);
   useEffect(load, [load]);
 
   const allTags = useMemo(() => {
@@ -132,11 +147,15 @@ export function FacePresets({ ids, onApplied }: { ids: number[]; onApplied: () =
   const apply = async (f: SavedFace) => {
     if (!ids.length) return toast('Select a character first');
     try {
-      await bridge.request('face.applyPreset', { ids, file: f.file, bones: scopeFor(parts), strength, clear });
+      if (kind === 'face') await bridge.request('face.applyPreset', { ids, file: f.file, bones: scopeFor(parts), strength, clear });
+      else {
+        await bridge.request('chara.set', { ids, ...(f.values ?? {}) });
+        bridge.request('expr.updatePreset', { file: f.file, used: true }).catch(() => {});
+      }
       setActive(f.file);
       onApplied();
       setList((l) => l.map((x) => (x.file === f.file ? { ...x, lastUsed: Date.now() } : x)));
-      toast(`${f.name} applied${ids.length > 1 ? ` to ${ids.length} characters` : ''}${allParts ? '' : ' (selected parts)'} — Ctrl+Z to undo`);
+      toast(`${f.name} applied${ids.length > 1 ? ` to ${ids.length} characters` : ''}${kind === 'face' && !allParts ? ' (selected parts)' : ''} — Ctrl+Z to undo`);
     } catch (e) {
       toast((e as Error).message, 'error');
     }
@@ -145,7 +164,8 @@ export function FacePresets({ ids, onApplied }: { ids: number[]; onApplied: () =
   const original = async () => {
     if (!ids.length) return;
     try {
-      for (const id of ids) await bridge.request('face.reset', { id, bones: scopeFor(parts), mirror: false });
+      if (kind === 'face') for (const id of ids) await bridge.request('face.reset', { id, bones: scopeFor(parts), mirror: false });
+      else await bridge.request('chara.set', { ids, ...NEUTRAL_EXPRESSION });
       setActive('');
       onApplied();
     } catch (e) {
@@ -156,9 +176,14 @@ export function FacePresets({ ids, onApplied }: { ids: number[]; onApplied: () =
   const save = async (n: string, overwrite = false) => {
     const nm = n.trim();
     if (!nm || !ids.length) return;
-    if (!overwrite && list.some((p) => p.name.toLowerCase() === nm.toLowerCase()) && !window.confirm(`Replace the saved face “${nm}”?`)) return;
+    if (!overwrite && list.some((p) => p.name.toLowerCase() === nm.toLowerCase()) && !window.confirm(`Replace the saved ${K.noun} “${nm}”?`)) return;
     try {
-      setList(normalize(await bridge.request<SavedFace[]>('face.savePreset', { id: ids[0], name: nm, bones: ALL_FACE_BONES })));
+      if (kind === 'face') setList(normalize(await bridge.request<SavedFace[]>('face.savePreset', { id: ids[0], name: nm, bones: ALL_FACE_BONES })));
+      else {
+        const st = await bridge.request<{ face: Record<string, unknown> }>('chara.get', { id: ids[0] });
+        const values = Object.fromEntries(EXPRESSION_KEYS.filter((k) => k in st.face).map((k) => [k, st.face[k]]));
+        setList(normalize(await bridge.request<SavedFace[]>('expr.savePreset', { id: ids[0], name: nm, values })));
+      }
       setSaving(false);
       setName('');
       toast(`Saved “${nm}”`);
@@ -169,7 +194,7 @@ export function FacePresets({ ids, onApplied }: { ids: number[]; onApplied: () =
 
   const update = async (f: SavedFace, patch: { name?: string; tags?: string[]; favorite?: boolean }) => {
     try {
-      setList(normalize(await bridge.request<SavedFace[]>('face.updatePreset', { file: f.file, ...patch })));
+      setList(normalize(await bridge.request<SavedFace[]>(`${K.cmd}.updatePreset`, { file: f.file, ...patch })));
     } catch (e) {
       toast((e as Error).message, 'error');
     }
@@ -178,7 +203,7 @@ export function FacePresets({ ids, onApplied }: { ids: number[]; onApplied: () =
   const remove = async (files: string[], label: string) => {
     if (!window.confirm(`Delete ${label}? Characters that already use ${files.length > 1 ? 'them' : 'it'} keep their face.`)) return false;
     try {
-      setList(normalize(await bridge.request<SavedFace[]>('face.deletePreset', { files })));
+      setList(normalize(await bridge.request<SavedFace[]>(`${K.cmd}.deletePreset`, { files })));
       if (active && files.includes(active)) setActive(null);
       return true;
     } catch (e) {
@@ -196,7 +221,7 @@ export function FacePresets({ ids, onApplied }: { ids: number[]; onApplied: () =
         { header: true, label: f.name },
         { label: 'Apply', action: () => apply(f) },
         { label: f.favorite ? 'Remove from favorites' : 'Add to favorites', action: () => update(f, { favorite: !f.favorite }) },
-        { label: 'Rename…', action: () => setPrompt({ title: 'Rename saved face', value: f.name, ok: (v) => update(f, { name: v }) }) },
+        { label: 'Rename…', action: () => setPrompt({ title: `Rename saved ${K.noun}`, value: f.name, ok: (v) => update(f, { name: v }) }) },
         {
           label: 'Edit tags…',
           action: () =>
@@ -208,7 +233,7 @@ export function FacePresets({ ids, onApplied }: { ids: number[]; onApplied: () =
               ok: (v) => update(f, { tags: v.split(',').map((t) => t.trim()).filter(Boolean) }),
             }),
         },
-        { label: 'Overwrite with current face…', action: () => window.confirm(`Replace “${f.name}” with the current face (and thumbnail)?`) && save(f.name, true) },
+        { label: `Overwrite with current ${K.noun}…`, action: () => window.confirm(`Replace “${f.name}” with the current ${K.noun} (and thumbnail)?`) && save(f.name, true) },
         { sep: true },
         { label: 'Delete…', danger: true, action: () => remove([f.file], `“${f.name}”`) },
       ],
@@ -217,7 +242,7 @@ export function FacePresets({ ids, onApplied }: { ids: number[]; onApplied: () =
 
   const toggleCollapsed = () => {
     setCollapsed(!collapsed);
-    lsSet('studioex.face.presetsCollapsed', collapsed ? '0' : '1');
+    lsSet(`${K.ls}.presetsCollapsed`, collapsed ? '0' : '1');
   };
 
   const filtersActive = !!query || favOnly || tagFilter.length > 0;
@@ -228,7 +253,7 @@ export function FacePresets({ ids, onApplied }: { ids: number[]; onApplied: () =
       sort={sort}
       setSort={(s) => {
         setSort(s);
-        lsSet('studioex.face.sort', s);
+        lsSet(`${K.ls}.sort`, s);
       }}
       favOnly={favOnly}
       setFavOnly={setFavOnly}
@@ -241,9 +266,9 @@ export function FacePresets({ ids, onApplied }: { ids: number[]; onApplied: () =
   return (
     <div className={`face-presets ${collapsed ? 'collapsed' : ''}`}>
       <div className="face-presets-head">
-        <button className="face-collapse" onClick={toggleCollapsed} title={collapsed ? 'Show saved faces' : 'Hide saved faces'}>
+        <button className="face-collapse" onClick={toggleCollapsed} title={collapsed ? `Show ${K.title.toLowerCase()}` : `Hide ${K.title.toLowerCase()}`}>
           <span className={`chev ${collapsed ? '' : 'open'}`}>▸</span>
-          <strong>Saved faces</strong>
+          <strong>{K.title}</strong>
           <span className="face-count">{list.length}</span>
         </button>
         {!collapsed && (
@@ -251,10 +276,11 @@ export function FacePresets({ ids, onApplied }: { ids: number[]; onApplied: () =
             <span className="face-presets-sub">{ids.length > 1 ? `applies to ${ids.length} characters` : ''}</span>
             <span style={{ flex: 1 }} />
             {list.length > 0 && (
-              <button className="btn small" onClick={() => setGallery(true)} title="Browse every saved face in a large gallery">
+              <button className="btn small" onClick={() => setGallery(true)} title={`Browse every saved ${K.noun} in a large gallery`}>
                 Browse all
               </button>
             )}
+            {kind === 'face' && (
             <Popover
               align="right"
               width={300}
@@ -282,6 +308,7 @@ export function FacePresets({ ids, onApplied }: { ids: number[]; onApplied: () =
                 }}
               />
             </Popover>
+            )}
           </>
         )}
       </div>
@@ -309,26 +336,32 @@ export function FacePresets({ ids, onApplied }: { ids: number[]; onApplied: () =
                 </div>
               </form>
             ) : (
-              <button className="face-preset face-preset-new" title="Save the current face of the selected character" onClick={() => setSaving(true)} disabled={!ids.length}>
+              <button className="face-preset face-preset-new" title={`Save the current ${K.noun} of the selected character`} onClick={() => setSaving(true)} disabled={!ids.length}>
                 <span className="face-preset-plus">+</span>
                 <span className="face-preset-name">Save current</span>
               </button>
             )}
-            <button className={`face-preset ${active === '' ? 'active' : ''}`} title="Back to the character’s own face (the chosen parts)" onClick={original} disabled={!ids.length}>
+            <button
+              className={`face-preset ${active === '' ? 'active' : ''}`}
+              title={kind === 'face' ? 'Back to the character’s own face (the chosen parts)' : 'Neutral expression (default eyebrows, eyes and mouth; no blush or tears)'}
+              onClick={original}
+              disabled={!ids.length}
+            >
               <span className="face-preset-thumb face-preset-orig">↺</span>
-              <span className="face-preset-name">Original</span>
+              <span className="face-preset-name">{kind === 'face' ? 'Original' : 'Default'}</span>
             </button>
             {shown.map((f) => (
               <FaceCard key={f.file} f={f} active={active === f.file} onClick={() => apply(f)} onMenu={(e) => openMenu(e, f)} onStar={() => update(f, { favorite: !f.favorite })} />
             ))}
-            {!list.length && !saving && <span className="face-presets-empty">Adjust a face, then “Save current” to keep it here.</span>}
-            {list.length > 0 && !shown.length && <span className="face-presets-empty">No saved face matches{filtersActive ? ' these filters' : ''}.</span>}
+            {!list.length && !saving && <span className="face-presets-empty">{K.empty}</span>}
+            {list.length > 0 && !shown.length && <span className="face-presets-empty">No saved {K.noun} matches{filtersActive ? ' these filters' : ''}.</span>}
           </div>
         </>
       )}
 
       {gallery && (
         <FaceGallery
+          title={K.title}
           list={list}
           shown={shown}
           filters={filters}
@@ -336,7 +369,7 @@ export function FacePresets({ ids, onApplied }: { ids: number[]; onApplied: () =
           onApply={apply}
           onMenu={openMenu}
           onStar={(f) => update(f, { favorite: !f.favorite })}
-          onDelete={(files) => remove(files, `${files.length} saved face${files.length > 1 ? 's' : ''}`)}
+          onDelete={(files) => remove(files, `${files.length} saved ${K.noun}${files.length > 1 ? 's' : ''}`)}
           onClose={() => setGallery(false)}
         />
       )}
@@ -354,7 +387,7 @@ function FaceCard({ f, active, big, selected, onClick, onMenu, onStar }: { f: Sa
       role="button"
       tabIndex={0}
       className={`face-preset ${big ? 'big' : ''} ${active ? 'active' : ''} ${selected ? 'selected' : ''}`}
-      title={`${f.name}${f.tags.length ? `\nTags: ${f.tags.join(', ')}` : ''}\nChanges: ${featuresOf(f).join(', ') || '—'}${f.from ? `\nSaved from: ${f.from}` : ''}\nClick to apply · right-click for more`}
+      title={`${f.name}${f.tags.length ? `\nTags: ${f.tags.join(', ')}` : ''}${f.bones.length ? `\nChanges: ${featuresOf(f).join(', ')}` : ''}${f.from ? `\nSaved from: ${f.from}` : ''}\nClick to apply · right-click for more`}
       onClick={onClick}
       onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), onClick())}
       onContextMenu={onMenu}
@@ -447,6 +480,7 @@ function ApplyOptions(p: { parts: string[]; setParts: (v: string[]) => void; str
 }
 
 function FaceGallery(p: {
+  title: string;
   list: SavedFace[];
   shown: SavedFace[];
   filters: React.ReactNode;
@@ -468,7 +502,7 @@ function FaceGallery(p: {
     <div className="overlay" onClick={p.onClose}>
       <div className="dialog face-gallery" onClick={(e) => e.stopPropagation()}>
         <div className="face-gallery-head">
-          <h2>Saved faces</h2>
+          <h2>{p.title}</h2>
           <span className="face-count">
             {p.shown.length} of {p.list.length}
           </span>
@@ -531,7 +565,7 @@ function FaceGallery(p: {
               onStar={() => p.onStar(f)}
             />
           ))}
-          {!p.shown.length && <div className="empty">No saved face matches these filters.</div>}
+          {!p.shown.length && <div className="empty">Nothing matches these filters.</div>}
         </div>
         <div className="hint" style={{ margin: 0 }}>
           Click a face to apply it (the gallery stays open so you can compare) · right-click for rename, tags and more · ★ keeps a face at the front.
