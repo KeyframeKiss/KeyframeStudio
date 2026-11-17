@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { call, setWorkspace, toast, useStore } from '../state/store';
 
+import { pressable } from '../lib/pressable';
 interface SceneFile {
   path: string;
   rel: string;
@@ -92,7 +93,7 @@ export function SceneBrowser() {
         <div className="panel-body" style={{ padding: 12 }}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))', gap: 10 }}>
             {list.map((s) => (
-              <div
+              <div {...pressable}
                 key={s.path}
                 onClick={() => setSel(s.path)}
                 onDoubleClick={() => loadScene(s)}

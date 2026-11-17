@@ -53,6 +53,15 @@ namespace StudioEX.Bridge.Api
         /// <summary>Ask for the change baseline to be retaken on the next change poll (e.g. after undo).</summary>
         public static void RequestRebase() { _rebaseRequested = true; }
         private int _lastPending = -1;
+        private int _lastStale = -1;
+
+        private void SendStale()
+        {
+            int st = TimelineApi.PoseStale() ? 1 : 0;
+            if (st == _lastStale) return;
+            _lastStale = st;
+            _send("timeline.poseStale", st == 1);
+        }
 
         /// <summary>
         /// After a seek / playback stop / timeline edit the pose on screen is "what the animation says",
@@ -61,7 +70,11 @@ namespace StudioEX.Bridge.Api
         private void PollChanges()
         {
             if (_lastPlaying) return;
-            if (_rebaseRequested) { _rebaseRequested = false; _rebaseDue = true; }
+            // While key edits are held back (pose stale), keep the baseline: re-taking it would drop the user's
+            // unkeyed changes from the count, and the next edit would then overwrite them.
+            bool stale = TimelineApi.PoseStale();
+            if (_rebaseRequested) { _rebaseRequested = false; if (!stale) _rebaseDue = true; }
+            if (stale) _rebaseDue = false; // a seek/playback clears stale first, so those still rebase
             if (_rebaseDue)
             {
                 _rebaseDue = false;
@@ -84,6 +97,7 @@ namespace StudioEX.Bridge.Api
                 _lastPending = r[0];
                 _send("timeline.pending", r[0]);
             }
+            SendStale();
         }
 
         private void Tick()
@@ -95,6 +109,7 @@ namespace StudioEX.Bridge.Api
             bool changed = t != _lastTime || playing != _lastPlaying;
             if (!changed) return;
             if (!playing) _rebaseDue = true;
+            TimelineApi.PoseFresh(); // a seek or playback re-evaluates every track
             // ~30 Hz max (playing or scrubbing); a play/pause flip is sent immediately. Skipped values are
             // picked up on a later frame because _lastTime isn't updated, so the final position always arrives.
             if (playing == _lastPlaying && Time.unscaledTime - _lastTickSent < 1f / 30f) return;
@@ -109,7 +124,10 @@ namespace StudioEX.Bridge.Api
             long sig = TimelineApi.Signature();
             if (sig == _timelineSig) return;
             _timelineSig = sig;
-            _rebaseDue = true;
+            // An edit re-applies the pose only when nothing is unkeyed (see AfterEdit). With unkeyed changes the
+            // pose wasn't touched, so the baseline stays: re-taking it would drop those changes from the count
+            // and the next edit would overwrite them.
+            if (TimelineApi.Pending() == 0) _rebaseDue = true;
             _send("timeline.changed", null);
         }
 

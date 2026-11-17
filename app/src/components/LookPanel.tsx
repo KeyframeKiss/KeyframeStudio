@@ -4,6 +4,7 @@ import { call, displayName, toast, useStore } from '../state/store';
 import { CollapsibleSection, Slider } from './CharacterPanel';
 import { LookPresets } from './LookPresets';
 
+import { pressable } from '../lib/pressable';
 type RGBA = [number, number, number, number];
 type Named = { id: number; name: string; nameEn?: string | null };
 interface Look {
@@ -341,7 +342,7 @@ function MaterialsSection({ onRule }: { onRule: (r: MatRule) => void }) {
           const isOpen = openShader === s.shader || !!q;
           return (
             <div key={s.shader} style={{ borderBottom: '1px solid var(--line-soft)' }}>
-              <div className="tree-row" style={{ paddingLeft: 0 }} onClick={() => setOpenShader(isOpen && !q ? null : s.shader)}>
+              <div {...pressable} className="tree-row" style={{ paddingLeft: 0 }} onClick={() => setOpenShader(isOpen && !q ? null : s.shader)}>
                 <span className="chev">{isOpen ? '▾' : '▸'}</span>
                 <span className="name" style={{ fontFamily: 'var(--mono)', fontSize: 11 }} title={s.shader}>
                   {s.shader.replace(/^Shader Forge\//, '')}

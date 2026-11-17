@@ -105,6 +105,8 @@ namespace StudioEX.Bridge.Api
         private static void SetGroupField(Timeline.INode groupNode, string field, object value) =>
             GroupType.GetField(field).SetValue(GroupObj(groupNode), value);
 
+        private static Timeline.IGroupNode RootGroup => (Timeline.IGroupNode)AccessTools.Field(Tree.GetType(), "_rootGroup").GetValue(Tree);
+
         private static object LeafNode(Interpolable ip) => AccessTools.Method(Tree.GetType(), "GetLeafNode").Invoke(Tree, new object[] { ip });
 
         /// <summary>
@@ -564,6 +566,12 @@ namespace StudioEX.Bridge.Api
             AfterEdit(reapply: false);
             if (settledOnly) RebaseKeyed(changes);
             else Rebase();
+            // Earlier key edits were held back to protect these changes; once nothing is left unkeyed, show them.
+            if (PoseStale && Changes(includeNew, settledOnly).Count == 0)
+            {
+                Reapply();
+                Rebase();
+            }
             return keyed;
         }
 

@@ -4,6 +4,7 @@ import { ContextMenu, type MenuItem } from './ContextMenu';
 import { call, displayName, lsSet, refreshScene, setNodeVisible, showPanel, studioSelect, toast, useStore } from '../state/store';
 import type { SceneNode } from '../bridge/types';
 
+import { pressable } from '../lib/pressable';
 type TypeKey = 'Char' | 'Item' | 'Light' | 'Folder' | 'Camera' | 'Route';
 const TYPE_FILTERS: { key: TypeKey; label: string; title: string }[] = [
   { key: 'Char', label: '♀', title: 'Characters' },
@@ -330,7 +331,7 @@ export function Outliner() {
               const count = animated.get(node.id);
               const dim = filtering && !matchesSelf(node);
               return (
-                <div
+                <div {...pressable}
                   key={node.id}
                   data-id={node.id}
                   className={`tree-row ${sel.has(node.id) ? 'selected' : ''} ${node.visible ? '' : 'hidden'}`}

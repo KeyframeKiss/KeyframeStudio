@@ -53,6 +53,8 @@ export interface AppState {
   autoKeyNew: boolean;
   /** Changes in Studio since the last seek/key that aren't keyed yet. */
   pending: number;
+  /** Key edits were made but Studio held them back to protect the unkeyed changes (the pose doesn't show them yet). */
+  poseStale: boolean;
   groupMode: 'objects' | 'folders';
   settingsOpen: boolean;
 
@@ -111,6 +113,7 @@ export const useStore = create<AppState>(() => ({
   autoKey: false,
   autoKeyNew: lsGet('studioex.autoKeyNew') !== '0',
   pending: 0,
+  poseStale: false,
   groupMode: (lsGet('studioex.groupMode') as 'objects' | 'folders') || 'objects',
   settingsOpen: false,
   workspace: (lsGet('studioex.workspace') as Workspace) || 'animate',
@@ -124,6 +127,14 @@ export const useStore = create<AppState>(() => ({
 // ---------------------------------------------------------------------------
 // Key what changed / auto-key
 // ---------------------------------------------------------------------------
+/** Throw away the unkeyed changes in Studio: the pose goes back to the keys (and shows held-back key edits). */
+export async function resetPose() {
+  const r = await call<boolean>('timeline.resetPose');
+  if (r === undefined) return;
+  set({ pending: 0, poseStale: false });
+  toast('Pose reset to the keys');
+}
+
 export async function keyChanged() {
   const n = await call<number>('timeline.keyChanged', { includeNew: get().autoKeyNew });
   if (n === undefined) return;
@@ -355,6 +366,9 @@ export function initBridge() {
       set({ hello: hello ?? null });
       // Plugin state survives app restarts; read auto-key back instead of assuming off.
       if (hello?.timeline) call<{ on: boolean; newTracks: boolean }>('timeline.setAutoKey', {}).then((r) => r && set({ autoKey: r.on }));
+      // ...and unkeyed changes / held-back edits (only their changes are pushed as events)
+      if (hello?.timeline)
+        call<{ pending?: number; poseStale?: boolean }>('timeline.state').then((r) => r && set({ pending: r.pending ?? 0, poseStale: !!r.poseStale }));
       refreshScene();
       if (hello?.timeline) refreshTimeline();
       else if (hello) toast('Timeline plugin not found in this Studio install', 'error');
@@ -383,6 +397,7 @@ export function initBridge() {
   });
   bridge.on('selection', (ids) => set({ studioSelection: ids as number[] }));
   bridge.on('timeline.pending', (n) => set({ pending: n as number }));
+  bridge.on('timeline.poseStale', (v) => set({ poseStale: !!v }));
   bridge.on('autokey', (n) => {
     set({ pending: 0 });
     toast(`Auto-keyed ${n} change${(n as number) > 1 ? 's' : ''}`);
@@ -538,7 +553,8 @@ export function moveSelectedKeys(dt: number) {
   set((s) => ({
     tracks: s.tracks.map((tr) => ({
       ...tr,
-      keys: tr.keys.map((k) => (moved.has(keyId(tr.id, k[0])) ? ([k[0] + dt, ...k.slice(1)] as typeof k) : k)),
+      // kept sorted by time: the dope sheet only scans the visible range with a binary search
+      keys: tr.keys.map((k) => (moved.has(keyId(tr.id, k[0])) ? ([k[0] + dt, ...k.slice(1)] as typeof k) : k)).sort((a, b) => a[0] - b[0]),
     })),
     selKeys: new Set(refs.map((r) => keyId(r.track, r.t + dt))),
   }));

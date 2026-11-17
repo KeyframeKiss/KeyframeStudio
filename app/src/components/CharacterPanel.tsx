@@ -5,6 +5,7 @@ import { Icon } from './Icon';
 import { AnimationBrowser } from './AnimationBrowser';
 import { AbmxSection } from './AbmxSection';
 
+import { pressable } from '../lib/pressable';
 type Named = { name: string; nameEn?: string };
 export interface CharaState {
   id: number;
@@ -251,7 +252,7 @@ export function CharacterPanel() {
         }
       >
         {state.accessories.map((a) => (
-          <div
+          <div {...pressable}
             key={a.slot}
             className={`tree-row ${a.visible ? '' : 'hidden'}`}
             style={{ paddingLeft: 0 }}

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { bridge } from '../bridge/client';
 import { toast, useStore } from '../state/store';
 
+import { pressable } from '../lib/pressable';
 /**
  * Face Studio › Shapes: KKPE blendshape weights of the head meshes (face, eyebrows, eyelines, teeth, eyes…).
  * These are the mesh shapes the expression system blends (smiles, eye shapes, mouth shapes); KKPE keeps an
@@ -132,7 +133,7 @@ export function ShapesPanel({ id, onChanged }: { id: number; onChanged: () => vo
           let lastGroup = '';
           return (
             <div key={set.key} className={`face-card ${set.changed ? 'edited' : ''}`}>
-              <div className="face-card-head" style={{ cursor: 'pointer' }} onClick={() => setOpen((o) => ({ ...o, [set.key]: !o[set.key] }))}>
+              <div {...pressable} className="face-card-head" style={{ cursor: 'pointer' }} onClick={() => setOpen((o) => ({ ...o, [set.key]: !o[set.key] }))}>
                 <span className={`chev ${isOpen ? 'open' : ''}`} style={{ color: 'var(--text-3)' }}>
                   ▸
                 </span>

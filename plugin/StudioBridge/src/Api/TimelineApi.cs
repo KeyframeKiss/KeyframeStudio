@@ -55,6 +55,11 @@ namespace StudioEX.Bridge.Api
         public static void SeekTo(float t) { if (Available) SeekToImpl(t); }
         [MethodImpl(MethodImplOptions.NoInlining)] private static void SeekToImpl(float t) { if (TimelineImpl.IsReady) TL.Seek(t); }
         public static int Pending() => Available ? PendingImpl() : 0;
+        public static bool PoseStale() => Available && PoseStaleImpl();
+        [MethodImpl(MethodImplOptions.NoInlining)] private static bool PoseStaleImpl() => TimelineImpl.PoseStale;
+        /// <summary>A seek or playback re-evaluated every track: the pose matches the keys again.</summary>
+        public static void PoseFresh() { if (Available) PoseFreshImpl(); }
+        [MethodImpl(MethodImplOptions.NoInlining)] private static void PoseFreshImpl() => TimelineImpl.PoseStale = false;
         [MethodImpl(MethodImplOptions.NoInlining)] private static int PendingImpl() => TimelineImpl.PendingCount;
         public static List<ViewportTools.PathInfo> PositionPaths(HashSet<ObjectCtrlInfo> ocis, bool camera) =>
             Available ? PositionPathsImpl(ocis, camera) : new List<ViewportTools.PathInfo>();
@@ -184,6 +189,7 @@ namespace StudioEX.Bridge.Api
 
             r.Add("timeline.keyValues", KeyValues);
             r.Add("timeline.setKeyValue", SetKeyValue);
+            r.Add("timeline.resetPose", a => ResetPose());
             RegisterExtras(r);
 
         }
@@ -197,6 +203,10 @@ namespace StudioEX.Bridge.Api
             public Interpolable Track;
             public bool Present;
             public List<KeyValuePair<float, TLKeyframe>> Keys;
+            // Where the track sat in the track list: its folders (outermost first, each with its index in its
+            // parent) and its own index, so a deleted track comes back in the same place.
+            public List<KeyValuePair<Timeline.IGroupNode, int>> Path;
+            public int Index = int.MaxValue;
         }
 
         private sealed class TimelineUndo : IUndoEntry
@@ -209,7 +219,8 @@ namespace StudioEX.Bridge.Api
             public IUndoEntry Restore()
             {
                 var inverse = new TimelineUndo(History.Capture(_snap.Select(s => s.Track)), Label);
-                foreach (var s in _snap) History.Restore(s);
+                // lowest positions first, so tracks restored into the same folder land in their original order
+                foreach (var s in _snap.OrderBy(x => x.Index)) History.Restore(s);
                 RefreshView();
                 AfterEdit();
                 return inverse;
@@ -225,14 +236,62 @@ namespace StudioEX.Bridge.Api
                 foreach (var ip in tracks)
                 {
                     if (ip == null || !seen.Add(ip)) continue;
-                    list.Add(new TrackSnapshot
+                    var snap = new TrackSnapshot
                     {
                         Track = ip,
                         Present = Interpolables.ContainsKey(ip.GetHashCode()),
                         Keys = ip.keyframes.Select(kv => new KeyValuePair<float, TLKeyframe>(kv.Key, new TLKeyframe(kv.Value))).ToList(),
-                    });
+                    };
+                    if (snap.Present) CapturePlace(snap);
+                    list.Add(snap);
                 }
                 return list;
+            }
+
+            private static void CapturePlace(TrackSnapshot snap)
+            {
+                try
+                {
+                    var leaf = LeafNode(snap.Track) as Timeline.INode;
+                    if (leaf == null) return;
+                    var root = RootGroup;
+                    snap.Index = (leaf.parent ?? root).children.IndexOf(leaf);
+                    var path = new List<KeyValuePair<Timeline.IGroupNode, int>>();
+                    for (var g = leaf.parent; g != null; g = g.parent)
+                        path.Insert(0, new KeyValuePair<Timeline.IGroupNode, int>(g, (g.parent ?? root).children.IndexOf(g)));
+                    snap.Path = path;
+                }
+                catch (Exception e) { StudioBridgePlugin.Logger.LogDebug("Track place not recorded: " + e.Message); }
+            }
+
+            /// <summary>
+            /// Put a re-added track back where it was. Timeline prunes a folder when its last track is deleted, so
+            /// folders on the way that are no longer in the tree are re-attached (same node: same id, name, state).
+            /// </summary>
+            private static void PlaceBack(TrackSnapshot s)
+            {
+                var root = RootGroup;
+                var nodes = (System.Collections.IDictionary)AccessTools.Field(Tree.GetType(), "_nodes").GetValue(Tree);
+                Timeline.IGroupNode parent = null;
+                if (s.Path != null)
+                    foreach (var kv in s.Path)
+                    {
+                        var g = kv.Key;
+                        int key = g.GetHashCode();
+                        if (!nodes.Contains(key))
+                        {
+                            var list = (parent ?? root).children;
+                            list.Insert(Mathf.Clamp(kv.Value, 0, list.Count), g);
+                            g.parent = parent;
+                            nodes[key] = g;
+                        }
+                        else if (!ReferenceEquals(nodes[key], g)) break; // replaced by another folder: stop here
+                        parent = g;
+                    }
+                var leaf = (Timeline.INode)AccessTools.Method(Tree.GetType(), "AddLeaf").Invoke(Tree, new object[] { s.Track, parent });
+                if (leaf == null || s.Index == int.MaxValue) return;
+                var siblings = (leaf.parent ?? root).children;
+                if (siblings.Remove(leaf)) siblings.Insert(Mathf.Clamp(s.Index, 0, siblings.Count), leaf);
             }
 
             /// <summary>Call before mutating the given tracks.</summary>
@@ -256,7 +315,12 @@ namespace StudioEX.Bridge.Api
                 if (s.Present && !present)
                 {
                     dict[s.Track.GetHashCode()] = s.Track;
-                    AccessTools.Method(Tree.GetType(), "AddLeaf").Invoke(Tree, new object[] { s.Track, null });
+                    try { PlaceBack(s); }
+                    catch (Exception e)
+                    {
+                        StudioBridgePlugin.Logger.LogDebug("Track restored at the top level: " + e.Message);
+                        if (LeafNode(s.Track) == null) AccessTools.Method(Tree.GetType(), "AddLeaf").Invoke(Tree, new object[] { s.Track, null });
+                    }
                     live = s.Track;
                 }
                 else if (!s.Present && present)
@@ -287,6 +351,8 @@ namespace StudioEX.Bridge.Api
                 { "fps", (int)F_fps.GetValue(s) },
                 { "speed", Time.timeScale },
                 { "uiVisible", TL.InterfaceVisible },
+                { "pending", PendingCount },
+                { "poseStale", PoseStale },
             };
         }
 
@@ -479,6 +545,21 @@ namespace StudioEX.Bridge.Api
                 M_interpolate.Invoke(s, new object[] { false });
             }
             finally { F_isPlaying.SetValue(s, was); }
+            PoseStale = false;
+        }
+
+        /// <summary>
+        /// Key edits were made but not shown on the pose (there were unkeyed changes to protect). While set, the
+        /// change baseline is kept, so those unkeyed changes stay counted and protected across further edits.
+        /// </summary>
+        public static bool PoseStale;
+
+        /// <summary>Throw away unkeyed changes: the pose goes back to what the keys say (and shows deferred edits).</summary>
+        private static object ResetPose()
+        {
+            Reapply();
+            Rebase();
+            return true;
         }
 
         private static object SetSettings(Dictionary<string, object> a)
@@ -667,6 +748,8 @@ namespace StudioEX.Bridge.Api
             History.Record(targets);
             foreach (var ip in targets) AddOrUpdateKey(ip, t);
             int n = targets.Count;
+            // what these tracks show now is keyed: no longer an unkeyed change (other changes stay counted)
+            foreach (var ip in targets) { try { TrackBase[ip] = ValueString(ip); } catch { } }
             AfterEdit(reapply: false); // keep the pose the user just set
             return n;
         }
@@ -872,8 +955,11 @@ namespace StudioEX.Bridge.Api
             RefreshView();
             M_updateKeyWindow.Invoke(s, new object[] { false });
             // Reapply re-evaluates *every* track, which would wipe the user's unkeyed pose changes.
-            // When there are some, leave the pose alone; the edit shows on the next seek/play.
-            if (reapply && TimelineImpl.PendingCount == 0) Reapply();
+            // When there are some, leave the pose alone and mark it stale: the edit shows once the changes are
+            // keyed, the pose is reset to the keys, or on the next seek/play. The app says so.
+            if (!reapply) return;
+            if (TimelineImpl.PendingCount == 0) Reapply();
+            else PoseStale = true;
         }
     }
 }

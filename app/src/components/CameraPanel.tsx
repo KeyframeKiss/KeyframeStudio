@@ -3,6 +3,7 @@ import { bridge } from '../bridge/client';
 import { call, liveTime, refreshTimeline, seekNow, toast, useStore } from '../state/store';
 import { Slider } from './CharacterPanel';
 
+import { pressable } from '../lib/pressable';
 interface CamState {
   slots: { index: number; used: boolean; fov: number; thumb?: string }[];
   cameras: { id: number; name: string; active: boolean }[];
@@ -124,7 +125,7 @@ export function CameraPanel() {
           <div className="hint">Frame the shot in Studio, move the playhead, then Key (smooth) or Cut (instant switch).</div>
           <div style={{ marginTop: 8, display: 'grid', gap: 4 }}>
             {shots.map((s, i) => (
-              <div key={s.t} className="model-row" style={{ padding: 4, gap: 8 }} onClick={() => seekNow(s.t)} title="Go to this camera key">
+              <div {...pressable} key={s.t} className="model-row" style={{ padding: 4, gap: 8 }} onClick={() => seekNow(s.t)} title="Go to this camera key">
                 {s.thumb ? (
                   <img src={s.thumb} alt="" style={{ width: 64, height: 36, objectFit: 'cover', borderRadius: 4, flex: 'none' }} />
                 ) : (
@@ -147,7 +148,7 @@ export function CameraPanel() {
         <div className="section">
           <h3>Scene cameras</h3>
           {st.cameras.map((c) => (
-            <div key={c.id} className={`model-row ${c.active ? 'selected' : ''}`} onClick={() => call<CamState>('camera.view', { id: c.active ? -1 : c.id }).then((r) => r && setSt(r))}>
+            <div {...pressable} key={c.id} className={`model-row ${c.active ? 'selected' : ''}`} onClick={() => call<CamState>('camera.view', { id: c.active ? -1 : c.id }).then((r) => r && setSt(r))}>
               <span className="plus">◉</span>
               <span className="name">{c.name}</span>
               <span className="sub">{c.active ? 'viewing — click to exit' : 'view through'}</span>

@@ -6,6 +6,7 @@ import { Header } from './components/Shell';
 import { SHORTCUTS } from './components/shortcuts';
 import { AnimateWorkspace, LibraryWorkspace, LookWorkspace, PoseWorkspace } from './components/Workspaces';
 import { PRESETS, toFlat } from './lib/curve';
+import { isInteractive } from './lib/pressable';
 import { startAutoTranslate } from './lib/translate';
 import {
   applyCurveToSelected,
@@ -21,6 +22,7 @@ import {
   openLibrary,
   pasteAtPlayhead,
   redo,
+  resetPose,
   seek,
   selectAllKeys,
   selectKeys,
@@ -49,6 +51,7 @@ export function App() {
   const keyCount = useStore((s) => s.tracks.reduce((n, t) => n + t.keys.length, 0));
   const pending = useStore((s) => s.pending);
   const autoKey = useStore((s) => s.autoKey);
+  const poseStale = useStore((s) => s.poseStale);
 
   const translateJob = useStore((s) => s.translateJob);
   const previewOpen = useStore((s) => s.previewOpen);
@@ -80,6 +83,11 @@ export function App() {
       // Help overlay open: only its own keys (Esc / ?) — never delete keys etc. behind it.
       if (st.helpOpen && k !== 'escape' && e.key !== '?') return;
       // Holding a key: only stepping/zooming should repeat; K, Delete, Ctrl+Z… would spam edits.
+      // Keyboard navigation: a control reached with the keyboard handles its own Enter/Space. (After a mouse
+      // click focus stays on the button but isn't "visible", so Space still plays.) Tab moves focus, except
+      // with the pointer over the timeline, where it switches Dope sheet ↔ Graph.
+      if ((k === ' ' || k === 'enter') && !ctrl && isInteractive(el) && el.matches(':focus-visible')) return;
+      if (k === 'tab' && (ctrl || e.altKey || !document.querySelector('.center:hover'))) return;
       if (e.repeat && !k.startsWith('arrow') && k !== '+' && k !== '-' && k !== '=') {
         e.preventDefault();
         return;
@@ -181,6 +189,21 @@ export function App() {
       </footer>
 
       <div className="toasts">
+        {poseStale && pending > 0 && (
+          <div className="toast notice" role="status">
+            <div>
+              <b>Your key edits aren’t on the pose yet.</b> Studio is keeping your {pending} unkeyed change{pending > 1 ? 's' : ''} instead of overwriting {pending > 1 ? 'them' : 'it'}.
+            </div>
+            <div className="toast-actions">
+              <button className="btn primary" onClick={keyChanged} title="Key the changes at the playhead, then show the edits (Shift+Enter)">
+                Key changes
+              </button>
+              <button className="btn solid" onClick={resetPose} title="Discard the unkeyed changes: the pose goes back to what the keys say">
+                Reset pose to keys
+              </button>
+            </div>
+          </div>
+        )}
         {toasts.map((t) => (
           <div key={t.id} className={`toast ${t.kind}`}>
             {t.text}

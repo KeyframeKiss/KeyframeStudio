@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { bridge } from '../bridge/client';
 import { toast } from '../state/store';
 
+import { pressable } from '../lib/pressable';
 interface Mod {
   bone: string;
   location: number;
@@ -72,7 +73,7 @@ export function AbmxSection({ id }: { id: number }) {
       {suggestions.length > 0 && (
         <div style={{ border: '1px solid var(--line)', borderRadius: 6, marginTop: 4, maxHeight: 180, overflow: 'auto' }}>
           {suggestions.map((b) => (
-            <div key={b} className="model-row" onClick={() => add(b)}>
+            <div {...pressable} key={b} className="model-row" onClick={() => add(b)}>
               <span className="plus">+</span>
               <span className="name">{b}</span>
             </div>
@@ -85,7 +86,7 @@ export function AbmxSection({ id }: { id: number }) {
           const isOpen = open === key;
           return (
             <div key={key} style={{ borderBottom: '1px solid var(--line-soft)' }}>
-              <div className="tree-row" style={{ paddingLeft: 0 }} onClick={() => setOpen(isOpen ? null : key)}>
+              <div {...pressable} className="tree-row" style={{ paddingLeft: 0 }} onClick={() => setOpen(isOpen ? null : key)}>
                 <span className="chev">{isOpen ? '▾' : '▸'}</span>
                 <span className="name" style={{ fontFamily: 'var(--mono)', fontSize: 11 }}>
                   {m.bone}

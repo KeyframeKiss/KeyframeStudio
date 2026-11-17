@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { call, displayName, useStore } from '../state/store';
 
+import { pressable } from '../lib/pressable';
 type Named = { name: string; nameEn?: string };
 interface Group extends Named {
   id: number;
@@ -85,7 +86,7 @@ export function AnimationBrowser({
         ) : results ? (
           <div className="panel-body" style={{ padding: 8 }}>
             {results.map(({ g: rg, c: rc, clip }) => (
-              <div key={`${rg.id}/${rc.id}/${clip.no}`} className={`model-row ${isCurrent(rg.id, rc.id, clip.no) ? 'selected' : ''}`} onClick={() => onPick(rg.id, rc.id, clip.no)} onDoubleClick={onClose}>
+              <div {...pressable} key={`${rg.id}/${rc.id}/${clip.no}`} className={`model-row ${isCurrent(rg.id, rc.id, clip.no) ? 'selected' : ''}`} onClick={() => onPick(rg.id, rc.id, clip.no)} onDoubleClick={onClose}>
                 <span className="name">{displayName(clip)}</span>
                 <span className="sub">
                   {displayName(rg)} › {displayName(rc)}
@@ -98,14 +99,14 @@ export function AnimationBrowser({
           <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '200px 240px 1fr', minHeight: 0 }}>
             <div className="panel-body" style={{ borderRight: '1px solid var(--line)' }}>
               {groups.map((x) => (
-                <div key={x.id} className={`tree-row ${x.id === g?.id ? 'selected' : ''}`} style={{ paddingLeft: 10 }} onClick={() => { setGroup(x.id); setCategory(x.categories[0]?.id ?? 0); }}>
+                <div {...pressable} key={x.id} className={`tree-row ${x.id === g?.id ? 'selected' : ''}`} style={{ paddingLeft: 10 }} onClick={() => { setGroup(x.id); setCategory(x.categories[0]?.id ?? 0); }}>
                   <span className="name">{displayName(x)}</span>
                 </div>
               ))}
             </div>
             <div className="panel-body" style={{ borderRight: '1px solid var(--line)' }}>
               {g?.categories.map((x) => (
-                <div key={x.id} className={`tree-row ${x.id === c?.id ? 'selected' : ''}`} style={{ paddingLeft: 10 }} onClick={() => setCategory(x.id)}>
+                <div {...pressable} key={x.id} className={`tree-row ${x.id === c?.id ? 'selected' : ''}`} style={{ paddingLeft: 10 }} onClick={() => setCategory(x.id)}>
                   <span className="name">{displayName(x)}</span>
                   <span className="sub">{x.clips.length}</span>
                 </div>
@@ -113,7 +114,7 @@ export function AnimationBrowser({
             </div>
             <div className="panel-body">
               {c?.clips.map((clip) => (
-                <div
+                <div {...pressable}
                   key={clip.no}
                   className={`tree-row ${g && isCurrent(g.id, c.id, clip.no) ? 'selected' : ''}`}
                   style={{ paddingLeft: 10 }}

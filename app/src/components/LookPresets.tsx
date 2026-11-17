@@ -4,6 +4,7 @@ import { Slider } from './CharacterPanel';
 import { ContextMenu, type MenuItem } from './ContextMenu';
 import { Icon } from './Icon';
 
+import { pressable } from '../lib/pressable';
 interface Preset {
   file: string;
   name: string;
@@ -101,7 +102,7 @@ export function LookPresets({ wide }: { wide?: boolean }) {
 
       <div className="look-grid">
         {list.map((p) => (
-          <div
+          <div {...pressable}
             key={p.file}
             className="look-card"
             onClick={() => apply(p)}

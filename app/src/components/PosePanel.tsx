@@ -6,6 +6,7 @@ import { StarIcon } from './StarIcon';
 import { Icon } from './Icon';
 import { PromptDialog, type PromptState } from './PromptDialog';
 
+import { pressable } from '../lib/pressable';
 interface PoseFile {
   path: string;
   name: string;
@@ -289,7 +290,7 @@ export function PosePanel({ wide }: { wide?: boolean }) {
         {list.map((p) => {
           const img = imgOf(p);
           return (
-            <div
+            <div {...pressable}
               key={p.path}
               className={wide ? 'pose-card' : 'model-row'}
               onClick={() => apply(p)}

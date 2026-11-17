@@ -35,6 +35,7 @@ const HSCROLL_H = 14;
 import { createFolder, editTranslation, moveToFolder, renameFolder, setFolderExpanded, toast, ungroupFolder } from '../state/store';
 import type { WireGroup } from '../bridge/types';
 
+import { pressable } from '../lib/pressable';
 // Row height is user-adjustable (S/M/L); module-level so the rAF draw loop always reads the latest.
 const ROW_SIZES = { S: 18, M: 24, L: 32 } as const;
 type RowSize = keyof typeof ROW_SIZES;
@@ -51,6 +52,30 @@ let followPlayhead = true;
 const RULER_H = 28;
 const PAD = 14;
 const KEY_HIT = 7;
+
+/** Index of the first key at or after time t (keys sorted by time); keys.length if none. */
+function firstKeyAtOrAfter(keys: WireTrack['keys'], t: number) {
+  let lo = 0,
+    hi = keys.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (keys[mid][0] < t) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
+}
+function firstAtOrAfter(ts: number[], t: number) {
+  let lo = 0,
+    hi = ts.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (ts[mid] < t) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
+}
+/** Merged key times of a summary (object/folder) row, for a given selection and drag offset. */
+const summaryCache = new WeakMap<object, { sel: Set<string>; drag: number; ts: number[]; sels: boolean[] }>();
 
 type Row =
   | { kind: 'obj'; key: string; oci: number; label: string; type: string; sex?: number; tracks: WireTrack[] }
@@ -215,6 +240,7 @@ export function DopeSheet() {
   const [follow, setFollow] = useState(followPlayhead);
   useEffect(() => {
     const onZoom = (e: Event) => {
+      if (useStore.getState().centerView === 'graph') return; // the graph editor handles it
       const d = (e as CustomEvent<string>).detail;
       if (d === 'in') zoomBy(1.25);
       else if (d === 'out') zoomBy(0.8);
@@ -260,7 +286,7 @@ export function DopeSheet() {
   }, []);
 
   useEffect(() => {
-    const onFrame = () => frameAll();
+    const onFrame = () => useStore.getState().centerView !== 'graph' && frameAll();
     window.addEventListener('studioex:frame', onFrame);
     return () => window.removeEventListener('studioex:frame', onFrame);
   }, [frameAll]);
@@ -410,41 +436,62 @@ export function DopeSheet() {
         ctx.stroke();
       };
 
+      // Only keys inside the visible time range are looked at (keys are sorted by time; selected keys may be
+      // shifted by a drag, so the range is widened by it), and selection lookups (string keys) are skipped
+      // entirely when nothing is selected — large scenes otherwise allocate per key per frame while playing.
+      const anySel = selKeys.size > 0;
+      const isSel = (id: number, t: number) => anySel && selKeys.has(keyId(id, t));
+      const tLo = tOf(-10) - Math.abs(drag),
+        tHi = tOf(w + 10) + Math.abs(drag);
       for (let i = first; i <= last; i++) {
         const row = rowsNow[i];
         const cy = RULER_H + i * ROW_H - sy + ROW_H / 2;
         if (row.kind === 'track') {
           const tr = row.track;
+          const keys = tr.keys;
           const dim = !tr.enabled;
+          if (!keys.length) continue;
+          // one key either side of the window, so segment bars crossing the edges still draw
+          const k0 = Math.max(0, firstKeyAtOrAfter(keys, tLo) - 1);
+          const k1 = Math.min(keys.length - 1, firstKeyAtOrAfter(keys, tHi));
           // segment bars
           ctx.fillStyle = dim ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.09)';
-          for (let k = 0; k < tr.keys.length - 1; k++) {
-            const a = tr.keys[k][0] + (selKeys.has(keyId(tr.id, tr.keys[k][0])) ? drag : 0);
-            const b = tr.keys[k + 1][0] + (selKeys.has(keyId(tr.id, tr.keys[k + 1][0])) ? drag : 0);
-            const xa = xOf(a);
-            const xb = xOf(b);
+          let prevSel = isSel(tr.id, keys[k0][0]);
+          for (let k = k0; k < k1; k++) {
+            const nextSel = isSel(tr.id, keys[k + 1][0]);
+            const xa = xOf(keys[k][0] + (prevSel ? drag : 0));
+            const xb = xOf(keys[k + 1][0] + (nextSel ? drag : 0));
+            prevSel = nextSel;
             if (xb < 0 || xa > w) continue;
             ctx.fillRect(xa, cy - 2, xb - xa, 4);
           }
-          for (const k of tr.keys) {
-            const sel = selKeys.has(keyId(tr.id, k[0]));
-            const x = xOf(k[0] + (sel ? drag : 0));
+          for (let k = k0; k <= k1; k++) {
+            const key = keys[k];
+            const sel = isSel(tr.id, key[0]);
+            const x = xOf(key[0] + (sel ? drag : 0));
             if (x < -10 || x > w + 10) continue;
-            drawKey(x, cy, 5.5, curveKind(k[1]), sel, dim);
+            drawKey(x, cy, 5.5, curveKind(key[1]), sel, dim);
           }
         } else {
-          // summary keys
-          const times = new Map<number, boolean>();
-          for (const tr of row.tracks)
-            for (const k of tr.keys) {
-              const sel = selKeys.has(keyId(tr.id, k[0]));
-              const t = Math.round((k[0] + (sel ? drag : 0)) * 10000) / 10000;
-              times.set(t, (times.get(t) ?? false) || sel);
-            }
-          for (const [t, sel] of times) {
-            const x = xOf(t);
+          // summary keys: merged once per (row, selection, drag), then reused every frame
+          let sum = summaryCache.get(row);
+          if (!sum || sum.sel !== selKeys || sum.drag !== drag) {
+            const times = new Map<number, boolean>();
+            for (const tr of row.tracks)
+              for (const k of tr.keys) {
+                const sel = isSel(tr.id, k[0]);
+                const t = Math.round((k[0] + (sel ? drag : 0)) * 10000) / 10000;
+                times.set(t, (times.get(t) ?? false) || sel);
+              }
+            const ts = [...times.keys()].sort((a, b) => a - b);
+            sum = { sel: selKeys, drag, ts, sels: ts.map((t) => times.get(t)!) };
+            summaryCache.set(row, sum);
+          }
+          const { ts, sels } = sum;
+          for (let k = Math.max(0, firstAtOrAfter(ts, tLo)); k < ts.length && ts[k] <= tHi; k++) {
+            const x = xOf(ts[k]);
             if (x < -10 || x > w + 10) continue;
-            drawKey(x, cy, 4.5, 'linear', sel, !sel);
+            drawKey(x, cy, 4.5, 'linear', sels[k], !sels[k]);
           }
         }
       }
@@ -856,23 +903,9 @@ export function DopeSheet() {
       <SheetToolbar
         shown={shown}
         total={totalTracks}
-        onFrame={frameAll}
         nav={
           <>
-            <div className="zoom-group" title="Zoom (Ctrl+wheel, or + / −)">
-              <button className="btn" onClick={() => zoomBy(0.8)} title="Zoom out (−)">
-                −
-              </button>
-              <button className="btn" onClick={() => zoomBy(1.25)} title="Zoom in (+)">
-                +
-              </button>
-              <button className="btn" onClick={frameAll} title="Frame all keys, or the selected keys (F)">
-                <Icon name="fit" size={13} />
-              </button>
-              <button className="btn" onClick={fitDuration} title="Show the whole timeline length (Shift+F)">
-                <Icon name="follow" size={13} />
-              </button>
-            </div>
+            <ZoomGroup />
             <Popover
               align="right"
               placement="down"
@@ -923,7 +956,7 @@ export function DopeSheet() {
                 const isCollapsed = collapsed.has(row.oci);
                 const isSel = studioSelection.includes(row.oci);
                 return (
-                  <div
+                  <div {...pressable}
                     key={row.key}
                     className={`sheet-row obj ${isSel ? 'selected' : ''}`}
                     style={{ top, height: ROW_H, paddingLeft: 4 }}
@@ -947,7 +980,7 @@ export function DopeSheet() {
               }
               if (row.kind === 'grp') {
                 return (
-                  <div
+                  <div {...pressable}
                     key={row.key}
                     className="sheet-row obj"
                     style={{ top, height: ROW_H, paddingLeft: 4 + row.depth * 14 }}
@@ -996,7 +1029,7 @@ export function DopeSheet() {
               const white = tr.color[0] > 0.98 && tr.color[1] > 0.98 && tr.color[2] > 0.98;
               const objName = row.showObject ? (tr.oci === -1 ? 'Scene' : displayName(nodes[tr.oci])) : '';
               return (
-                <div
+                <div {...pressable}
                   key={row.key}
                   className={`sheet-row ${isSel ? 'selected' : ''} ${tr.enabled ? '' : 'disabled'}`}
                   style={{ top, height: ROW_H, paddingLeft: 10 + (row.depth ?? 0) * 14 }}
@@ -1099,7 +1132,28 @@ function EmptySheet({ hasTracks }: { hasTracks: boolean }) {
   );
 }
 
-function SheetToolbar({ shown, total, onFrame, nav }: { shown: number; total: number; onFrame: () => void; nav: React.ReactNode }) {
+/** Zoom buttons for whichever view is showing (dope sheet or graph): same events as the + / − / F / Shift+F keys. */
+function ZoomGroup() {
+  const send = (detail?: string) => window.dispatchEvent(detail ? new CustomEvent('studioex:zoom', { detail }) : new CustomEvent('studioex:frame'));
+  return (
+    <div className="zoom-group" title="Zoom (Ctrl+wheel, or + / −)">
+      <button className="btn" onClick={() => send('out')} title="Zoom out (−)">
+        −
+      </button>
+      <button className="btn" onClick={() => send('in')} title="Zoom in (+)">
+        +
+      </button>
+      <button className="btn" onClick={() => send()} title="Frame all keys, or the selected keys (F)">
+        <Icon name="fit" size={13} />
+      </button>
+      <button className="btn" onClick={() => send('duration')} title="Show the whole timeline length (Shift+F)">
+        <Icon name="follow" size={13} />
+      </button>
+    </div>
+  );
+}
+
+function SheetToolbar({ shown, total, nav }: { shown: number; total: number; nav: React.ReactNode }) {
   const filter = useStore((s) => s.filter);
   const search = useStore((s) => s.search);
   const selCount = useStore((s) => s.selKeys.size);
@@ -1166,13 +1220,7 @@ function SheetToolbar({ shown, total, onFrame, nav }: { shown: number; total: nu
         {shown}/{total} tracks{selCount ? ` · ${selCount} key${selCount > 1 ? 's' : ''} selected` : ''}
       </span>
       <div className="spacer" />
-      {centerView === 'dope' ? (
-        nav
-      ) : (
-        <button className="btn" title="Frame all (F)" onClick={onFrame}>
-          <Icon name="fit" /> Frame
-        </button>
-      )}
+      {centerView === 'dope' ? nav : <ZoomGroup />}
     </div>
   );
 }

@@ -27,6 +27,8 @@ The goal is not to replace working systems. It is to make existing tools easier 
 - Reduce per-frame allocations in the dope sheet on large scenes.
 - Make clickable cards and rows reachable by keyboard.
 
+**Status (2026-11-17): done.** Undo puts deleted tracks back in their folder and position, re-creating a folder that was removed with its last track. The graph editor has the same − / + / Frame / Whole-length buttons and keys as the dope sheet, and the toolbar buttons now act on whichever view is showing. Key edits held back to protect unkeyed changes now show a notice with "Key changes" and "Reset pose to keys". The fix also closed a hole where the next edit silently overwrote those changes. The dope sheet only scans keys in the visible time range and caches object/folder summary rows. Rows and cards are focusable with Tab and open with Enter/Space, with a visible focus ring. Tab switches Dope sheet ↔ Graph only while the pointer is over the timeline. Verified live: 17/17 API checks.
+
 ### 0.2 Complete Distribution
 - Create a one-click Windows installer (plugin and app together).
 - Detect Koikatsu, BepInEx, and supported plugin versions.

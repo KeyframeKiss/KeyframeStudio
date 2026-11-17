@@ -20,6 +20,7 @@ import {
 } from '../state/store';
 import { TimeScrollbar } from './Scrollbars';
 
+import { pressable } from '../lib/pressable';
 const RULER_H = 28;
 const PAD_L = 54; // value labels
 const HIT = 7;
@@ -262,6 +263,36 @@ export function GraphEditor() {
     window.addEventListener('studioex:frame', onFrame);
     return () => window.removeEventListener('studioex:frame', onFrame);
   }, [frame]);
+
+  // + / − (keys and toolbar): zoom time around the playhead when it's on screen (else the centre) and values
+  // around the middle of the view. Shift+F: the whole timeline length, values kept.
+  useEffect(() => {
+    const onZoom = (e: Event) => {
+      const d = (e as CustomEvent<string>).detail;
+      const v = view.current;
+      const w = size.current.w;
+      if (d === 'duration') {
+        const dur = Math.max(0.5, useStore.getState().tl?.duration ?? 10);
+        v.pps = Math.max(2, (w - PAD_L - 30) / dur);
+        v.t0 = -6 / v.pps;
+      } else if (d === 'in' || d === 'out') {
+        const f = d === 'in' ? 1.25 : 0.8;
+        const px = X(liveTime());
+        const ax = px >= PAD_L && px <= w ? px : PAD_L + (w - PAD_L) / 2;
+        const tAt = T(ax);
+        v.pps = Math.max(2, Math.min(4000, v.pps * f));
+        v.t0 = tAt - (ax - PAD_L) / v.pps;
+        const mid = (v.yMin + v.yMax) / 2,
+          half = (v.yMax - v.yMin) / 2 / f;
+        v.yMin = mid - half;
+        v.yMax = mid + half;
+      } else return;
+      dirty.current = true;
+    };
+    window.addEventListener('studioex:zoom', onZoom);
+    return () => window.removeEventListener('studioex:zoom', onZoom);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     const wrap = wrapRef.current!;
@@ -604,7 +635,7 @@ export function GraphEditor() {
               {displayName(list[0].track)}
             </div>
             {list.map((c) => (
-              <div
+              <div {...pressable}
                 key={c.id}
                 className="tree-row"
                 style={{ paddingLeft: 14, height: 22, opacity: hidden.has(c.id) ? 0.4 : 1 }}

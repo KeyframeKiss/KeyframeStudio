@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { bridge } from '../bridge/client';
 import { call, toast, useStore } from '../state/store';
 
+import { pressable } from '../lib/pressable';
 interface Entry {
   section: string;
   key: string;
@@ -93,7 +94,7 @@ export function ModSettings() {
             {!(q || onlyChanged) && (
               <div className="panel-body" style={{ borderRight: '1px solid var(--line)' }}>
                 {filtered.map((p) => (
-                  <div key={p.guid} className={`tree-row ${p.guid === (sel ?? filtered[0]?.guid) ? 'selected' : ''}`} style={{ paddingLeft: 10 }} onClick={() => setSel(p.guid)} title={`${p.guid} v${p.version}`}>
+                  <div {...pressable} key={p.guid} className={`tree-row ${p.guid === (sel ?? filtered[0]?.guid) ? 'selected' : ''}`} style={{ paddingLeft: 10 }} onClick={() => setSel(p.guid)} title={`${p.guid} v${p.version}`}>
                     <span className="name">{p.name}</span>
                     <span className="sub">{p.entries.length}</span>
                   </div>

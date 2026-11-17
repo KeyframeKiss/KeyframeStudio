@@ -19,7 +19,7 @@ export const SHORTCUTS: [string, string][] = [
   ['1 – 5', 'Easing: Linear · In-out · In · Out · Step'],
   ['F / Shift F', 'Frame keys / whole length'],
   ['+ / −', 'Zoom time (around playhead)'],
-  ['Tab', 'Dope sheet ↔ Graph editor'],
+  ['Tab', 'Dope sheet ↔ Graph editor (pointer over the timeline; elsewhere Tab moves between controls)'],
   ['M', 'Mirror pose of selected character(s)'],
   ['F2', 'Rename object (outliner)'],
   ['Ctrl O', 'Scenes'],

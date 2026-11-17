@@ -3,6 +3,7 @@ import type { TrackModel } from '../bridge/types';
 import { addTrack, displayName, listModels, useStore } from '../state/store';
 import { Icon, TypeIcon } from './Icon';
 
+import { pressable } from '../lib/pressable';
 export function AddTrackPanel() {
   const status = useStore((s) => s.status);
   const selection = useStore((s) => s.studioSelection);
@@ -96,7 +97,7 @@ export function AddTrackPanel() {
               {list.map((m) => {
                 const has = existing.has(`${m.owner}/${m.id}`);
                 return (
-                  <div
+                  <div {...pressable}
                     key={`${m.owner}/${m.id}`}
                     className="model-row"
                     title={`${m.name}${m.nameEn ? `\n${m.nameEn}` : ''}\n${m.owner} / ${m.id}\nClick: add track + key at playhead`}
