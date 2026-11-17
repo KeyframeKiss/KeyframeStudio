@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { bridge } from '../bridge/client';
 import { call, displayName, selectedCharacters, toast, useStore } from '../state/store';
 import { ContextMenu, type MenuItem } from './ContextMenu';
+import { StarIcon } from './StarIcon';
 import { Icon } from './Icon';
 import { PromptDialog, type PromptState } from './PromptDialog';
 
@@ -230,7 +231,7 @@ export function PosePanel({ wide }: { wide?: boolean }) {
             </select>
           )}
           <button className={`btn ${favOnly ? 'on' : ''}`} title="Favorites only" onClick={() => setFavOnly(!favOnly)}>
-            ★
+            <StarIcon filled={favOnly} size={13} />
           </button>
           <button className={`btn ${sexFilter ? 'on' : ''}`} title="Only poses made for the selected character's body type" onClick={() => setSexFilter((s) => !s)}>
             {sex === 0 ? '♂' : '♀'}
@@ -304,7 +305,7 @@ export function PosePanel({ wide }: { wide?: boolean }) {
                     setMeta(p, { favorite: !p.favorite });
                   }}
                 >
-                  {p.favorite ? '★' : '☆'}
+                  <StarIcon filled={!!p.favorite} />
                 </button>
               )}
               {img ? (

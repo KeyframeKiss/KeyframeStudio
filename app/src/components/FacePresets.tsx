@@ -3,6 +3,7 @@ import { bridge } from '../bridge/client';
 import { ALL_FACE_BONES, FACE_FEATURES, twinOf } from '../lib/faceBones';
 import { toast, useStore } from '../state/store';
 import { ContextMenu, type MenuItem } from './ContextMenu';
+import { StarIcon } from './StarIcon';
 import { Popover } from './Shell';
 import { PromptDialog, type PromptState } from './PromptDialog';
 
@@ -400,7 +401,7 @@ function FaceCard({ f, active, big, selected, onClick, onMenu, onStar }: { f: Sa
           onStar();
         }}
       >
-        {f.favorite ? '★' : '☆'}
+        <StarIcon filled={!!f.favorite} />
       </button>
       {f.thumb ? <img className="face-preset-thumb" src={f.thumb} alt="" draggable={false} /> : <span className="face-preset-thumb">{f.name.slice(0, 1)}</span>}
       <span className="face-preset-name">{f.name}</span>
@@ -429,7 +430,7 @@ function FaceFilters(p: {
         <option value="name">Name</option>
       </select>
       <button className={`btn ${p.favOnly ? 'on' : ''}`} onClick={() => p.setFavOnly(!p.favOnly)} title="Show favorites only">
-        ★
+        <StarIcon filled={p.favOnly} size={13} />
       </button>
       {p.allTags.length > 0 && (
         <div className="face-tagbar">
