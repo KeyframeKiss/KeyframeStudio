@@ -1769,13 +1769,80 @@ select {
   flex-direction: column;
   gap: 8px;
 }
-.face-features {
+.face-modes {
   display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
 }
-.face-feature {
+.face-modes button {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 5px 9px;
+}
+/* Face parts: list on the left, controls on the right */
+.face-parts {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 112px 1fr;
+  gap: 10px;
+}
+.face-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  overflow: auto;
+}
+.face-nav-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  height: 28px;
+  padding: 0 8px 0 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-2);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
   position: relative;
+}
+.face-nav-item:hover {
+  background: var(--bg-2);
+  color: var(--text-0);
+}
+.face-nav-item.on {
+  background: var(--bg-3);
+  color: var(--text-0);
+  font-weight: 600;
+}
+.face-nav-item.on::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+.face-edits {
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+}
+/* chips (saved faces: which parts to apply) */
+.face-feature {
   border: 1px solid var(--line);
   background: var(--bg-2);
   color: var(--text-1);
@@ -1789,14 +1856,11 @@ select {
   border-color: var(--accent);
   color: var(--text-0);
 }
-.face-dot {
-  position: absolute;
-  top: 2px;
-  right: 3px;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--accent);
+.face-parts-main {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 .face-options {
   display: flex;
@@ -1840,15 +1904,16 @@ select {
 }
 .face-row {
   display: grid;
-  grid-template-columns: 58px 1fr;
+  grid-template-columns: 48px 1fr;
   gap: 8px;
   align-items: center;
   margin-top: 6px;
 }
 .face-axes {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: 4px 12px;
+  /* X, Y, Z on one line down to ~375 px; wraps only in very narrow windows */
+  grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
+  gap: 4px 10px;
 }
 .face-row-label {
   color: var(--text-2);
@@ -1871,7 +1936,7 @@ select {
 .face-axis {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
 }
 .face-axis input[type='range'] {
   flex: 1;
@@ -2218,16 +2283,6 @@ select {
 }
 
 /* Face Studio › Expression */
-.face-feature.expr.on {
-  background: color-mix(in srgb, #8b7bff 22%, var(--bg-2));
-  border-color: #8b7bff;
-}
-.face-features-sep {
-  width: 1px;
-  align-self: stretch;
-  margin: 2px 2px;
-  background: var(--line);
-}
 .expr-row {
   display: grid;
   grid-template-columns: 72px 1fr;

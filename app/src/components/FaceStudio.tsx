@@ -50,6 +50,9 @@ const lsSet = (k: string, v: string) => {
   }
 };
 
+/** Face parts listed top to bottom, the way you look at a face. */
+const NAV_ORDER = ['head', 'brows', 'eyes', 'lids', 'nose', 'cheeks', 'mouth', 'jaw', 'ears'];
+
 export function FaceStudio() {
   const status = useStore((s) => s.status);
   const selection = useStore((s) => s.studioSelection);
@@ -59,6 +62,7 @@ export function FaceStudio() {
   const id = chars[0];
 
   const [feature, setFeature] = useState(() => lsGet('studioex.face.feature', 'eyes'));
+  const lastPart = useRef(FACE_FEATURES.some((f) => f.id === feature) ? feature : 'eyes'); // "Face parts" reopens it
   const [mirror, setMirror] = useState(() => lsGet('studioex.face.mirror', '1') === '1');
   const [side, setSide] = useState<'L' | 'R'>('L');
   const [angle, setAngle] = useState(0);
@@ -260,7 +264,14 @@ export function FaceStudio() {
   const isShapes = feature === 'shapes';
   const feat = FACE_FEATURES.find((f) => f.id === feature) ?? FACE_FEATURES[0];
   const nameFor = (b: FaceBone) => (isPaired(b.name) && !mirror && side === 'R' ? twinOf(b.name) : b.name);
-  const editedIn = (fid: string) => FACE_FEATURES.find((f) => f.id === fid)!.bones.some((b) => bones[b.name]?.edited || (isPaired(b.name) && bones[twinOf(b.name)]?.edited));
+  const editedCount = (fid: string) => FACE_FEATURES.find((f) => f.id === fid)!.bones.filter((b) => bones[b.name]?.edited || (isPaired(b.name) && bones[twinOf(b.name)]?.edited)).length;
+  const editedIn = (fid: string) => editedCount(fid) > 0;
+  const partsEdited = FACE_FEATURES.reduce((n, f) => n + editedCount(f.id), 0);
+  if (!isExpr && !isShapes) lastPart.current = feat.id;
+  const go = (f: string) => {
+    setFeature(f);
+    lsSet('studioex.face.feature', f);
+  };
   const hasPairs = feat.bones.some((b) => isPaired(b.name));
 
   return (
@@ -405,40 +416,15 @@ export function FaceStudio() {
       </section>
 
       <section className="face-controls">
-        <div className="face-features">
-          <button
-            className={`face-feature expr ${isExpr ? 'on' : ''}`}
-            title="Eyebrows, eyes, mouth, blush, tears and where the character looks"
-            onClick={() => {
-              setFeature('expression');
-              lsSet('studioex.face.feature', 'expression');
-            }}
-          >
+        <div className="seg face-modes">
+          <button className={isExpr ? 'on' : ''} title="Eyebrows, eyes, mouth, blush, tears and where the character looks" onClick={() => go('expression')}>
             Expression
           </button>
-          <span className="face-features-sep" />
-          {FACE_FEATURES.map((f) => (
-            <button
-              key={f.id}
-              className={`face-feature ${!isExpr && !isShapes && f.id === feat.id ? 'on' : ''}`}
-              onClick={() => {
-                setFeature(f.id);
-                lsSet('studioex.face.feature', f.id);
-              }}
-            >
-              {f.label}
-              {editedIn(f.id) && <span className="face-dot" title="Has changes" />}
-            </button>
-          ))}
-          <span className="face-features-sep" />
-          <button
-            className={`face-feature ${isShapes ? 'on' : ''}`}
-            title="Blendshapes: the mesh shapes expressions are made of (KKPE)"
-            onClick={() => {
-              setFeature('shapes');
-              lsSet('studioex.face.feature', 'shapes');
-            }}
-          >
+          <button className={!isExpr && !isShapes ? 'on' : ''} title="Move, turn and resize each part of the face (KKPE)" onClick={() => go(lastPart.current)}>
+            Face parts
+            {partsEdited > 0 && <span className="face-edits" title={`${partsEdited} adjusted part${partsEdited > 1 ? 's' : ''}`}>{partsEdited}</span>}
+          </button>
+          <button className={isShapes ? 'on' : ''} title="Blendshapes: the mesh shapes expressions are made of (KKPE)" onClick={() => go('shapes')}>
             Shapes
           </button>
         </div>
@@ -448,7 +434,21 @@ export function FaceStudio() {
         ) : isShapes ? (
           <ShapesPanel id={id} onChanged={refreshView} />
         ) : (
-        <>
+        <div className="face-parts">
+        <nav className="face-nav" aria-label="Face parts">
+          {NAV_ORDER.map((fid) => {
+            const f = FACE_FEATURES.find((x) => x.id === fid);
+            if (!f) return null;
+            const n = editedCount(f.id);
+            return (
+              <button key={f.id} className={`face-nav-item ${f.id === feat.id ? 'on' : ''}`} onClick={() => go(f.id)}>
+                <span>{f.label}</span>
+                {n > 0 && <span className="face-edits" title={`${n} adjusted`}>{n}</span>}
+              </button>
+            );
+          })}
+        </nav>
+        <div className="face-parts-main">
         <div className="face-options">
           <button
             className={`btn ${mirror ? 'on' : ''}`}
@@ -555,7 +555,8 @@ export function FaceStudio() {
             );
           })}
         </div>
-        </>
+        </div>
+        </div>
         )}
       </section>
     </div>
@@ -577,7 +578,7 @@ function Axis({ axis, range, value, onChange }: { axis: string; range: (typeof R
       />
       <NumberField
         value={value}
-        width={54}
+        width={56}
         format={(v) => v.toFixed(range.digits)}
         parse={(t) => {
           const n = Number(t.replace(',', '.'));
