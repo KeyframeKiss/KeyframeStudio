@@ -4927,3 +4927,31 @@ html.frameless .tooltip {
 .me-head code {
   color: var(--text-2);
 }
+
+/* Settings › Studio window */
+.sw-rows {
+  padding: 4px 14px 10px;
+}
+.sw-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 40px;
+}
+.sw-row + .sw-row {
+  border-top: 1px solid var(--line-soft);
+}
+.sw-row > span {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-0);
+}
+.sw-foot {
+  margin-top: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line-soft);
+  color: var(--text-2);
+  font-size: 11.5px;
+}

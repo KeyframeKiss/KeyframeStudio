@@ -35,6 +35,7 @@ import { lookChanged } from './LookPresets';
 
 import { isRecording, macros } from '../lib/macros';
 import { runMacro } from './QuickActions';
+import { toggleCleanStudio } from '../state/studioUi';
 interface Cmd {
   id: string;
   title: string;
@@ -91,6 +92,8 @@ function PaletteInner() {
       { id: 'scene.save', group: 'Scenes', title: 'Save scene (new file)', run: () => call('scene.save').then((r) => r !== undefined && toast('Scene saved')) },
       { id: 'lib.translate', group: 'Settings', title: 'Fix translations', keywords: 'english japanese names', run: () => openLibrary('translate') },
       { id: 'lib.settings', group: 'Settings', title: 'Mod settings', kbd: 'Ctrl ,', keywords: 'config plugins options', run: () => openLibrary('settings') },
+      { id: 'studio.clean', group: 'Studio', title: "Clean Studio window (hide / show Studio's menus)", keywords: 'hide ui hideallui menus viewport', run: toggleCleanStudio },
+      { id: 'lib.studio', group: 'Settings', title: 'Studio window settings', run: () => openLibrary('studio') },
       { id: 'lib.shortcuts', group: 'Settings', title: 'Keyboard shortcuts', kbd: '?', run: () => openLibrary('shortcuts') },
       { id: 'play', group: 'Playback', title: 'Play / pause', kbd: 'Space', run: togglePlay },
       { id: 'stop', group: 'Playback', title: 'Stop (back to start)', run: stop },

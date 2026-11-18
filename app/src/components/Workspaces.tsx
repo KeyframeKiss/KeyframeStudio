@@ -22,6 +22,7 @@ import { OutfitPanel } from './OutfitPanel';
 import { LightRigsPanel } from './LightRigsPanel';
 import { LookPanel } from './LookPanel';
 import { MaterialEditorPage } from './MaterialEditor';
+import { StudioWindowPage } from './StudioWindowPage';
 import { LookPresets } from './LookPresets';
 import { ModSettings } from './ModSettings';
 import { ObjectPanel } from './ObjectPanel';
@@ -488,6 +489,7 @@ const LIBRARY_PAGES: PageDef[] = [
 ];
 const SETTINGS_PAGES: PageDef[] = [
   { id: 'settings', label: 'Mod settings', icon: 'settings', hint: 'Every plugin option' },
+  { id: 'studio', label: 'Studio window', icon: 'eyeOff', hint: "Hide Studio's menus: just the picture" },
   { id: 'translate', label: 'Translations', icon: 'translate', hint: 'Fix Japanese → English names' },
   { id: 'shortcuts', label: 'Shortcuts', icon: 'keyboard', hint: 'Keyboard & mouse' },
   { id: 'about', label: 'About & diagnostics', icon: 'pulse', hint: 'Versions, mods, bug reports' },
@@ -541,6 +543,7 @@ export function SettingsWorkspace() {
         )}
         {page === 'settings' && <ModSettings />}
         {page === 'about' && <DiagnosticsPage />}
+        {page === 'studio' && <StudioWindowPage />}
         {page === 'shortcuts' && (
           <div className="page">
             <div className="page-inner narrow" style={{ padding: 20, overflow: 'auto' }}>

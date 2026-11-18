@@ -101,8 +101,8 @@ export interface AppState {
 
 export type Workspace = 'animate' | 'pose' | 'look' | 'shoot' | 'library' | 'settings';
 /** Library pages (content) and Settings pages (the app): both open through openLibrary(). */
-export type LibraryPage = 'scenes' | 'characters' | 'macros' | 'translate' | 'settings' | 'shortcuts' | 'about';
-const SETTINGS_PAGES: LibraryPage[] = ['settings', 'translate', 'shortcuts', 'about'];
+export type LibraryPage = 'scenes' | 'characters' | 'macros' | 'translate' | 'settings' | 'studio' | 'shortcuts' | 'about';
+const SETTINGS_PAGES: LibraryPage[] = ['settings', 'studio', 'translate', 'shortcuts', 'about'];
 export const isSettingsPage = (p: LibraryPage) => SETTINGS_PAGES.includes(p);
 const WORKSPACES: Workspace[] = ['animate', 'pose', 'look', 'shoot', 'library', 'settings'];
 
@@ -473,6 +473,7 @@ export function initBridge() {
       if (hello?.timeline) syncTimelineFlags();
       if (hello?.commands.includes('audio.get')) refreshAudio();
       if (hello?.commands.includes('shots.get')) refreshShots();
+      if (hello?.commands.includes('ui.get')) import('./studioUi').then((m) => m.syncStudioUi());
       refreshScene();
       if (hello?.timeline) refreshTimeline();
       else if (hello) toast(hello.features?.find((f) => f.id === 'timeline')?.reason ?? 'Timeline plugin not found in this Studio install', 'error');

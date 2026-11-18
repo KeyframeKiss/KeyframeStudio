@@ -24,6 +24,7 @@ import {
 import { parseTime } from '../lib/time';
 
 import { applyLayout, deleteLayout, resetLayout, saveLayout, savedLayouts, setCompact, setPanelSizes, useCompact, usePanelSizes } from '../lib/layout';
+import { toggleCleanStudio, useStudioUi } from '../state/studioUi';
 const WORKSPACES: { id: Workspace; label: string; icon: string; hint: string }[] = [
   { id: 'animate', label: 'Animate', icon: 'animate', hint: 'Timeline, keys and curves (Ctrl+1)' },
   { id: 'pose', label: 'Pose', icon: 'pose', hint: 'Characters, poses and animations (Ctrl+2)' },
@@ -68,6 +69,7 @@ export function Header() {
           <Icon name="redo" />
         </button>
       </div>
+      <CleanStudioButton />
       <span className={`conn ${status}`} title={status === 'open' ? 'Connected to CharaStudio' : status === 'connecting' ? 'Connecting…' : 'Waiting for CharaStudio'}>
         <span className={`status-dot ${status}`} />
         {status === 'open' ? 'Studio' : status === 'connecting' ? 'Connecting' : 'Offline'}
@@ -309,6 +311,17 @@ function TimelineMoreMenu() {
 }
 
 /** The one header menu: settings, help, window and layout. */
+/** Hide / show CharaStudio's menus (Settings › Studio window has the details). */
+function CleanStudioButton() {
+  const ui = useStudioUi((s) => s.ui);
+  if (!ui) return null;
+  return (
+    <button className={`btn icon ${ui.clean ? 'on' : ''}`} onClick={toggleCleanStudio} title={ui.clean ? "Studio's menus are hidden — click to bring them back" : "Clean Studio window: hide Studio's menus so it's just the picture"}>
+      <Icon name={ui.clean ? 'eyeOff' : 'eye'} />
+    </button>
+  );
+}
+
 function AppMenu({ pinned, setPinned }: { pinned: boolean; setPinned: (v: boolean) => void }) {
   const ws = useStore((s) => s.workspace);
   const compact = useCompact();

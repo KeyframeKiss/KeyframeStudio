@@ -94,6 +94,10 @@ namespace StudioEX.Bridge.Api
             Available ? AddModelTrackImpl(modelId, ownerContains, oci, keyAt) : throw new BridgeException("Timeline is not installed");
         [MethodImpl(MethodImplOptions.NoInlining)]
         private static object AddModelTrackImpl(string modelId, string ownerContains, ObjectCtrlInfo oci, float keyAt) => TimelineImpl.AddModelTrack(modelId, ownerContains, oci, keyAt);
+        public static bool InterfaceVisible() => Available && InterfaceVisibleImpl();
+        [MethodImpl(MethodImplOptions.NoInlining)] private static bool InterfaceVisibleImpl() => TimelineImpl.IsReady && TL.InterfaceVisible;
+        public static void SetInterfaceVisible(bool on) { if (Available) SetInterfaceVisibleImpl(on); }
+        [MethodImpl(MethodImplOptions.NoInlining)] private static void SetInterfaceVisibleImpl(bool on) { if (TimelineImpl.IsReady) TL.InterfaceVisible = on; }
         public static List<float> KeyTimes(HashSet<ObjectCtrlInfo> ocis) => Available ? KeyTimesImpl(ocis) : new List<float>();
         [MethodImpl(MethodImplOptions.NoInlining)] private static List<float> KeyTimesImpl(HashSet<ObjectCtrlInfo> ocis) => TimelineImpl.KeyTimes(ocis);
 

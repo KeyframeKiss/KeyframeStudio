@@ -66,6 +66,7 @@ namespace StudioEX.Bridge
             LookApi.Register(_router);
             MaterialLookApi.Register(_router);
             MaterialEditorApi.Register(_router);
+            StudioUiApi.Register(_router);
             SceneApi.Register(_router);
             TimelineApi.Register(_router);
             CharaApi.Register(_router);
@@ -122,6 +123,7 @@ namespace StudioEX.Bridge
             ViewportTools.Watchdog();
             // the app went away mid-preview: put the characters back in their own poses
             if (PoseApi.Previewing && ClientCount == 0) PoseApi.EndPreview();
+            StudioUiApi.Tick(ClientCount);
             // Handle a bounded number of requests per frame to keep Studio responsive. While ghosts are
             // baking the playhead is temporarily elsewhere: hold requests for those few frames.
             for (int n = 0; n < 64 && !ViewportTools.Busy; n++)
