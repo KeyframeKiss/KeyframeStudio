@@ -1,9 +1,9 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { bridge } from '../bridge/client';
-import { call, displayName, selectedCharacters, showTab, toast, useStore, type LibraryPage } from '../state/store';
+import { call, displayName, selectedCharacters, toast, useStore, type LibraryPage } from '../state/store';
 import { FaceAnimation } from './FaceAnimation';
 import { Group, SelectionHeader, Stack } from './InspectorStack';
-import { AudioPanel } from './AudioPanel';
+import { AudioPage } from './AudioPage';
 import { ShotsPanel } from './ShotsPanel';
 import { TemplatesPanel } from './TemplatesPanel';
 import { CharacterLibrary } from './CharacterLibrary';
@@ -400,6 +400,7 @@ const setShootTop = (v: number) => {
 
 const SHOOT_TABS: SubTab[] = [
   { id: 'shots', label: 'Shots & camera', icon: 'camera', hint: 'Shots, saved views, camera keys and moves, over the timeline' },
+  { id: 'audio', label: 'Audio', icon: 'pulse', hint: 'The audio track that plays with the timeline' },
   { id: 'render', label: 'Render', icon: 'record', hint: 'Make a video with VideoExport' },
   { id: 'templates', label: 'Templates', icon: 'library', hint: "A scene's staging, reused in another scene" },
 ];
@@ -408,17 +409,22 @@ export function ShootWorkspace() {
   const sizes = usePanelSizes('shoot');
   const [tab, pick] = useCenterTab('shoot', SHOOT_TABS);
   return (
-    <div className="ws ws-3" style={{ gridTemplateColumns: columns(sizes) }}>
-      <Splitters ws="shoot" />
+    <div className="ws ws-3" style={{ gridTemplateColumns: `${leftCss(sizes)} minmax(0, 1fr)` }}>
+      <Splitters ws="shoot" right={false} />
       <ScenePanel />
       <main className="ws-center" style={{ position: 'relative' }}>
         <CenterTabBar tabs={SHOOT_TABS} tab={tab} pick={pick} />
         <ErrorBoundary key={tab} name={SHOOT_TABS.find((t) => t.id === tab)?.label ?? tab}>
           {tab === 'shots' && <ShotsAndCamera />}
+          {tab === 'audio' && (
+            <div className="subpage">
+              <AudioPage />
+            </div>
+          )}
           {tab === 'render' && (
-            <SubPage max={620}>
+            <div className="subpage">
               <RenderPanel />
-            </SubPage>
+            </div>
           )}
           {tab === 'templates' && (
             <SubPage max={620}>
@@ -428,16 +434,6 @@ export function ShootWorkspace() {
         </ErrorBoundary>
         <Disconnected />
       </main>
-      <Stack>
-        <Group ws="shoot" id="audio" icon="pulse" title="Audio track">
-          <AudioPanel parts={['track']} />
-          <div className="section">
-            <button className="btn solid wide" style={{ width: '100%', justifyContent: 'center' }} onClick={() => showTab('animate', 'face')} title="Lip-sync and blinks are with the face controls">
-              Lip-sync in Animate › Face ›
-            </button>
-          </div>
-        </Group>
-      </Stack>
     </div>
   );
 }

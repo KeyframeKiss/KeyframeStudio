@@ -3989,3 +3989,210 @@ html.frameless .tooltip {
   opacity: 0;
   cursor: pointer;
 }
+
+/* ---------- Shoot › Render and Shoot › Audio: a summary on top, cards below ---------- */
+.render-page {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 14px 18px 28px;
+  display: grid;
+  gap: 12px;
+}
+.render-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 12px;
+  align-items: start;
+}
+.render-hero {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 16px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 10%, var(--bg-1)), var(--bg-1) 60%);
+}
+.render-hero-text {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+.render-hero-text b {
+  font-size: 14px;
+}
+.render-hero-text span {
+  color: var(--text-2);
+  font-size: 12px;
+}
+.render-go {
+  height: 36px;
+  min-width: 140px;
+  justify-content: center;
+  font-size: 13px;
+}
+.render-what {
+  width: 100%;
+}
+.render-what button {
+  flex: 1;
+}
+.render-sizes,
+.render-formats {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(70px, 1fr));
+  gap: 6px;
+}
+.render-size {
+  appearance: none;
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  padding: 8px 4px 6px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg-2);
+  color: var(--text-1);
+  font: inherit;
+  cursor: pointer;
+}
+.render-size:hover:not(:disabled) {
+  border-color: var(--text-3);
+}
+.render-size.on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--text-0);
+}
+.render-size:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.render-size i {
+  display: block;
+  height: 26px;
+  max-width: 46px;
+  border: 1.5px solid currentColor;
+  border-radius: 3px;
+  opacity: 0.7;
+  margin-bottom: 3px;
+}
+.render-size b {
+  font-size: 12px;
+}
+.render-size small {
+  font-size: 10px;
+  color: var(--text-3);
+  text-align: center;
+}
+.render-shots {
+  display: grid;
+  gap: 4px;
+  margin-top: 10px;
+  max-height: 320px;
+  overflow: auto;
+}
+.render-shot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.render-shot:hover {
+  background: var(--bg-2);
+}
+.render-shot img,
+.render-shot-ph {
+  width: 64px;
+  height: 36px;
+  object-fit: cover;
+  border-radius: 4px;
+  flex: none;
+}
+.render-shot-ph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-0);
+  color: var(--text-3);
+}
+.render-shot-text {
+  display: grid;
+  min-width: 0;
+}
+.render-shot-text b,
+.render-shot-text small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.render-shot-text small {
+  color: var(--text-3);
+}
+.render-path {
+  display: block;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-1);
+  word-break: break-all;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--bg-2);
+}
+.audio-file {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.audio-file select {
+  flex: 1;
+  min-width: 0;
+}
+.audio-empty {
+  height: 90px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  color: var(--text-3);
+}
+.waveform {
+  position: relative;
+  height: 110px;
+  border-radius: 8px;
+  background: var(--bg-0);
+  border: 1px solid var(--line);
+  cursor: col-resize;
+  overflow: hidden;
+  --wave: #ff9f2e;
+  --wave-bg: rgba(255, 159, 46, 0.07);
+}
+.waveform canvas {
+  position: absolute;
+  inset: 0 0 16px 0;
+  width: 100%;
+  height: calc(100% - 16px);
+}
+.waveform-playhead {
+  position: absolute;
+  top: 0;
+  bottom: 16px;
+  width: 1px;
+  background: #ff4d6d;
+  pointer-events: none;
+}
+.waveform-scale {
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  bottom: 1px;
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  color: var(--text-3);
+  pointer-events: none;
+}

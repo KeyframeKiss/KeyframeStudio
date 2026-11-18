@@ -81,7 +81,7 @@ function PaletteInner() {
       { id: 'ws.shoot', group: 'Workspace', title: 'Go to Shoot', kbd: 'Ctrl 4', keywords: 'camera shots audio render video export', run: () => setWorkspace('shoot') },
       { id: 'ws.library', group: 'Workspace', title: 'Go to Library', kbd: 'Ctrl 5', run: () => setWorkspace('library') },
       { id: 'shoot.render', group: 'Shoot', title: 'Render video', keywords: 'export mp4 webm gif videoexport', run: () => showTab('shoot', 'render') },
-      { id: 'shoot.audio', group: 'Shoot', title: 'Audio track', keywords: 'wav sound voice music', run: () => showPanel('shoot', 'audio') },
+      { id: 'shoot.audio', group: 'Shoot', title: 'Audio track', keywords: 'wav sound voice music', run: () => showTab('shoot', 'audio') },
       { id: 'anim.face', group: 'Keys', title: 'Animate the face (expressions, lip-sync, blinks)', keywords: 'face mouth eyes brows lip sync blink expression vowels', run: () => showTab('animate', 'face') },
       { id: 'anim.track', group: 'Keys', title: 'Add animation track…', keywords: 'property animate new track', run: () => { if (useStore.getState().workspace !== 'shoot') setWorkspace('animate'); window.setTimeout(() => window.dispatchEvent(new CustomEvent('kf:add-track')), 50); } },
       { id: 'anim.clips', group: 'Keys', title: 'Motion clips (save / apply)', keywords: 'clip reuse segment wave nod walk cycle library', run: () => showTab('animate', 'clips') },

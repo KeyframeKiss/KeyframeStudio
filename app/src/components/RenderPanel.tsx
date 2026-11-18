@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { bridge } from '../bridge/client';
-import { call, toast, useStore } from '../state/store';
+import { call, refreshShots, seekNow, toast, useStore } from '../state/store';
 
 interface RenderStatus {
   recording: boolean;
@@ -15,25 +15,38 @@ interface RenderStatus {
   limits: string[];
   formats: string[];
 }
+interface QueueState {
+  running: boolean;
+  done?: number;
+  total?: number;
+  shot?: string;
+  error?: string | null;
+}
 
-const SIZES: { label: string; w?: number; h?: number }[] = [
-  { label: 'Window size' },
-  { label: '720p', w: 1280, h: 720 },
-  { label: '1080p', w: 1920, h: 1080 },
-  { label: '1440p', w: 2560, h: 1440 },
-  { label: '4K', w: 3840, h: 2160 },
-  { label: 'Square', w: 1080, h: 1080 },
-  { label: 'Vertical', w: 1080, h: 1920 },
+const SIZES: { label: string; w?: number; h?: number; hint: string }[] = [
+  { label: 'Window', hint: "Studio's window size" },
+  { label: '720p', w: 1280, h: 720, hint: 'HD' },
+  { label: '1080p', w: 1920, h: 1080, hint: 'Full HD' },
+  { label: '1440p', w: 2560, h: 1440, hint: 'QHD' },
+  { label: '4K', w: 3840, h: 2160, hint: 'UHD' },
+  { label: 'Square', w: 1080, h: 1080, hint: 'Social posts' },
+  { label: 'Vertical', w: 1080, h: 1920, hint: 'Phones, shorts' },
 ];
+const FORMAT_HINT: Record<string, string> = { MP4: 'Best for sharing', WEBM: 'Web, smaller files', GIF: 'Short loops, no sound', AVI: 'For editing software' };
 
-/** Render the timeline to a video (or frames) through the installed VideoExport plugin. */
+/** Shoot › Render: make a video of the timeline (or of each shot) through the installed VideoExport plugin. */
 export function RenderPanel() {
   const status = useStore((s) => s.status);
   const hello = useStore((s) => s.hello);
   const tl = useStore((s) => s.tl);
+  const shots = useStore((s) => s.shots);
   const [st, setSt] = useState<RenderStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [what, setWhat] = useState<'timeline' | 'shots'>('timeline');
+  const [skip, setSkip] = useState<Set<string>>(new Set()); // shots left out of a shot render
+  const [queue, setQueue] = useState<QueueState | null>(null);
   const poll = useRef(0);
+  const qpoll = useRef(0);
   const feature = hello?.features?.find((f) => f.id === 'render');
 
   const load = useCallback(async () => {
@@ -48,7 +61,9 @@ export function RenderPanel() {
     }
   }, []);
   useEffect(() => {
-    if (status === 'open') load();
+    if (status !== 'open') return;
+    load();
+    refreshShots();
   }, [status, load]);
 
   // while recording or encoding, follow progress
@@ -57,21 +72,44 @@ export function RenderPanel() {
     if (!busy) return;
     poll.current = window.setInterval(async () => {
       const r = await load();
-      if (r && !r.recording && !r.encoding) toast(r.message || 'Render finished');
+      if (r && !r.recording && !r.encoding && !queue?.running) toast(r.message || 'Render finished');
     }, 1000);
     return () => window.clearInterval(poll.current);
-  }, [busy, load]);
+  }, [busy, load]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => () => window.clearInterval(qpoll.current), []);
 
   const set = async (patch: Record<string, unknown>) => {
     const r = await call<RenderStatus>('render.set', patch);
     if (r) setSt(r);
   };
   const start = async () => {
+    if (what === 'shots') return startQueue();
     const r = await call<RenderStatus>('render.start', {});
     if (r) {
       setSt(r);
       toast('Rendering — Studio plays the timeline and captures every frame. Leave it alone until it finishes.');
     }
+  };
+  const startQueue = async () => {
+    const ids = shots.filter((s) => !skip.has(s.id)).map((s) => s.id);
+    if (!ids.length) return toast('Tick at least one shot');
+    const r = await call<QueueState>('render.queue', { ids });
+    if (!r) return;
+    setQueue(r);
+    qpoll.current = window.setInterval(async () => {
+      const q = await bridge.request<QueueState>('render.queueStatus').catch(() => null);
+      if (!q) return;
+      setQueue(q);
+      load();
+      if (!q.running) {
+        window.clearInterval(qpoll.current);
+        toast(q.error ? `Render stopped: ${q.error}` : `Rendered ${q.done} of ${q.total} shot${q.total === 1 ? '' : 's'}`);
+      }
+    }, 1000);
+  };
+  const stop = () => {
+    if (queue?.running) call('render.queueCancel');
+    call<RenderStatus>('render.stop').then((r) => r && setSt(r));
   };
 
   if (feature && feature.status !== 'ok' && feature.status !== 'untested')
@@ -83,116 +121,215 @@ export function RenderPanel() {
     );
   if (error) return <div className="empty">{error}</div>;
   if (!st) return <div className="empty">Loading…</div>;
+
   const s = st.settings;
-  const size = s.resize ? SIZES.find((x) => x.w === s.width && x.h === s.height)?.label ?? 'Custom' : 'Window size';
+  const size = s.resize ? SIZES.find((x) => x.w === s.width && x.h === s.height)?.label ?? 'Custom' : 'Window';
+  const dims = s.resize ? `${s.width}×${s.height}` : 'window size';
+  const picked = shots.filter((x) => !skip.has(x.id));
   // VideoExport's number means loops in Timeline mode, seconds in Seconds mode, frames in Frames mode
-  const frames = s.limit === 'Timeline' && tl ? Math.round(tl.duration * Math.max(1, s.limitNumber) * s.fps) : s.limit === 'Seconds' ? Math.round(s.limitNumber * s.fps) : s.limit === 'Frames' ? s.limitNumber : null;
+  const seconds = what === 'shots' ? picked.reduce((a, x) => a + (x.end - x.start), 0) : s.limit === 'Timeline' && tl ? tl.duration * Math.max(1, s.limitNumber) : s.limit === 'Seconds' ? s.limitNumber : null;
+  const frames = seconds != null ? Math.round(seconds * s.fps) : null;
+  const running = busy || !!queue?.running;
+  const pct = Math.round((st.frameLimit > 0 ? st.frame / st.frameLimit : st.progress) * 100);
+  const summary = [
+    s.format,
+    dims,
+    `${s.fps} fps`,
+    what === 'shots' ? `${picked.length} shot${picked.length === 1 ? '' : 's'}, one video each` : s.limit === 'none' ? 'until you stop it' : seconds != null ? `${seconds.toFixed(1)} s` : '',
+    frames != null ? `${frames.toLocaleString()} frames` : '',
+    what === 'timeline' && s.limit === 'Timeline' && s.prewarm ? `${s.prewarm} warm-up play${s.prewarm > 1 ? 's' : ''}` : '',
+  ].filter(Boolean);
 
   return (
-    <div className="panel-body render">
-      <div className="section">
-        <h3>Render video</h3>
-        <div className="cleanup-row">
-          <span>Size</span>
-          <select className="input" value={size} disabled={busy} onChange={(e) => {
-            const p = SIZES.find((x) => x.label === e.target.value);
-            if (p) set(p.w ? { resize: true, width: p.w, height: p.h } : { resize: false });
-          }}>
-            {SIZES.map((x) => (
-              <option key={x.label} value={x.label}>
-                {x.label}
-                {x.w ? ` (${x.w}×${x.h})` : ''}
-              </option>
-            ))}
-            {size === 'Custom' && <option value="Custom">Custom ({s.width}×{s.height})</option>}
-          </select>
-        </div>
-        <div className="cleanup-row">
-          <span>Frame rate</span>
-          <div className="seg">
-            {[24, 30, 60].map((f) => (
-              <button key={f} className={s.fps === f ? 'on' : ''} disabled={busy} onClick={() => set({ fps: f })}>
-                {f}
-              </button>
-            ))}
-          </div>
-        </div>
-        <div className="cleanup-row">
-          <span>Format</span>
-          <div className="seg">
-            {st.formats.map((f) => (
-              <button key={f} className={s.format === f ? 'on' : ''} disabled={busy} onClick={() => set({ format: f })}>
-                {f}
-              </button>
-            ))}
-          </div>
-        </div>
-        <div className="cleanup-row">
-          <span>Length</span>
-          <div className="seg">
-            <button className={s.limit === 'Timeline' ? 'on' : ''} disabled={busy || !st.limits.includes('Timeline')} onClick={() => set({ limit: 'Timeline', limitNumber: 1 })} title="The whole timeline, once">
-              Timeline
-            </button>
-            <button className={s.limit === 'Seconds' ? 'on' : ''} disabled={busy} onClick={() => set({ limit: 'Seconds', limitNumber: s.limitNumber > 0 ? s.limitNumber : 5 })}>
-              Seconds
-            </button>
-            <button className={s.limit === 'none' ? 'on' : ''} disabled={busy} onClick={() => set({ limit: 'none' })} title="Until you press Stop">
-              Until stop
-            </button>
-          </div>
-        </div>
-        {s.limit === 'Seconds' && (
-          <div className="cleanup-row">
-            <span />
-            <input className="input mono" type="number" min={0.5} step={0.5} value={s.limitNumber} disabled={busy} onChange={(e) => set({ limitNumber: Number(e.target.value) || 1 })} style={{ width: 80 }} />
-            <span className="hint" style={{ margin: 0 }}>
-              s
-            </span>
-          </div>
-        )}
-        <div className="cleanup-row">
-          <span>Warm-up</span>
-          <div className="seg" title="Plays the timeline this many times first so hair and clothes physics settle (Timeline length only)">
-            {[0, 1, 2, 3].map((n) => (
-              <button key={n} className={s.prewarm === n ? 'on' : ''} disabled={busy} onClick={() => set({ prewarm: n })}>
-                {n}
-              </button>
-            ))}
-          </div>
-        </div>
-        <label className="rigs-opt">
-          <input type="checkbox" checked={s.autoEncode} disabled={busy} onChange={(e) => set({ autoEncode: e.target.checked })} /> Make the video when done
-        </label>
-        <label className="rigs-opt" style={{ marginTop: 0 }}>
-          <input type="checkbox" checked={s.deleteFrames} disabled={busy} onChange={(e) => set({ deleteFrames: e.target.checked })} /> Delete the frame images afterwards
-        </label>
-        {busy ? (
-          <>
+    <div className="render-page">
+      {/* what will come out, and the button */}
+      <div className={`render-hero ${running ? 'running' : ''}`}>
+        <div className="render-hero-text">
+          <b>{running ? (queue?.running ? `Rendering ${queue.shot ?? 'shots'} (${(queue.done ?? 0) + 1} of ${queue.total})` : st.encoding ? 'Encoding the video…' : 'Rendering…') : 'Ready to render'}</b>
+          <span>{running ? st.message || (st.recording ? `Frame ${st.frame}${st.frameLimit > 0 ? ` of ${st.frameLimit}` : ''}` : '') : summary.join(' · ')}</span>
+          {running && (
             <div className="render-progress">
-              <span style={{ width: `${Math.round((st.frameLimit > 0 ? st.frame / st.frameLimit : st.progress) * 100)}%` }} />
+              <span style={{ width: `${pct}%` }} />
             </div>
-            <div className="hint">{st.message || (st.recording ? `Frame ${st.frame}${st.frameLimit > 0 ? ` of ${st.frameLimit}` : ''}` : 'Encoding…')}</div>
-            <button className="btn solid wide" onClick={() => call<RenderStatus>('render.stop').then((r) => r && setSt(r))}>
-              Stop
-            </button>
-          </>
+          )}
+        </div>
+        {running ? (
+          <button className="btn solid render-go" onClick={stop}>
+            Stop
+          </button>
         ) : (
-          <button className="btn primary wide" onClick={start} title="Studio plays the timeline from the start and captures every frame from the current camera">
-            Render{frames ? ` (${frames} frames)` : ''}
+          <button className="btn primary render-go" disabled={what === 'shots' && !picked.length} onClick={start} title="Studio plays the timeline and captures every frame from the current camera — leave it alone until it finishes">
+            {what === 'shots' ? `Render ${picked.length} shot${picked.length === 1 ? '' : 's'}` : 'Render'}
           </button>
         )}
       </div>
-      <div className="section">
-        <h3>Output</h3>
-        <div className="hint" style={{ marginTop: 0, wordBreak: 'break-all' }}>
-          {st.outputFolder}
+
+      <div className="render-grid">
+        <div className="look-card">
+          <div className="look-card-head">
+            <div>
+              <b>What to render</b>
+              <small>The whole timeline, or each shot as its own video</small>
+            </div>
+          </div>
+          <div className="look-card-body">
+            <div className="seg render-what">
+              <button className={what === 'timeline' ? 'on' : ''} disabled={running} onClick={() => setWhat('timeline')}>
+                Whole timeline
+              </button>
+              <button className={what === 'shots' ? 'on' : ''} disabled={running || !shots.length} onClick={() => setWhat('shots')} title={shots.length ? 'One video per shot, through its own camera' : 'Add shots in Shots & camera first'}>
+                Shots ({shots.length})
+              </button>
+            </div>
+            {what === 'timeline' ? (
+              <>
+                <div className="cleanup-row" style={{ marginTop: 10 }}>
+                  <span>Length</span>
+                  <div className="seg">
+                    <button className={s.limit === 'Timeline' ? 'on' : ''} disabled={running || !st.limits.includes('Timeline')} onClick={() => set({ limit: 'Timeline', limitNumber: 1 })} title="The whole timeline, once">
+                      All of it
+                    </button>
+                    <button className={s.limit === 'Seconds' ? 'on' : ''} disabled={running} onClick={() => set({ limit: 'Seconds', limitNumber: s.limitNumber > 0 ? s.limitNumber : 5 })}>
+                      Seconds
+                    </button>
+                    <button className={s.limit === 'none' ? 'on' : ''} disabled={running} onClick={() => set({ limit: 'none' })} title="Until you press Stop">
+                      Until I stop
+                    </button>
+                  </div>
+                </div>
+                {s.limit === 'Seconds' && (
+                  <div className="cleanup-row">
+                    <span />
+                    <input className="input mono" type="number" min={0.5} step={0.5} value={s.limitNumber} disabled={running} onChange={(e) => set({ limitNumber: Number(e.target.value) || 1 })} style={{ width: 80 }} />
+                    <span className="hint" style={{ margin: 0 }}>
+                      seconds
+                    </span>
+                  </div>
+                )}
+                <div className="cleanup-row">
+                  <span>Warm-up</span>
+                  <div className="seg" title="Plays the timeline this many times before recording so hair and clothes physics settle (whole timeline only)">
+                    {[0, 1, 2, 3].map((n) => (
+                      <button key={n} className={s.prewarm === n ? 'on' : ''} disabled={running || s.limit !== 'Timeline'} onClick={() => set({ prewarm: n })}>
+                        {n}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="hint" style={{ marginTop: 0 }}>Warm-up plays first so hair and clothes settle before recording starts.</div>
+              </>
+            ) : (
+              <div className="render-shots">
+                {shots.map((x, i) => (
+                  <label key={x.id} className="render-shot">
+                    <input
+                      type="checkbox"
+                      checked={!skip.has(x.id)}
+                      disabled={running}
+                      onChange={(e) =>
+                        setSkip((k) => {
+                          const n = new Set(k);
+                          if (e.target.checked) n.delete(x.id);
+                          else n.add(x.id);
+                          return n;
+                        })
+                      }
+                    />
+                    {x.thumb ? <img src={x.thumb} alt="" onClick={() => seekNow(x.start)} /> : <span className="render-shot-ph">#{i + 1}</span>}
+                    <span className="render-shot-text">
+                      <b>{x.name}</b>
+                      <small>
+                        {x.start.toFixed(2)}–{x.end.toFixed(2)}s · {(x.end - x.start).toFixed(2)}s{x.cam ? '' : ' · no camera set'}
+                      </small>
+                    </span>
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
-        {window.studioEx?.openFolder && (
-          <button className="btn solid wide" onClick={() => window.studioEx?.openFolder?.(st.outputFolder)}>
-            Open output folder
-          </button>
-        )}
-        <div className="hint">Uses VideoExport (Ctrl+E in Studio for its full settings). Renders what Studio's camera sees, at the size above.</div>
+
+        <div className="look-card">
+          <div className="look-card-head">
+            <div>
+              <b>Picture</b>
+              <small>Size of the video and frames per second</small>
+            </div>
+          </div>
+          <div className="look-card-body">
+            <div className="render-sizes">
+              {SIZES.map((x) => (
+                <button key={x.label} className={`render-size ${size === x.label ? 'on' : ''}`} disabled={running} onClick={() => set(x.w ? { resize: true, width: x.w, height: x.h } : { resize: false })} title={x.w ? `${x.w}×${x.h}` : "Studio's window size"}>
+                  <i style={x.w ? { aspectRatio: `${x.w} / ${x.h}` } : { aspectRatio: '16 / 10', borderStyle: 'dashed' }} />
+                  <b>{x.label}</b>
+                  <small>{x.hint}</small>
+                </button>
+              ))}
+              {size === 'Custom' && (
+                <button className="render-size on" disabled>
+                  <i style={{ aspectRatio: `${s.width} / ${s.height}` }} />
+                  <b>Custom</b>
+                  <small>
+                    {s.width}×{s.height}
+                  </small>
+                </button>
+              )}
+            </div>
+            <div className="cleanup-row" style={{ marginTop: 10 }}>
+              <span>Frame rate</span>
+              <div className="seg">
+                {[24, 30, 60].map((f) => (
+                  <button key={f} className={s.fps === f ? 'on' : ''} disabled={running} onClick={() => set({ fps: f })}>
+                    {f} fps
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="look-card">
+          <div className="look-card-head">
+            <div>
+              <b>File</b>
+              <small>Format and what happens to the frames</small>
+            </div>
+          </div>
+          <div className="look-card-body">
+            <div className="render-formats">
+              {st.formats.map((f) => (
+                <button key={f} className={`render-size ${s.format === f ? 'on' : ''}`} disabled={running} onClick={() => set({ format: f })}>
+                  <b>{f}</b>
+                  <small>{FORMAT_HINT[f] ?? ''}</small>
+                </button>
+              ))}
+            </div>
+            <label className="rigs-opt" style={{ marginTop: 10 }}>
+              <input type="checkbox" checked={s.autoEncode} disabled={running} onChange={(e) => set({ autoEncode: e.target.checked })} /> Make the video when done
+            </label>
+            <label className="rigs-opt" style={{ marginTop: 0 }}>
+              <input type="checkbox" checked={s.deleteFrames} disabled={running || !s.autoEncode} onChange={(e) => set({ deleteFrames: e.target.checked })} /> Delete the frame images afterwards
+            </label>
+          </div>
+        </div>
+
+        <div className="look-card">
+          <div className="look-card-head">
+            <div>
+              <b>Output</b>
+              <small>Where the videos go</small>
+            </div>
+            {window.studioEx?.openFolder && (
+              <button className="btn small solid" onClick={() => window.studioEx?.openFolder?.(st.outputFolder)}>
+                Open folder
+              </button>
+            )}
+          </div>
+          <div className="look-card-body">
+            <code className="render-path">{st.outputFolder}</code>
+            <div className="hint">Renders what Studio's camera sees{what === 'shots' ? " (each shot through its own camera)" : ''}. More options: VideoExport's own window (Ctrl+E in Studio).</div>
+          </div>
+        </div>
       </div>
     </div>
   );

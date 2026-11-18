@@ -1,7 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect } from 'react';
 import { ask } from './Dialogs';
-import { bridge } from '../bridge/client';
-import { call, editTimeline, liveTime, refreshShots, seekNow, toast, useStore, type Shot } from '../state/store';
+import { call, editTimeline, liveTime, refreshShots, seekNow, showTab, toast, useStore, type Shot } from '../state/store';
 
 /** Shot sequencer: time ranges with their own camera and notes; camera cuts and a render queue from them. */
 export function ShotsPanel() {
@@ -9,9 +8,6 @@ export function ShotsPanel() {
   const shots = useStore((s) => s.shots);
   const tl = useStore((s) => s.tl);
   const hello = useStore((s) => s.hello);
-  const [pick, setPick] = useState<Set<string>>(new Set());
-  const [queue, setQueue] = useState<{ running: boolean; done?: number; total?: number; shot?: string; error?: string | null } | null>(null);
-  const poll = useRef(0);
   const canRender = hello?.features?.some((f) => f.id === 'render' && (f.status === 'ok' || f.status === 'untested'));
 
   useEffect(() => {
@@ -42,23 +38,6 @@ export function ShotsPanel() {
     if (n) toast(`Camera cuts keyed for ${n} shot${n > 1 ? 's' : ''} — Ctrl+Z to undo`);
   };
 
-  const render = async () => {
-    const ids = shots.filter((s) => pick.has(s.id)).map((s) => s.id);
-    const r = await call<{ running: boolean }>('render.queue', { ids });
-    if (!r) return;
-    setQueue(r);
-    poll.current = window.setInterval(async () => {
-      const q = await bridge.request<NonNullable<typeof queue>>('render.queueStatus').catch(() => null);
-      if (!q) return;
-      setQueue(q);
-      if (!q.running) {
-        window.clearInterval(poll.current);
-        toast(q.error ? `Render queue stopped: ${q.error}` : `Rendered ${q.done} of ${q.total} shot${q.total === 1 ? '' : 's'}`);
-      }
-    }, 1000);
-  };
-  useEffect(() => () => window.clearInterval(poll.current), []);
-
   const fps = tl?.fps ?? 60;
   return (
     <div className="panel-body shots">
@@ -78,7 +57,6 @@ export function ShotsPanel() {
               </div>
               <div className="shot-body">
                 <div className="shot-row">
-                  <input type="checkbox" checked={pick.has(s.id)} onChange={(e) => setPick((p) => { const n = new Set(p); if (e.target.checked) n.add(s.id); else n.delete(s.id); return n; })} title="Include in the render queue" />
                   <input className="input shot-name" value={s.name} onChange={(e) => useStore.setState({ shots: shots.map((x) => (x.id === s.id ? { ...x, name: e.target.value } : x)) })} onBlur={(e) => patch(s.id, { name: e.target.value || `Shot ${i + 1}` })} />
                 </div>
                 <div className="shot-row">
@@ -112,22 +90,9 @@ export function ShotsPanel() {
             Build camera cuts
           </button>
           {canRender && (
-            <>
-              {queue?.running ? (
-                <>
-                  <div className="hint">
-                    Rendering {queue.shot} ({(queue.done ?? 0) + 1} of {queue.total})…
-                  </div>
-                  <button className="btn solid wide" onClick={() => call('render.queueCancel')}>
-                    Stop the queue
-                  </button>
-                </>
-              ) : (
-                <button className="btn primary wide" disabled={!pick.size} onClick={render} title="Each ticked shot becomes its own video (settings from Render on the right)">
-                  Render {pick.size ? `${pick.size} shot${pick.size > 1 ? 's' : ''}` : 'ticked shots'}
-                </button>
-              )}
-            </>
+            <button className="btn solid wide" onClick={() => showTab('shoot', 'render')} title="Render each shot as its own video">
+              Render the shots ›
+            </button>
           )}
         </div>
       )}
