@@ -232,6 +232,16 @@ Extends the existing Look workspace.
 - Before/after lighting comparisons.
 - Experimental click-to-light positioning.
 
+**Status (2026-11-17): rigs done** (Look › Lighting).
+- **Built-in rigs:** three-point, Rembrandt, butterfly, split, rim only and soft front.
+- **Placement:** relative to the selected character's position, facing and height. Each rig is a "Lighting rig: …" folder.
+- **Comparing:** switch a rig on or off, or hold to compare without rigs.
+- **Removing:** one undo step for apply, or Remove to delete.
+- **Your own rigs:** save your own light arrangement, relative to the character, as a reusable rig.
+- **Light limit:** vanilla Studio's 2-light limit is respected unless IllusionFixes' Unlimited Map Lights is installed.
+- **Caveat:** Koikatsu's toon shading reacts to extra lights mostly as colour and rim tints. The main character light shapes the shadows, so rigs read as subtle.
+- **Not done:** click-to-light and moving lights in the viewport (Phase 2).
+
 **Deliverable:** Direct character, camera, and lighting editing with fewer menus.
 
 ---

@@ -9,6 +9,7 @@ import { CharacterPanel } from './CharacterPanel';
 import { DopeSheet } from './DopeSheet';
 import { Icon } from './Icon';
 import { Inspector } from './Inspector';
+import { LightRigsPanel } from './LightRigsPanel';
 import { LookPanel } from './LookPanel';
 import { LookPresets } from './LookPresets';
 import { ModSettings } from './ModSettings';
@@ -233,7 +234,14 @@ export function LookWorkspace() {
         </div>
         <Disconnected />
       </main>
-      <TabbedPanel id="look.right" side="right" tabs={[{ id: 'look', label: 'Look settings', render: () => <LookPanel showPresets={false} /> }]} />
+      <TabbedPanel
+        id="look.right"
+        side="right"
+        tabs={[
+          { id: 'look', label: 'Look settings', render: () => <LookPanel showPresets={false} /> },
+          { id: 'rigs', label: 'Lighting', render: () => <LightRigsPanel /> },
+        ]}
+      />
     </div>
   );
 }
