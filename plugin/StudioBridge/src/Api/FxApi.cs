@@ -140,6 +140,16 @@ namespace StudioEX.Bridge.Api
 
         private static bool Ready() => _fog != null || LoadShaders();
 
+        private static readonly Dictionary<string, Shader> Shaders = new Dictionary<string, Shader>();
+
+        /// <summary>One of our shaders from the embedded bundle (e.g. "Projector"), or an error saying why not.</summary>
+        public static Shader GetShader(string name)
+        {
+            if (!Ready()) throw new BridgeException("Keyframe Studio's shaders didn't load: " + _bundleError);
+            if (!Shaders.TryGetValue("Hidden/KeyframeStudio/" + name, out var sh) || !sh.isSupported) throw new BridgeException("Shader " + name + " isn't available");
+            return sh;
+        }
+
         private static bool LoadShaders()
         {
             if (_bundleError != null) return false;
@@ -155,6 +165,7 @@ namespace StudioEX.Bridge.Api
                 var bundle = AssetBundle.LoadFromMemory(bytes) ?? throw new Exception("couldn't open the shader bundle");
                 var shaders = bundle.LoadAllAssets<Shader>();
                 bundle.Unload(false);
+                foreach (var sh in shaders) Shaders[sh.name] = sh;
                 Material M(string name)
                 {
                     var sh = shaders.FirstOrDefault(x => x.name == "Hidden/KeyframeStudio/" + name);

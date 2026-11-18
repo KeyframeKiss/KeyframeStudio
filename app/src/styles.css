@@ -5121,3 +5121,58 @@ html.frameless .tooltip {
   color: var(--text-3);
   font-size: 11px;
 }
+
+/* Look › Lighting: projectors and aimed lights */
+.pj-rigs {
+  max-width: 640px;
+}
+.pj-shape-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 2px 8px 6px;
+}
+.pj-inline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-1);
+  font-size: 12px;
+}
+.pj-aims {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.pj-aim {
+  display: grid;
+  grid-template-columns: minmax(140px, 200px) minmax(140px, 200px) auto minmax(120px, 1fr);
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--bg-1);
+}
+.pj-aim .ct-chips {
+  margin: 0;
+}
+.pj-aim-name {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.pj-aim-name b,
+.pj-aim-name small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pj-aim-name small {
+  color: var(--text-2);
+}
+@media (max-width: 900px) {
+  .pj-aim {
+    grid-template-columns: 1fr 1fr;
+  }
+}

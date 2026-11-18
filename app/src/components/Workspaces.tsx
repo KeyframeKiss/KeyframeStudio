@@ -23,6 +23,7 @@ import { LightRigsPanel } from './LightRigsPanel';
 import { LookPanel } from './LookPanel';
 import { MaterialEditorPage } from './MaterialEditor';
 import { EffectsPage } from './EffectsPage';
+import { AimLightsPanel, ProjectorsPanel } from './ProjectorsPanel';
 import { StudioWindowPage } from './StudioWindowPage';
 import { LookPresets } from './LookPresets';
 import { ModSettings } from './ModSettings';
@@ -336,7 +337,7 @@ const LOOK_TABS: SubTab[] = [
   { id: 'settings', label: 'Settings', icon: 'sliders', hint: 'Color grade, bloom, depth of field, fog, toon shading, lights, materials' },
   { id: 'effects', label: 'Effects', icon: 'sparkle', hint: 'Two-tone fog, colour correction, sharpening, vignette, lens fringes, grain — built in, or xukmi FX when installed' },
   { id: 'materials', label: 'Materials', icon: 'grid', hint: 'MaterialEditor for the selected character or item: every material, its values, textures and shader' },
-  { id: 'lighting', label: 'Lighting rigs', icon: 'bolt', hint: 'Light setups placed around a character' },
+  { id: 'lighting', label: 'Lighting', icon: 'bolt', hint: 'Lighting rigs around a character, projectors (window light, blinds, leaf shadows), lights that aim at a character' },
 ];
 
 export function LookWorkspace() {
@@ -365,8 +366,12 @@ export function LookWorkspace() {
             {tab === 'effects' && <EffectsPage />}
             {tab === 'materials' && <MaterialEditorPage />}
             {tab === 'lighting' && (
-              <SubPage max={640}>
-                <LightRigsPanel />
+              <SubPage max={1100}>
+                <div className="pj-rigs">
+                  <LightRigsPanel />
+                </div>
+                <ProjectorsPanel />
+                <AimLightsPanel />
               </SubPage>
             )}
           </ErrorBoundary>

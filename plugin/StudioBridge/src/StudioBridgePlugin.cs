@@ -71,6 +71,7 @@ namespace StudioEX.Bridge
             FxApi.Register(_router);
             XukmiFx.Register(_router);
             CameraTools.Register(_router);
+            LightsApi.Register(_router);
             SceneApi.Register(_router);
             TimelineApi.Register(_router);
             CharaApi.Register(_router);
