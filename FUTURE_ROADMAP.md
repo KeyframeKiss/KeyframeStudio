@@ -212,6 +212,12 @@ Built on the Phase 2 overlays in Studio's viewport; the Phase 3 preview is used 
 - Outfit and accessory presets.
 - Visibility and clipping-assistance tools.
 
+**Status (2026-11-17): outfits done** (Pose › Outfit).
+- **Saved outfits:** the outfit set, clothing states, shoes and accessory visibility, with favorites. Applying one is a single undo step and can dress several characters. Accessory on/off carries over only to the character it was saved from.
+- **Accessories:** grouped by body area, each area with an on/off switch, plus search and **Solo** (see one accessory alone, then restore).
+- **Clipping checks:** hold to hide all accessories or all clothes. These peeks stay out of undo.
+- **Not done:** per-item colours (Material Editor tweaks already live in Look › Materials) and editing accessories with handles in the viewport (Phase 2).
+
 ### 4.3 Visual Camera Director
 Extends the existing ten camera slots and camera keying.
 

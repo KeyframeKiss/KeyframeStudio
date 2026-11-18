@@ -9,6 +9,7 @@ import { CharacterPanel } from './CharacterPanel';
 import { DopeSheet } from './DopeSheet';
 import { Icon } from './Icon';
 import { Inspector } from './Inspector';
+import { OutfitPanel } from './OutfitPanel';
 import { LightRigsPanel } from './LightRigsPanel';
 import { LookPanel } from './LookPanel';
 import { LookPresets } from './LookPresets';
@@ -178,6 +179,7 @@ export function PoseWorkspace() {
         side="right"
         tabs={[
           { id: 'character', label: 'Character', render: () => <CharacterPanel /> },
+          { id: 'outfit', label: 'Outfit', render: () => <OutfitPanel /> },
           { id: 'object', label: 'Transform', render: () => <ObjectPanel /> },
         ]}
       />

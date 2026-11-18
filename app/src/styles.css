@@ -2770,3 +2770,65 @@ select {
 .rig-scene label small {
   color: var(--text-3);
 }
+
+/* Pose › Outfit */
+.outfit-list {
+  display: grid;
+  gap: 4px;
+}
+.outfit-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: var(--bg-1);
+}
+.outfit-info {
+  flex: 1;
+  min-width: 0;
+}
+.outfit-info b {
+  display: block;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.outfit-info small {
+  color: var(--text-3);
+  font-size: 10px;
+}
+.outfit-group {
+  margin-bottom: 8px;
+}
+.outfit-group-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0;
+}
+.outfit-group-head b {
+  font-size: 11px;
+  color: var(--text-1);
+}
+.outfit-group-head small {
+  color: var(--text-3);
+}
+.outfit-acc {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0 2px 14px;
+}
+.outfit-acc .name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.outfit-acc.hidden .name {
+  color: var(--text-3);
+}

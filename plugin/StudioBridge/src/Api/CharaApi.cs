@@ -179,9 +179,10 @@ namespace StudioEX.Bridge.Api
         {
             var targets = Targets(a).ToList();
             if (targets.Count == 0) throw new BridgeException("Select a character first");
-            string keys = string.Join(",", a.Keys.Where(k => k != "ids" && k != "id").OrderBy(k => k).ToArray());
-            if (keys.Length > 0 && keys != "restartAnime")
-                UndoStack.Push(CharaUndo.Capture(targets, keys, "Character change"));
+            string keys = string.Join(",", a.Keys.Where(k => k != "ids" && k != "id" && k != "noUndo" && k != "undoLabel").OrderBy(k => k).ToArray());
+            // noUndo: temporary looks (hold-to-peek) that are put back right away shouldn't fill the history
+            if (keys.Length > 0 && keys != "restartAnime" && !a.GetBool("noUndo"))
+                UndoStack.Push(CharaUndo.Capture(targets, keys, a.GetString("undoLabel") ?? "Character change"));
             foreach (var c in targets) Apply(c, a);
             return targets.Count == 1 ? Get(targets[0]) : (object)targets.Select(c => (object)c.oiCharInfo.dicKey).ToList();
         }
