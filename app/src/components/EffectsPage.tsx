@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { bridge } from '../bridge/client';
-import { call, liveTime, refreshTimeline, setNodeVisible, showTab, toast, useStore } from '../state/store';
+import { call, displayName, liveTime, refreshTimeline, setNodeVisible, showTab, toast, useStore } from '../state/store';
 import { Help } from './Help';
 import { Icon } from './Icon';
 import { ColorInput, Switch } from './LookPanel';
@@ -17,6 +17,7 @@ type Value = number | boolean | number[];
 type Fx = Record<string, Record<string, Value>>;
 interface FxState {
   effects: Fx;
+  focusNow: number;
   ready: boolean;
   error: string | null;
   camera: boolean;
@@ -43,7 +44,8 @@ interface Xukmi {
 interface Param {
   key: string;
   label: string;
-  kind: 'float' | 'color' | 'bool';
+  kind: 'float' | 'color' | 'bool' | 'choice' | 'chara';
+  options?: { v: number; label: string }[];
   min?: number;
   max?: number;
   step?: number;
@@ -101,6 +103,31 @@ const EFFECTS: EffectDef[] = [
       { key: 'lift', label: 'Shadows (lift)', kind: 'color', advanced: true, help: 'Tints the darks (black = none)' },
       { key: 'gamma', label: 'Midtones (gamma)', kind: 'color', advanced: true, help: 'Tints the middle tones (white = none)' },
       { key: 'gain', label: 'Highlights (gain)', kind: 'color', advanced: true, help: 'Tints the brights (white = none)' },
+    ],
+  },
+  {
+    id: 'dof',
+    title: 'Depth of field',
+    help: 'Bokeh blur: what is in focus stays sharp, the rest melts into round highlights — in front and behind. Focus can follow a character’s eyes as they move, or the centre of the view. Looks the same in stills at any size.',
+    xukmi: ['DepthOfFieldHighBokeh', 'DepthOfFieldHigh', 'DepthOfFieldHighBox', 'DepthOfFieldMidBokeh', 'DepthOfFieldMid', 'DepthOfFieldMidBox', 'DepthOfFieldLowBokeh', 'DepthOfFieldLow', 'DepthOfFieldLowBox'],
+    studio: 'dof',
+    params: [
+      {
+        key: 'autoFocus',
+        label: 'Focus on',
+        kind: 'choice',
+        options: [
+          { v: 2, label: 'Eyes' },
+          { v: 1, label: 'View centre' },
+          { v: 0, label: 'Fixed' },
+        ],
+        help: 'Eyes: a character’s eyes, wherever they move. View centre: what Studio’s camera turns around. Fixed: the distance below (animate it for focus pulls).',
+      },
+      { key: 'chara', label: 'Character', kind: 'chara' },
+      { key: 'focus', label: 'Focus distance', kind: 'float', min: 0.1, max: 30, step: 0.01, help: 'Metres from the camera. Follows the eyes / view centre unless focus is Fixed.' },
+      { key: 'blur', label: 'Blur', kind: 'float', min: 0, max: 1, step: 0.01, help: 'How quickly things leave focus — like opening the lens wider' },
+      { key: 'maxBlur', label: 'Biggest blur', kind: 'float', min: 0.002, max: 0.05, step: 0.001, help: 'The size of the blur far from focus' },
+      { key: 'near', label: 'Blur in front too', kind: 'bool' },
     ],
   },
   {
@@ -232,7 +259,7 @@ export function EffectsPage() {
                 values={fx.effects[def.id]}
                 onSet={(v) => set(def.id, v)}
                 onReset={() => bridge.request('fx.reset', { effect: def.id }).then(load)}
-                doubles={[...xkVisible(def.xukmi).map((i) => `xukmi's ${xukmiLabel(i.effect)} (${i.name})`), ...(studioOn(def.studio) ? [`Studio's own ${def.studio}`] : [])]}
+                doubles={[...xkVisible(def.xukmi).map((i) => `xukmi's ${xukmiLabel(i.effect)} (${i.name})`), ...(studioOn(def.studio) ? [`Studio's own ${def.studio === 'dof' ? 'depth of field' : def.studio}`] : [])]}
               />
             ))}
           </div>
@@ -329,7 +356,8 @@ function XukmiSection({ xk, reload }: { xk: Xukmi; reload: () => void }) {
 function EffectCard({ def, values, onSet, onReset, doubles }: { def: EffectDef; values: Record<string, Value>; onSet: (v: Record<string, Value>) => void; onReset: () => void; doubles: string[] }) {
   const [more, setMore] = useState(false);
   const on = values.on === true;
-  const basic = def.params.filter((p) => !p.advanced);
+  const shown = (p: Param) => !(p.kind === 'chara' && Math.round(values.autoFocus as number) !== 2);
+  const basic = def.params.filter((p) => !p.advanced && shown(p));
   const advanced = def.params.filter((p) => p.advanced);
   return (
     <div className={`look-card fx-card ${on ? '' : 'off'}`}>
@@ -369,6 +397,8 @@ function EffectCard({ def, values, onSet, onReset, doubles }: { def: EffectDef; 
 
 function ParamRow({ effect, p, v, onSet }: { effect: string; p: Param; v: Value; onSet: (v: Record<string, Value>) => void }) {
   const hasTimeline = useStore((s) => !!s.tl);
+  const nodes = useStore((s) => s.nodes);
+  const selection = useStore((s) => s.studioSelection);
   const animate = async () => {
     try {
       await bridge.request('timeline.addTrack', { owner: 'Keyframe Studio', model: `fx.${effect}.${p.key}`, keyAt: liveTime() });
@@ -389,6 +419,44 @@ function ParamRow({ effect, p, v, onSet }: { effect: string; p: Param; v: Value;
       )}
     </span>
   );
+  if (p.kind === 'choice')
+    return (
+      <div className="fx-row">
+        <label>
+          {p.label}
+          {p.help && <Help text={p.help} />}
+        </label>
+        <div className="seg">
+          {p.options!.map((o) => (
+            <button key={o.v} className={Math.round(v as number) === o.v ? 'on' : ''} onClick={() => onSet({ [p.key]: o.v })}>
+              {o.label}
+            </button>
+          ))}
+        </div>
+        <span />
+      </div>
+    );
+  if (p.kind === 'chara') {
+    const charas = Object.values(nodes).filter((n) => n.type === 'Char');
+    const cur = v as number;
+    // nothing chosen yet: the selected character (or the first)
+    const fallback = selection.find((id) => nodes[id]?.type === 'Char') ?? charas[0]?.id ?? -1;
+    if (cur < 0 && fallback >= 0) setTimeout(() => onSet({ [p.key]: fallback }), 0);
+    return (
+      <div className="fx-row">
+        <label>{p.label}</label>
+        <select className="input" value={cur} onChange={(e) => onSet({ [p.key]: Number(e.target.value) })}>
+          {cur < 0 && <option value={-1}>—</option>}
+          {charas.map((c) => (
+            <option key={c.id} value={c.id}>
+              {displayName(c)}
+            </option>
+          ))}
+        </select>
+        <span />
+      </div>
+    );
+  }
   if (p.kind === 'bool')
     return (
       <div className="fx-row">

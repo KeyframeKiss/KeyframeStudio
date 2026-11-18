@@ -36,11 +36,17 @@ namespace StudioEX.Bridge.Api
             { "vignette", new Dictionary<string, object> { { "on", false }, { "intensity", 0.35f }, { "smoothness", 0.45f }, { "roundness", 1f }, { "color", new[] { 0f, 0f, 0f, 1f } } } },
             { "aberration", new Dictionary<string, object> { { "on", false }, { "amount", 0.3f } } },
             { "grain", new Dictionary<string, object> { { "on", false }, { "amount", 0.2f }, { "size", 1.5f } } },
+            // focus: metres from the camera; blur: how quickly things leave focus; maxBlur: biggest blur, in screen heights;
+            // autoFocus: 0 manual, 1 the view's centre (Studio's camera target), 2 a character's eyes (chara = its id)
+            { "dof", new Dictionary<string, object> { { "on", false }, { "focus", 3f }, { "blur", 0.6f }, { "maxBlur", 0.018f }, { "near", true }, { "autoFocus", 1f }, { "chara", -1f } } },
         };
 
         private static Dictionary<string, Dictionary<string, object>> _fx = Clone(Defaults);
         private static string _bundleError;
-        private static Material _fog, _grade, _sharpen, _lens;
+        private static Material _fog, _grade, _sharpen, _lens, _dof;
+
+        // values that are choices, not amounts: no Timeline tracks for them
+        private static readonly HashSet<string> NotAnimated = new HashSet<string> { "dof.autoFocus", "dof.chara" };
 
         private static Dictionary<string, Dictionary<string, object>> Clone(Dictionary<string, Dictionary<string, object>> src) =>
             src.ToDictionary(kv => kv.Key, kv => CloneOne(kv.Value));
@@ -82,6 +88,7 @@ namespace StudioEX.Bridge.Api
                 { "ready", Ready() },
                 { "error", _bundleError },
                 { "camera", Camera.main != null },
+                { "focusNow", (double)KfEffects.CurrentFocus },
             };
         }
 
@@ -198,6 +205,7 @@ namespace StudioEX.Bridge.Api
                 _grade = M("Grade");
                 _sharpen = M("Sharpen");
                 _lens = M("Lens");
+                _dof = M("Dof");
                 return true;
             }
             catch (Exception e)
@@ -220,7 +228,7 @@ namespace StudioEX.Bridge.Api
             {
                 if (comp == null) comp = cam.gameObject.AddComponent<KfEffects>();
                 comp.enabled = true;
-                if ((bool)_fx["fog"]["on"]) cam.depthTextureMode |= DepthTextureMode.Depth;
+                if ((bool)_fx["fog"]["on"] || (bool)_fx["dof"]["on"]) cam.depthTextureMode |= DepthTextureMode.Depth;
             }
             else if (comp != null) comp.enabled = false;
         }
@@ -251,10 +259,52 @@ namespace StudioEX.Bridge.Api
             private Camera _cam;
             private void Awake() => _cam = GetComponent<Camera>();
 
+            private Transform _eyes;
+            private int _eyesOf = -2;
+
+            /// <summary>Where auto focus points: the view's centre or the character's eyes; null for manual.</summary>
+            private Vector3? FocusPoint()
+            {
+                int mode = Mathf.RoundToInt(F("dof", "autoFocus"));
+                if (mode == 1) return Singleton<Studio.Studio>.Instance?.cameraCtrl?.targetPos;
+                if (mode != 2) return null;
+                int id = Mathf.RoundToInt(F("dof", "chara"));
+                if (id != _eyesOf || _eyes == null)
+                {
+                    _eyesOf = id;
+                    var c = SceneApi.FindOci(id) as OCIChar;
+                    _eyes = c?.charInfo != null ? c.charInfo.GetComponentsInChildren<Transform>(true).FirstOrDefault(t => t.name == "cf_J_Eye_tz") ?? c.charInfo.objHeadBone?.transform : null;
+                }
+                return _eyes != null ? _eyes.position : (Vector3?)null;
+            }
+
+            /// <summary>The distance auto focus is using right now (for the app and tests).</summary>
+            public static float CurrentFocus = -1;
+
+            private void Dof(RenderTexture src, RenderTexture dst)
+            {
+                var fp = FocusPoint();
+                float focus = fp.HasValue ? Mathf.Max(0.05f, Vector3.Dot(fp.Value - _cam.transform.position, _cam.transform.forward)) : F("dof", "focus");
+                CurrentFocus = focus;
+                if (fp.HasValue) _fx["dof"]["focus"] = focus; // shows (and keys) where it's focusing
+                _dof.SetVector("_KfDof", new Vector4(focus, F("dof", "blur") * 4f, F("dof", "maxBlur"), B("dof", "near") ? 1 : 0));
+                int w = src.width / 2, h = src.height / 2;
+                var half = RenderTexture.GetTemporary(w, h, 0, RenderTextureFormat.ARGBHalf);
+                var bokeh = RenderTexture.GetTemporary(w, h, 0, RenderTextureFormat.ARGBHalf);
+                half.filterMode = bokeh.filterMode = FilterMode.Bilinear;
+                Graphics.Blit(src, half, _dof, 0);
+                Graphics.Blit(half, bokeh, _dof, 1);
+                Graphics.Blit(bokeh, half, _dof, 2);
+                _dof.SetTexture("_KfDofTex", half);
+                Graphics.Blit(src, dst, _dof, 3);
+                RenderTexture.ReleaseTemporary(half);
+                RenderTexture.ReleaseTemporary(bokeh);
+            }
+
             private void OnRenderImage(RenderTexture src, RenderTexture dst)
             {
                 if (!Ready()) { Graphics.Blit(src, dst); return; }
-                var passes = new List<Material>(4);
+                var passes = new List<object>(5); // a Material (one pass) or an Action for multi-pass effects
                 try
                 {
                     if (B("fog", "on"))
@@ -267,6 +317,7 @@ namespace StudioEX.Bridge.Api
                         _fog.SetVector("_KfHeight", new Vector4(F("fog", "height"), F("fog", "heightFalloff"), B("fog", "sky") ? 1 : 0, F("fog", "skyDistance")));
                         passes.Add(_fog);
                     }
+                    if (B("dof", "on")) passes.Add((Action<RenderTexture, RenderTexture>)Dof);
                     if (B("sharpen", "on"))
                     {
                         _sharpen.SetFloat("_KfSharpness", F("sharpen", "amount"));
@@ -302,7 +353,8 @@ namespace StudioEX.Bridge.Api
                 {
                     bool last = i == passes.Count - 1;
                     var target = last ? dst : RenderTexture.GetTemporary(src.width, src.height, 0, src.format);
-                    Graphics.Blit(cur, target, passes[i]);
+                    if (passes[i] is Material m) Graphics.Blit(cur, target, m);
+                    else ((Action<RenderTexture, RenderTexture>)passes[i])(cur, target);
                     if (cur != src) RenderTexture.ReleaseTemporary(cur);
                     cur = target;
                 }
@@ -354,7 +406,7 @@ namespace StudioEX.Bridge.Api
             foreach (var e in Defaults)
                 foreach (var v in e.Value)
                 {
-                    if (v.Value is bool) continue;
+                    if (v.Value is bool || NotAnimated.Contains(e.Key + "." + v.Key)) continue;
                     string effect = e.Key, name = v.Key;
                     if (v.Value is float) TimelineImpl.AddSceneFloatModel(Owner, "fx." + effect + "." + name, Title(effect, name), () => F(effect, name), x => { _fx[effect][name] = x; Ensure(); });
                     else TimelineImpl.AddSceneColorModel(Owner, "fx." + effect + "." + name, Title(effect, name), () => V(effect, name), c => { _fx[effect][name] = new[] { c.x, c.y, c.z, c.w }; Ensure(); });
