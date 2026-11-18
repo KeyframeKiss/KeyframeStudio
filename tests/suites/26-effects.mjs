@@ -65,6 +65,14 @@ export default async function (t) {
       fog = (await ok('fx.get')).effects.fog;
       if (fog.on) break;
     }
+    // Timeline reads the scene's own data a moment after us: let the load finish before the next step
+    let last = -1;
+    for (let i = 0; i < 20; i++) {
+      await sleep(500);
+      const d = (await ok('timeline.get').catch(() => null))?.duration ?? -1;
+      if (d === last && d > 0) break;
+      last = d;
+    }
     check('loaded back', fog.on === true && near(fog.density, 0.123) && near(fog.far[2], 0.9), JSON.stringify(fog));
     await ok('fx.reset');
   });
@@ -87,7 +95,9 @@ export default async function (t) {
       check('animates between keys', mid > 0.08 && mid < 0.22, String(mid));
       await ok('timeline.seek', { t: 2 });
       await sleep(300);
-      check('reaches the key', near((await ok('fx.get')).effects.fog.density, 0.25));
+      const end = (await ok('fx.get')).effects.fog.density;
+      const st = await ok('timeline.get');
+      check('reaches the key', near(end, 0.25), JSON.stringify({ end, time: st.time, duration: st.duration, keys: st.tracks.find((x) => x.id === tr)?.keys }));
       await ok('timeline.removeTracks', { tracks: [tr] });
       await ok('fx.reset');
     });
