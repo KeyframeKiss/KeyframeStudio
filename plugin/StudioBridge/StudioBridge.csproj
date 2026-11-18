@@ -16,6 +16,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- effect shaders compiled with Unity 5.6.2f1: npm run build:shaders -->
+    <EmbeddedResource Include="res\kfeffects.bundle" LogicalName="KKStudioEX.Bridge.kfeffects.bundle" />
+  </ItemGroup>
+  <ItemGroup>
     <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies.net35" Version="1.0.3" PrivateAssets="all" />
   </ItemGroup>
 

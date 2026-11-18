@@ -629,7 +629,7 @@ function FloatRow({ p, onChange, onReset, onAnimate }: { p: FloatProp; onChange:
 }
 
 /** A number field that only commits on Enter / blur (typing "0." shouldn't send 0). */
-function NumberBox({ value, step, min, max, onChange }: { value: number; step: number; min?: number; max?: number; onChange: (v: number) => void }) {
+export function NumberBox({ value, step, min, max, onChange }: { value: number; step: number; min?: number; max?: number; onChange: (v: number) => void }) {
   const fmt = (v: number) => (Number.isInteger(v) ? String(v) : String(Number(v.toFixed(4))));
   const [text, setText] = useState(fmt(value));
   const focused = useRef(false);

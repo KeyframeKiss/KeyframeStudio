@@ -46,6 +46,7 @@ const paths: Record<string, string> = {
   tracks: 'M2 4h12M2 8h12M2 12h12M5 3v2M10 7v2M7 11v2',
   record: 'M8 12a4 4 0 100-8 4 4 0 000 8z',
   bolt: 'M9 1.5L3.5 9H8l-1 5.5L12.5 7H8z',
+  sparkle: 'M8 1.5l1.5 4.5 4.5 1.5-4.5 1.5L8 13.5 6.5 9 2 7.5l4.5-1.5zM13 11l.6 1.4L15 13l-1.4.6L13 15l-.6-1.4L11 13l1.4-.6z',
   translate: 'M2 3h7M5.5 3v1.5c0 2.5-1.5 4.5-3.5 5.5M4 6.5c.8 1.6 2.3 2.9 4 3.5M9.5 14l2.5-6 2.5 6M10.4 12h3.2',
   keyboard: 'M1.5 4.5h13v7h-13zM4 7h.01M6.5 7h.01M9 7h.01M11.5 7h.01M5 9.5h6',
   scenes: 'M2 3h12v10H2zM2 10l3.5-3 3 2.5L11 7l3 3',

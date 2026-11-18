@@ -22,6 +22,7 @@ import { OutfitPanel } from './OutfitPanel';
 import { LightRigsPanel } from './LightRigsPanel';
 import { LookPanel } from './LookPanel';
 import { MaterialEditorPage } from './MaterialEditor';
+import { EffectsPage } from './EffectsPage';
 import { StudioWindowPage } from './StudioWindowPage';
 import { LookPresets } from './LookPresets';
 import { ModSettings } from './ModSettings';
@@ -333,6 +334,7 @@ function AnimationLibrary() {
 const LOOK_TABS: SubTab[] = [
   { id: 'presets', label: 'Presets', icon: 'look', hint: 'Saved looks: apply all or some parts, at any strength' },
   { id: 'settings', label: 'Settings', icon: 'sliders', hint: 'Color grade, bloom, depth of field, fog, toon shading, lights, materials' },
+  { id: 'effects', label: 'Effects', icon: 'sparkle', hint: 'Two-tone fog, colour correction, sharpening, vignette, lens fringes, grain — built in, or xukmi FX when installed' },
   { id: 'materials', label: 'Materials', icon: 'grid', hint: 'MaterialEditor for the selected character or item: every material, its values, textures and shader' },
   { id: 'lighting', label: 'Lighting rigs', icon: 'bolt', hint: 'Light setups placed around a character' },
 ];
@@ -360,6 +362,7 @@ export function LookWorkspace() {
                 <LookPanel />
               </div>
             )}
+            {tab === 'effects' && <EffectsPage />}
             {tab === 'materials' && <MaterialEditorPage />}
             {tab === 'lighting' && (
               <SubPage max={640}>

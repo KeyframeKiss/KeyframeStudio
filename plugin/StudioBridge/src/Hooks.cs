@@ -18,6 +18,7 @@ namespace StudioEX.Bridge
             Try(PoseApi.ForgetPreview); // the previewed characters are gone with the old scene
             Try(AudioTrack.Clear); // a loaded scene brings its own audio back afterwards (KKAPI scene data)
             Try(ShotApi.Clear);
+            Try(FxApi.Clear); // a loaded scene brings its own effects back afterwards (KKAPI scene data)
             Try(() => ViewportTools.Instance?.ClearAll());
             Try(() => StudioBridgePlugin.Instance?.Broadcast("scene.reset", null));
         }

@@ -16,3 +16,12 @@ desktop.ini
 *.log
 .env
 .env.*
+
+# Unity shader project (generated)
+shaders/KfShaders/Library/
+shaders/KfShaders/Temp/
+shaders/KfShaders/Build/
+shaders/KfShaders/obj/
+shaders/KfShaders/*.csproj
+shaders/KfShaders/*.sln
+shaders/KfShaders/build.log
