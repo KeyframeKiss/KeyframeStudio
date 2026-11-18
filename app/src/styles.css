@@ -4196,3 +4196,233 @@ html.frameless .tooltip {
   color: var(--text-3);
   pointer-events: none;
 }
+
+/* ---------- Shoot › Shots & camera: storyboard + camera cards over the timeline ---------- */
+.shoot-top {
+  display: block;
+  overflow: auto;
+  background: var(--bg-0);
+}
+.shoot-page {
+  display: grid;
+  gap: 10px;
+  padding: 10px 14px 14px;
+}
+.shots-board .look-card-body {
+  padding-bottom: 10px;
+}
+.shots-empty {
+  display: grid;
+  gap: 4px;
+  padding: 14px;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  color: var(--text-2);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.shots-empty b:first-child {
+  color: var(--text-0);
+}
+.shot-strip {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+.shot-tile {
+  appearance: none;
+  flex: none;
+  width: 168px;
+  display: grid;
+  gap: 2px;
+  padding: 5px 5px 6px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg-2);
+  color: var(--text-1);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.shot-tile:hover {
+  border-color: var(--text-3);
+}
+.shot-tile.here {
+  border-color: color-mix(in srgb, #ff4d6d 60%, var(--line));
+}
+.shot-tile.sel {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.shot-tile-img {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  border-radius: 5px;
+  overflow: hidden;
+  background: var(--bg-0);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-3);
+  font-size: 11px;
+  margin-bottom: 3px;
+}
+.shot-tile-img img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.shot-tile-img i {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 9px;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  font-style: normal;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+}
+.shot-tile b,
+.shot-tile small {
+  padding: 0 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.shot-tile small {
+  color: var(--text-3);
+  font-size: 10.5px;
+}
+.shot-edit {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+  padding: 8px;
+  border-radius: 8px;
+  background: var(--bg-2);
+}
+.shot-edit-n {
+  font-weight: 700;
+  color: var(--accent);
+  padding: 0 2px;
+}
+.cam-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 10px;
+  align-items: start;
+}
+.cam-preview {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.cam-preview.empty-prev {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed var(--line);
+  color: var(--text-3);
+  font-size: 11px;
+}
+.cam-sub {
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-3);
+  margin-bottom: 2px;
+}
+.cam-slots {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 5px;
+}
+.cam-slot {
+  display: grid;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--bg-2);
+}
+.cam-slot-img {
+  appearance: none;
+  position: relative;
+  aspect-ratio: 16 / 10;
+  border: 0;
+  padding: 0;
+  background: var(--bg-0);
+  cursor: pointer;
+}
+.cam-slot.unused .cam-slot-img {
+  cursor: default;
+}
+.cam-slot-img img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.cam-slot-img i {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-style: normal;
+  font-weight: 800;
+  font-size: 14px;
+  color: var(--text-1);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+}
+.cam-slot.unused .cam-slot-img i {
+  color: var(--text-3);
+  text-shadow: none;
+}
+.cam-slot-save {
+  appearance: none;
+  border: 0;
+  border-top: 1px solid var(--line);
+  background: transparent;
+  color: var(--text-2);
+  font: inherit;
+  font-size: 10px;
+  padding: 2px 0;
+  cursor: pointer;
+}
+.cam-slot-save:hover {
+  background: var(--bg-3);
+  color: var(--text-0);
+}
+.cam-keys {
+  display: grid;
+  gap: 2px;
+  margin-top: 8px;
+  max-height: 180px;
+  overflow: auto;
+}
+.cam-key-img {
+  width: 56px;
+  height: 32px;
+  object-fit: cover;
+  border-radius: 4px;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-0);
+  color: var(--text-3);
+}

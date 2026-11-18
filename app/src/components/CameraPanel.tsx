@@ -47,118 +47,109 @@ export function CameraPanel() {
   if (!st) return <div className="empty">Loading cameras…</div>;
 
   return (
-    <div className="panel-body">
-      <div className="section">
-        <h3>
-          Viewport <span className="spacer" />
-          <button className="btn" style={{ height: 20, fontSize: 10 }} onClick={snap}>
+    <div className="cam-grid">
+      <div className="look-card">
+        <div className="look-card-head">
+          <div>
+            <b>View</b>
+            <small>Studio's camera now</small>
+          </div>
+          <button className="btn small solid" onClick={snap} title="Show what Studio's camera sees">
             Snapshot
           </button>
-        </h3>
-        {preview ? (
-          <img src={preview} alt="" style={{ width: '100%', borderRadius: 6, display: 'block' }} />
-        ) : (
-          <div className="hint" style={{ marginTop: 0 }}>
-            Click Snapshot to preview Studio's current camera here.
+        </div>
+        <div className="look-card-body">
+          {preview ? <img className="cam-preview" src={preview} alt="" onClick={snap} title="Click to refresh" /> : <div className="cam-preview empty-prev" onClick={snap}>Click Snapshot to see Studio's view here</div>}
+          <div className="kv" style={{ marginTop: 8 }}>
+            <label>Field of view</label>
+            <Slider
+              value={st.fov}
+              min={10}
+              max={90}
+              step={0.5}
+              onChange={(v) => {
+                setSt({ ...st, fov: v });
+                bridge.request('camera.setFov', { fov: v }).catch(() => {});
+              }}
+            />
           </div>
-        )}
-        <div className="kv" style={{ marginTop: 8 }}>
-          <label>Field of view</label>
-          <Slider
-            value={st.fov}
-            min={10}
-            max={90}
-            step={0.5}
-            onChange={(v) => {
-              setSt({ ...st, fov: v });
-              bridge.request('camera.setFov', { fov: v }).catch(() => {});
-            }}
-          />
+          {st.cameras.length > 0 && (
+            <div style={{ marginTop: 8 }}>
+              <div className="cam-sub">Scene cameras</div>
+              {st.cameras.map((c) => (
+                <div {...pressable} key={c.id} className={`model-row ${c.active ? 'selected' : ''}`} onClick={() => call<CamState>('camera.view', { id: c.active ? -1 : c.id }).then((r) => r && setSt(r))}>
+                  <span className="plus">◉</span>
+                  <span className="name">{c.name}</span>
+                  <span className="sub">{c.active ? 'viewing — click to exit' : 'view through'}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
-      <div className="section">
-        <h3>Saved views (Studio's 1–10)</h3>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(96px, 1fr))', gap: 6 }}>
-          {st.slots.map((s) => (
-            <div key={s.index} style={{ position: 'relative', borderRadius: 6, overflow: 'hidden', background: 'var(--bg-2)', border: '1px solid var(--line)' }}>
-              <button
-                className="btn"
-                style={{ width: '100%', height: 54, padding: 0, borderRadius: 0, display: 'block', opacity: s.used ? 1 : 0.5 }}
-                title={s.used ? `Go to view ${s.index + 1}` : `View ${s.index + 1} is empty`}
-                onClick={() => s.used && call('camera.loadSlot', { index: s.index })}
-              >
-                {s.thumb && s.used ? (
-                  <img src={s.thumb} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                ) : (
-                  <span style={{ fontSize: 18, fontWeight: 700, color: s.used ? 'var(--text-1)' : 'var(--text-3)' }}>{s.index + 1}</span>
-                )}
-              </button>
-              <div style={{ display: 'flex', alignItems: 'center', padding: '2px 4px', gap: 4 }}>
-                <span className="sub" style={{ flex: 1, color: 'var(--text-3)', fontSize: 10 }}>
-                  {s.index + 1} {s.used ? '' : '· empty'}
-                </span>
+      <div className="look-card">
+        <div className="look-card-head">
+          <div>
+            <b>Saved views</b>
+            <small>Studio's views 1–10: click to go there, Save to store the current view</small>
+          </div>
+        </div>
+        <div className="look-card-body">
+          <div className="cam-slots">
+            {st.slots.map((s) => (
+              <div key={s.index} className={`cam-slot ${s.used ? '' : 'unused'}`}>
+                <button className="cam-slot-img" title={s.used ? `Go to view ${s.index + 1}` : `View ${s.index + 1} is empty`} onClick={() => s.used && call('camera.loadSlot', { index: s.index })}>
+                  {s.thumb && s.used ? <img src={s.thumb} alt="" /> : null}
+                  <i>{s.index + 1}</i>
+                </button>
                 <button
-                  className="btn"
-                  style={{ height: 18, fontSize: 10, padding: '0 6px' }}
+                  className="cam-slot-save"
                   title="Save Studio's current view into this slot"
                   onClick={() => call<CamState>('camera.saveSlot', { index: s.index }).then((r) => r && (setSt(r), toast(`Saved view ${s.index + 1}`)))}
                 >
                   Save
                 </button>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       </div>
 
       {st.timeline && (
-        <div className="section">
-          <h3>Camera animation</h3>
-          <div style={{ display: 'flex', gap: 6 }}>
-            <button className="btn primary" style={{ flex: 1 }} title="Key the main camera at the playhead (smooth move from the previous key)" onClick={() => key(false)}>
-              Key camera
-            </button>
-            <button className="btn solid" style={{ flex: 1 }} title="Key the camera here and make it jump (no glide from the previous key)" onClick={() => key(true)}>
-              ✂ Cut here
-            </button>
+        <div className="look-card">
+          <div className="look-card-head">
+            <div>
+              <b>Camera keys</b>
+              <small>Frame it in Studio, move the playhead, then key</small>
+            </div>
           </div>
-          <div className="hint">Frame the shot in Studio, move the playhead, then Key (smooth) or Cut (instant switch).</div>
-          <div style={{ marginTop: 8, display: 'grid', gap: 4 }}>
-            {shots.map((s, i) => (
-              <div {...pressable} key={s.t} className="model-row" style={{ padding: 4, gap: 8 }} onClick={() => seekNow(s.t)} title="Go to this camera key">
-                {s.thumb ? (
-                  <img src={s.thumb} alt="" style={{ width: 64, height: 36, objectFit: 'cover', borderRadius: 4, flex: 'none' }} />
-                ) : (
-                  <span style={{ width: 64, height: 36, borderRadius: 4, background: 'var(--bg-0)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-3)', flex: 'none' }}>
-                    #{i + 1}
+          <div className="look-card-body">
+            <div style={{ display: 'flex', gap: 6 }}>
+              <button className="btn primary" style={{ flex: 1 }} title="Key the main camera at the playhead (smooth move from the previous key)" onClick={() => key(false)}>
+                Key camera
+              </button>
+              <button className="btn solid" style={{ flex: 1 }} title="Key the camera here and make it jump (no glide from the previous key)" onClick={() => key(true)}>
+                ✂ Cut here
+              </button>
+            </div>
+            <div className="cam-keys">
+              {shots.map((s, i) => (
+                <div {...pressable} key={s.t} className="model-row" style={{ padding: 4, gap: 8 }} onClick={() => seekNow(s.t)} title="Go to this camera key">
+                  {s.thumb ? <img src={s.thumb} alt="" className="cam-key-img" /> : <span className="cam-key-img">#{i + 1}</span>}
+                  <span className="name">
+                    {s.t.toFixed(2)}s <span className="sub">f{Math.round(s.t * fps)}</span>
                   </span>
-                )}
-                <span className="name">
-                  {s.t.toFixed(2)}s <span className="sub">f{Math.round(s.t * fps)}</span>
-                </span>
-                <span className="sub" style={{ color: s.cut ? 'var(--accent)' : 'var(--text-3)' }}>{s.cut ? '✂ cut' : 'glide'}</span>
-              </div>
-            ))}
-            {!shots.length && <div className="hint">No camera keys yet.</div>}
+                  <span className="sub" style={{ color: s.cut ? 'var(--accent)' : 'var(--text-3)' }}>{s.cut ? '✂ cut' : 'glide'}</span>
+                </div>
+              ))}
+              {!shots.length && <div className="hint">No camera keys yet. Key (smooth) glides from the previous key; Cut jumps.</div>}
+            </div>
           </div>
         </div>
       )}
 
       {st.timeline && <CameraMoves onDone={load} />}
-
-      {st.cameras.length > 0 && (
-        <div className="section">
-          <h3>Scene cameras</h3>
-          {st.cameras.map((c) => (
-            <div {...pressable} key={c.id} className={`model-row ${c.active ? 'selected' : ''}`} onClick={() => call<CamState>('camera.view', { id: c.active ? -1 : c.id }).then((r) => r && setSt(r))}>
-              <span className="plus">◉</span>
-              <span className="name">{c.name}</span>
-              <span className="sub">{c.active ? 'viewing — click to exit' : 'view through'}</span>
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   );
 }

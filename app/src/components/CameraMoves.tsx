@@ -42,8 +42,14 @@ export function CameraMoves({ onDone }: { onDone: () => void }) {
   };
 
   return (
-    <div className="section">
-      <h3>Camera moves</h3>
+    <div className="look-card">
+      <div className="look-card-head">
+        <div>
+          <b>Camera moves</b>
+          <small>A ready-made move from the camera as it is now</small>
+        </div>
+      </div>
+      <div className="look-card-body">
       <div className="cam-moves">
         {(Object.keys(MOVES) as Move[]).map((k) => (
           <button key={k} className={`btn solid ${move === k ? 'on' : ''}`} title={MOVES[k].hint} onClick={() => setMove(k)}>
@@ -62,12 +68,12 @@ export function CameraMoves({ onDone }: { onDone: () => void }) {
         </div>
       </div>
       <div className="cleanup-row">
-        <span>{move === 'crane' || move === 'truck' ? 'Distance' : 'Amount'}</span>
-        <Slider value={amounts[move]} min={m.min} max={m.max} step={m.step} onChange={(v) => setAmounts((a) => ({ ...a, [move]: v }))} />
-        <span className="mono" style={{ width: 44, textAlign: 'right' }}>
-          {amounts[move]}
-          {m.unit}
+        <span>
+          {move === 'crane' || move === 'truck' ? 'Distance' : 'Amount'} ({m.unit})
         </span>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <Slider value={amounts[move]} min={m.min} max={m.max} step={m.step} onChange={(v) => setAmounts((a) => ({ ...a, [move]: v }))} />
+        </div>
       </div>
       <div className="cleanup-row">
         <span>Length</span>
@@ -94,6 +100,7 @@ export function CameraMoves({ onDone }: { onDone: () => void }) {
       </div>
       <div className="hint">
         {m.hint}. {move === 'crane' || move === 'truck' ? 'Distance is relative to how far the camera is from its subject. ' : ''}Frame the start in Studio first; camera keys inside the move are replaced.
+      </div>
       </div>
     </div>
   );

@@ -440,7 +440,6 @@ export function ShootWorkspace() {
 
 function ShotsAndCamera() {
   const top = useSyncExternalStore(subscribeShoot, () => shootTop);
-  const noShots = useStore((s) => s.shots.length === 0);
   const drag = (e: React.PointerEvent<HTMLDivElement>) => {
     const el = e.currentTarget;
     const box = el.parentElement!.getBoundingClientRect();
@@ -455,13 +454,11 @@ function ShotsAndCamera() {
   };
   return (
     <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-      <div className={`shoot-top ${noShots ? 'no-shots' : ''}`} style={{ flexBasis: `${top * 100}%` }}>
-        <section className="shoot-col">
+      <div className="shoot-top" style={{ flexBasis: `${top * 100}%` }}>
+        <div className="shoot-page">
           <ShotsPanel />
-        </section>
-        <section className="shoot-col">
           <CameraPanel />
-        </section>
+        </div>
       </div>
       <div className="shoot-split" onPointerDown={drag} onDoubleClick={() => setShootTop(0.48)} title="Drag to resize · double-click to reset" />
       <div style={{ flex: 1, minHeight: 0, display: 'flex', position: 'relative' }}>

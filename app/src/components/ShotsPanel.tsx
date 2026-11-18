@@ -1,14 +1,19 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { ask } from './Dialogs';
 import { call, editTimeline, liveTime, refreshShots, seekNow, showTab, toast, useStore, type Shot } from '../state/store';
 
-/** Shot sequencer: time ranges with their own camera and notes; camera cuts and a render queue from them. */
+/**
+ * Shoot › Shots: a storyboard of shots (time ranges with their own camera and notes). Click a shot to edit it
+ * and jump there; camera cuts and rendering come from the shots.
+ */
 export function ShotsPanel() {
   const status = useStore((s) => s.status);
   const shots = useStore((s) => s.shots);
   const tl = useStore((s) => s.tl);
   const hello = useStore((s) => s.hello);
   const canRender = hello?.features?.some((f) => f.id === 'render' && (f.status === 'ok' || f.status === 'untested'));
+  const [sel, setSel] = useState<string | null>(null);
+  const time = tl?.time ?? 0;
 
   useEffect(() => {
     if (status === 'open') refreshShots();
@@ -30,6 +35,7 @@ export function ShotsPanel() {
     await save([...shots, { id, name: `Shot ${shots.length + 1}`, start, end, notes: '' }]);
     const r = await call<Shot[]>('shots.captureCamera', { id });
     if (r) useStore.setState({ shots: r });
+    setSel(id);
     toast(`Shot added ${start.toFixed(2)}–${end.toFixed(2)}s with the current camera`);
   };
 
@@ -38,64 +44,98 @@ export function ShotsPanel() {
     if (n) toast(`Camera cuts keyed for ${n} shot${n > 1 ? 's' : ''} — Ctrl+Z to undo`);
   };
 
+  const ordered = [...shots].sort((a, b) => a.start - b.start);
+  const cur = shots.find((s) => s.id === sel) ?? null;
   const fps = tl?.fps ?? 60;
+  const n = (s: Shot) => ordered.indexOf(s) + 1;
+
   return (
-    <div className="panel-body shots">
-      <div className="section">
-        <h3>
-          Shots <span className="spacer" />
-          <button className="btn small" onClick={add} title="A shot from the playhead to the next shot (or 3 s), with the camera as it is now">
-            + Shot at playhead
-          </button>
-        </h3>
-        {!shots.length && <div className="hint" style={{ marginTop: 0 }}>Frame a view in Studio, put the playhead where the shot starts, and add it. Shots also show along the top of the dope sheet.</div>}
-        <div className="shot-list">
-          {shots.map((s, i) => (
-            <div key={s.id} className="shot-card">
-              <div className="shot-thumb" onClick={() => seekNow(s.start)} title="Go to the shot's start">
-                {s.thumb ? <img src={s.thumb} alt="" /> : <span>#{i + 1}</span>}
-              </div>
-              <div className="shot-body">
-                <div className="shot-row">
-                  <input className="input shot-name" value={s.name} onChange={(e) => useStore.setState({ shots: shots.map((x) => (x.id === s.id ? { ...x, name: e.target.value } : x)) })} onBlur={(e) => patch(s.id, { name: e.target.value || `Shot ${i + 1}` })} />
-                </div>
-                <div className="shot-row">
-                  <input className="input mono" type="number" step={1 / fps} value={s.start} onChange={(e) => patch(s.id, { start: Number(e.target.value) })} title="Start (s)" />
-                  <span>–</span>
-                  <input className="input mono" type="number" step={1 / fps} value={s.end} onChange={(e) => patch(s.id, { end: Number(e.target.value) })} title="End (s)" />
-                  <small>{(s.end - s.start).toFixed(2)}s</small>
-                </div>
-                <textarea className="input shot-notes" placeholder="Notes…" defaultValue={s.notes} onBlur={(e) => e.target.value !== s.notes && patch(s.id, { notes: e.target.value })} rows={1} />
-                <div className="shot-row">
-                  <button className="btn small" onClick={() => call<Shot[]>('shots.captureCamera', { id: s.id }).then((r) => r && useStore.setState({ shots: r }))} title="Remember Studio's current camera for this shot">
-                    Set camera
-                  </button>
-                  <button className="btn small" disabled={!s.cam} onClick={() => call('shots.view', { id: s.id })} title="Look through this shot's camera">
-                    View
-                  </button>
-                  <span className="spacer" style={{ flex: 1 }} />
-                  <button className="btn small" onClick={async () => (await ask(`Delete “${s.name}”?`)) && save(shots.filter((x) => x.id !== s.id))}>
-                    ✕
-                  </button>
-                </div>
-              </div>
-            </div>
-          ))}
+    <div className="look-card shots-board">
+      <div className="look-card-head">
+        <div>
+          <b>Shots</b>
+          <small>Time ranges with their own camera — they also show along the top of the timeline</small>
         </div>
-      </div>
-      {shots.length > 0 && (
-        <div className="section">
-          <h3>From the shots</h3>
-          <button className="btn solid wide" onClick={buildCuts} title="Keys a hard cut to each shot's camera at its start">
-            Build camera cuts
-          </button>
-          {canRender && (
-            <button className="btn solid wide" onClick={() => showTab('shoot', 'render')} title="Render each shot as its own video">
-              Render the shots ›
+        {shots.length > 0 && (
+          <>
+            <button className="btn small solid" onClick={buildCuts} title="Keys a hard cut to each shot's camera at its start">
+              Build camera cuts
             </button>
-          )}
-        </div>
-      )}
+            {canRender && (
+              <button className="btn small solid" onClick={() => showTab('shoot', 'render')} title="Each shot as its own video">
+                Render shots ›
+              </button>
+            )}
+          </>
+        )}
+        <button className="btn small primary" onClick={add} title="A shot from the playhead to the next shot (or 3 s), with Studio's camera as it is now">
+          + Shot at playhead
+        </button>
+      </div>
+      <div className="look-card-body">
+        {!shots.length ? (
+          <div className="shots-empty">
+            <b>No shots yet</b>
+            Frame a view in Studio, put the playhead where the shot starts and press <b>+ Shot at playhead</b>. Each shot remembers its camera; Build camera cuts then switches between them, and Render can make one video per shot.
+          </div>
+        ) : (
+          <div className="shot-strip">
+            {ordered.map((s) => {
+              const here = time >= s.start - 1e-3 && time < s.end - 1e-3;
+              return (
+                <button
+                  key={s.id}
+                  className={`shot-tile ${sel === s.id ? 'sel' : ''} ${here ? 'here' : ''}`}
+                  onClick={() => {
+                    setSel(sel === s.id ? null : s.id);
+                    seekNow(s.start);
+                  }}
+                  onDoubleClick={() => s.cam && call('shots.view', { id: s.id })}
+                  title={`${s.name}\n${s.start.toFixed(2)}–${s.end.toFixed(2)}s${s.notes ? `\n${s.notes}` : ''}\nClick to edit and go there · double-click to look through its camera`}
+                >
+                  <span className="shot-tile-img">
+                    {s.thumb ? <img src={s.thumb} alt="" /> : <span>no camera</span>}
+                    <i>{n(s)}</i>
+                  </span>
+                  <b>{s.name}</b>
+                  <small>
+                    {s.start.toFixed(2)}–{s.end.toFixed(2)}s · {(s.end - s.start).toFixed(1)}s
+                  </small>
+                </button>
+              );
+            })}
+          </div>
+        )}
+        {cur && (
+          <div className="shot-edit">
+            <span className="shot-edit-n">#{n(cur)}</span>
+            <input className="input" value={cur.name} onChange={(e) => useStore.setState({ shots: shots.map((x) => (x.id === cur.id ? { ...x, name: e.target.value } : x)) })} onBlur={(e) => patch(cur.id, { name: e.target.value || `Shot ${n(cur)}` })} style={{ width: 150 }} title="Name" />
+            <input className="input mono" type="number" step={1 / fps} value={cur.start} onChange={(e) => patch(cur.id, { start: Number(e.target.value) })} title="Start (s)" style={{ width: 76 }} />
+            <span className="hint" style={{ margin: 0 }}>
+              to
+            </span>
+            <input className="input mono" type="number" step={1 / fps} value={cur.end} onChange={(e) => patch(cur.id, { end: Number(e.target.value) })} title="End (s)" style={{ width: 76 }} />
+            <input key={cur.id} className="input" placeholder="Notes…" defaultValue={cur.notes} onBlur={(e) => e.target.value !== cur.notes && patch(cur.id, { notes: e.target.value })} style={{ flex: 1, minWidth: 120 }} />
+            <button className="btn small solid" onClick={() => call<Shot[]>('shots.captureCamera', { id: cur.id }).then((r) => r && useStore.setState({ shots: r }))} title="Remember Studio's current camera for this shot (and its thumbnail)">
+              Set camera
+            </button>
+            <button className="btn small solid" disabled={!cur.cam} onClick={() => call('shots.view', { id: cur.id })} title="Look through this shot's camera">
+              View
+            </button>
+            <button
+              className="btn small"
+              title="Delete this shot"
+              onClick={async () => {
+                if (!(await ask(`Delete “${cur.name}”?`))) return;
+                await save(shots.filter((x) => x.id !== cur.id));
+                setSel(null);
+              }}
+            >
+              ✕
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
