@@ -28,6 +28,8 @@ namespace StudioEX.Bridge.Api
         public static void Register(CommandRouter r)
         {
             r.Add("camera.get", a => Get());
+            // which saved views (0–9) the camera is at right now (several can hold the same view) — polled by the app
+            r.Add("camera.activeSlot", a => ActiveSlots());
             r.Add("camera.saveSlot", a =>
             {
                 int i = Slot(a);
@@ -88,6 +90,34 @@ namespace StudioEX.Bridge.Api
             return i;
         }
 
+        /// <summary>A slot holds a view of its own (empty slots hold Studio's reset view).</summary>
+        private static bool Used(Studio.CameraControl.CameraData d, Studio.CameraControl.CameraData reset) =>
+            (d.pos - reset.pos).sqrMagnitude > 1e-6f || (d.rotate - reset.rotate).sqrMagnitude > 1e-6f ||
+            (d.distance - reset.distance).sqrMagnitude > 1e-6f || Mathf.Abs(d.parse - reset.parse) > 1e-3f;
+
+        /// <summary>The saved views the camera matches (position, angles, distance, field of view).</summary>
+        private static List<object> ActiveSlots()
+        {
+            var hits = new List<object>();
+            var s = SceneApi.Studio;
+            var now = s.cameraCtrl.Export();
+            var reset = s.cameraCtrl.ExportResetData();
+            bool Same(Studio.CameraControl.CameraData a, Studio.CameraControl.CameraData b) =>
+                (a.pos - b.pos).sqrMagnitude < 1e-6f &&
+                Mathf.Abs(Mathf.DeltaAngle(a.rotate.x, b.rotate.x)) < 0.05f &&
+                Mathf.Abs(Mathf.DeltaAngle(a.rotate.y, b.rotate.y)) < 0.05f &&
+                Mathf.Abs(Mathf.DeltaAngle(a.rotate.z, b.rotate.z)) < 0.05f &&
+                (a.distance - b.distance).sqrMagnitude < 1e-6f &&
+                Mathf.Abs(a.parse - b.parse) < 0.01f;
+            for (int i = 0; i < s.sceneInfo.cameraData.Length; i++)
+            {
+                var d = s.sceneInfo.cameraData[i];
+                if (!Used(d, reset)) continue; // an empty slot holds the reset view (same test as the slot list)
+                if (Same(d, now)) hits.Add(i);
+            }
+            return hits;
+        }
+
         private static object Get()
         {
             var s = SceneApi.Studio;
@@ -96,8 +126,7 @@ namespace StudioEX.Bridge.Api
             for (int i = 0; i < s.sceneInfo.cameraData.Length; i++)
             {
                 var d = s.sceneInfo.cameraData[i];
-                bool used = (d.pos - reset.pos).sqrMagnitude > 1e-6f || (d.rotate - reset.rotate).sqrMagnitude > 1e-6f ||
-                            (d.distance - reset.distance).sqrMagnitude > 1e-6f || Mathf.Abs(d.parse - reset.parse) > 1e-3f;
+                bool used = Used(d, reset);
                 var slot = new Dictionary<string, object> { { "index", i }, { "used", used }, { "fov", d.parse } };
                 if (SlotThumbs.TryGetValue(i, out var t)) slot["thumb"] = t;
                 slots.Add(slot);
@@ -111,6 +140,7 @@ namespace StudioEX.Bridge.Api
                 { "cameras", cams },
                 { "active", s.ociCamera != null ? s.ociCamera.objectInfo.dicKey : -1 },
                 { "fov", s.cameraCtrl.fieldOfView },
+                { "activeSlots", ActiveSlots() },
                 { "timeline", TimelineApi.Available },
             };
         }

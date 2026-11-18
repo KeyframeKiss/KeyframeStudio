@@ -4426,3 +4426,16 @@ html.frameless .tooltip {
   background: var(--bg-0);
   color: var(--text-3);
 }
+
+/* the saved view the camera is at right now */
+.cam-slot.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+.cam-slot.active .cam-slot-img i {
+  color: var(--accent);
+}
+.cam-slot.active .cam-slot-save {
+  color: var(--accent);
+  border-top-color: color-mix(in srgb, var(--accent) 50%, var(--line));
+}

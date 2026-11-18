@@ -11,6 +11,13 @@ export default async function (t) {
     check('viewport snapshot', typeof snap === 'string' && snap.startsWith('data:image/jpeg;base64,') && snap.length > 2000);
     const c2 = await ok('camera.saveSlot', { index: 9 });
     check('save slot with thumbnail', c2.slots[9].used && !!c2.slots[9].thumb);
+    check('the camera is at the view just saved', (await ok('camera.activeSlot')).includes(9) && c2.activeSlots.includes(9));
+    const fov = (await ok('camera.get')).fov;
+    await ok('camera.setFov', { fov: fov + 7 });
+    check('moving the camera leaves the saved view', !(await ok('camera.activeSlot')).includes(9));
+    await ok('camera.loadSlot', { index: 9 });
+    await sleep(300);
+    check('going back to it is recognised', (await ok('camera.activeSlot')).includes(9));
     if (t.hello.timeline) {
       const k1 = await ok('camera.key', { t: 1 });
       await ok('camera.key', { t: 3, cut: true });

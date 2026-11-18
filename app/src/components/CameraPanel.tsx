@@ -25,6 +25,23 @@ export function CameraPanel() {
   const [st, setSt] = useState<CamState | null>(null);
   const [shots, setShots] = useState<Shot[]>([]);
   const [preview, setPreview] = useState<string | null>(null);
+  // the saved views the camera is at right now (Studio doesn't say; the bridge compares)
+  const [active, setActive] = useState<number[]>([]);
+  useEffect(() => {
+    if (status !== 'open') return;
+    let alive = true;
+    const tick = () =>
+      bridge
+        .request<number[]>('camera.activeSlot')
+        .then((i) => alive && setActive(i))
+        .catch(() => window.clearInterval(timer)); // an older bridge without it: no highlight
+    const timer = window.setInterval(tick, 600);
+    tick();
+    return () => {
+      alive = false;
+      window.clearInterval(timer);
+    };
+  }, [status]);
 
   const load = useCallback(() => {
     call<CamState>('camera.get').then((s) => s && setSt(s));
@@ -98,15 +115,19 @@ export function CameraPanel() {
         <div className="look-card-body">
           <div className="cam-slots">
             {st.slots.map((s) => (
-              <div key={s.index} className={`cam-slot ${s.used ? '' : 'unused'}`}>
-                <button className="cam-slot-img" title={s.used ? `Go to view ${s.index + 1}` : `View ${s.index + 1} is empty`} onClick={() => s.used && call('camera.loadSlot', { index: s.index })}>
+              <div key={s.index} className={`cam-slot ${s.used ? '' : 'unused'} ${active.includes(s.index) ? 'active' : ''}`}>
+                <button
+                  className="cam-slot-img"
+                  title={active.includes(s.index) ? `The camera is at view ${s.index + 1}` : s.used ? `Go to view ${s.index + 1}` : `View ${s.index + 1} is empty`}
+                  onClick={() => s.used && call('camera.loadSlot', { index: s.index }).then((ok) => ok && setActive((x) => [...new Set([...x, s.index])]))}
+                >
                   {s.thumb && s.used ? <img src={s.thumb} alt="" /> : null}
                   <i>{s.index + 1}</i>
                 </button>
                 <button
                   className="cam-slot-save"
                   title="Save Studio's current view into this slot"
-                  onClick={() => call<CamState>('camera.saveSlot', { index: s.index }).then((r) => r && (setSt(r), toast(`Saved view ${s.index + 1}`)))}
+                  onClick={() => call<CamState>('camera.saveSlot', { index: s.index }).then((r) => r && (setSt(r), setActive((x) => [...new Set([...x, s.index])]), toast(`Saved view ${s.index + 1}`)))}
                 >
                   Save
                 </button>
