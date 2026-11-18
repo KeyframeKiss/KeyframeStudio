@@ -84,6 +84,90 @@ namespace StudioEX.Bridge.Api
             };
         }
 
+        // ------------------------------------------------------------------ for looks
+
+        private static Entry EntryOf(OCIItem it) =>
+            Catalog().FirstOrDefault(c => c.Group == it.itemInfo.group && c.Category == it.itemInfo.category && c.No == it.itemInfo.no);
+
+        /// <summary>The material carrying the xukmi shader: (part, renderer, material) for MaterialEditorApi.</summary>
+        private static Dictionary<string, object> Target(int id)
+        {
+            if (!MaterialLookApi.Available) return null;
+            var tree = MeImpl.Tree(new Dictionary<string, object> { { "id", id } }) as Dictionary<string, object>;
+            foreach (var part in (tree?["parts"] as List<object> ?? new List<object>()).OfType<Dictionary<string, object>>())
+                foreach (var r in ((List<object>)part["renderers"]).OfType<Dictionary<string, object>>())
+                    foreach (var m in ((List<object>)r["materials"]).OfType<Dictionary<string, object>>())
+                        if (Convert.ToString(m["shader"]).StartsWith("xukmi/Effects/", StringComparison.Ordinal))
+                            return new Dictionary<string, object> { { "id", id }, { "part", part["key"] }, { "renderer", r["name"] }, { "material", m["name"] } };
+            return null;
+        }
+
+        /// <summary>xukmi effect items in the scene with their values (needs MaterialEditor to read them).</summary>
+        public static List<object> CaptureItems()
+        {
+            var list = new List<object>();
+            if (Catalog().Count == 0) return list;
+            foreach (var kv in Singleton<Studio.Studio>.Instance.dicObjectCtrl)
+            {
+                if (!(kv.Value is OCIItem it) || EffectOf(it) == null) continue;
+                var e = EntryOf(it);
+                if (e == null) continue;
+                var d = new Dictionary<string, object> { { "file", e.File }, { "name", e.Name }, { "effect", EffectOf(it) }, { "visible", it.treeNodeObject == null || it.treeNodeObject.visible } };
+                var tg = Target(kv.Key);
+                if (tg != null && MeImpl.Material(tg) is Dictionary<string, object> mat)
+                {
+                    d["floats"] = ((List<object>)mat["floats"]).OfType<Dictionary<string, object>>().ToDictionary(f => (string)f["name"], f => f["value"]);
+                    d["colors"] = ((List<object>)mat["colors"]).OfType<Dictionary<string, object>>().ToDictionary(c => (string)c["name"], c => c["value"]);
+                }
+                list.Add(d);
+            }
+            return list;
+        }
+
+        /// <summary>Bring a look's xukmi effects back: reuse the scene's item of the same effect or add one, then set its values. Undoable.</summary>
+        public static int ApplyItems(List<object> list, float strength)
+        {
+            int n = 0;
+            var cat = Catalog();
+            foreach (var o in list.OfType<Dictionary<string, object>>())
+            {
+                string file = o.GetString("file"), effect = o.GetString("effect");
+                var it = Singleton<Studio.Studio>.Instance.dicObjectCtrl.Values.OfType<OCIItem>().FirstOrDefault(x => EffectOf(x) == effect);
+                if (it == null)
+                {
+                    var e = cat.FirstOrDefault(c => c.File == file);
+                    if (e == null) continue; // not installed here
+                    it = AddObjectItem.Add(e.Group, e.Category, e.No);
+                    if (it == null) continue;
+                    UndoStack.Push(new AddUndo(it, e));
+                }
+                bool vis = o.GetBool("visible", true);
+                if (it.treeNodeObject != null && it.treeNodeObject.visible != vis) it.treeNodeObject.SetVisible(vis);
+                var tg = Target(it.objectInfo.dicKey);
+                if (tg != null && MeImpl.Material(tg) is Dictionary<string, object> mat)
+                {
+                    var curF = ((List<object>)mat["floats"]).OfType<Dictionary<string, object>>().ToDictionary(f => (string)f["name"], f => Convert.ToSingle(f["value"]));
+                    var curC = ((List<object>)mat["colors"]).OfType<Dictionary<string, object>>().ToDictionary(c => (string)c["name"], c => ((List<object>)c["value"]).Select(x => Convert.ToSingle(x)).ToArray());
+                    if (o.GetObject("floats") is Dictionary<string, object> fl)
+                        foreach (var f in fl)
+                            if (curF.TryGetValue(f.Key, out var cur))
+                            {
+                                var args = new Dictionary<string, object>(tg) { { "kind", "float" }, { "prop", f.Key }, { "value", (double)Mathf.Lerp(cur, Convert.ToSingle(f.Value), strength) } };
+                                MeImpl.Set(args);
+                            }
+                    if (o.GetObject("colors") is Dictionary<string, object> cl)
+                        foreach (var c in cl)
+                            if (curC.TryGetValue(c.Key, out var cur) && c.Value is List<object> tv)
+                            {
+                                var col = Enumerable.Range(0, 4).Select(i => (object)(double)Mathf.Lerp(cur[i], Convert.ToSingle(tv[Math.Min(i, tv.Count - 1)]), strength)).ToList();
+                                MeImpl.Set(new Dictionary<string, object>(tg) { { "kind", "color" }, { "prop", c.Key }, { "value", col } });
+                            }
+                }
+                n++;
+            }
+            return n;
+        }
+
         private sealed class AddUndo : IUndoEntry
         {
             private readonly OCIItem _oci;

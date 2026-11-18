@@ -91,7 +91,7 @@ namespace StudioEX.Bridge.Api
         }
 
         /// <summary>A slot holds a view of its own (empty slots hold Studio's reset view).</summary>
-        private static bool Used(Studio.CameraControl.CameraData d, Studio.CameraControl.CameraData reset) =>
+        internal static bool Used(Studio.CameraControl.CameraData d, Studio.CameraControl.CameraData reset) =>
             (d.pos - reset.pos).sqrMagnitude > 1e-6f || (d.rotate - reset.rotate).sqrMagnitude > 1e-6f ||
             (d.distance - reset.distance).sqrMagnitude > 1e-6f || Mathf.Abs(d.parse - reset.parse) > 1e-3f;
 

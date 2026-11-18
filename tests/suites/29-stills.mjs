@@ -1,0 +1,84 @@
+import fs from 'node:fs';
+
+export const name = 'Stills: supersampled pictures (ours and Screencap), transparency, batches per saved view / shot';
+
+// PNG colour type: 2 = RGB, 6 = RGBA
+const pngType = (file) => fs.readFileSync(file)[25];
+
+export default async function (t) {
+  const { ok, req, check, near, sleep } = t;
+  if (!t.hello.commands.includes('still.capture')) t.skip('bridge without stills');
+  await t.loadSample();
+  const made = [];
+  t.defer(() => {
+    for (const f of made) fs.rmSync(f, { force: true });
+    return req('still.set', { useScreencap: true });
+  });
+  const st = await ok('still.status');
+
+  await t.step('one picture (ours)', async () => {
+    await ok('still.set', { useScreencap: false });
+    const r = await ok('still.capture', { width: 640, height: 360, supersample: 2, format: 'png' });
+    made.push(r.path);
+    check('saved at the size asked for', fs.existsSync(r.path) && r.width === 640 && r.height === 360 && r.provider === 'Keyframe Studio', JSON.stringify({ w: r.width, h: r.height, p: r.provider }));
+    check('a real picture (not blank)', fs.statSync(r.path).size > 50000, String(fs.statSync(r.path).size));
+    check('with a thumbnail', typeof r.thumb === 'string' && r.thumb.startsWith('data:image/jpeg'));
+    const j = await ok('still.capture', { width: 400, height: 400, supersample: 1, format: 'jpg', quality: 80 });
+    made.push(j.path);
+    check('JPG, square', j.path.endsWith('.jpg') && j.width === 400 && j.height === 400);
+    check('JPG can not be transparent', !(await req('still.capture', { width: 400, height: 400, format: 'jpg', transparent: true })).ok);
+    check('absurd sizes refused', !(await req('still.capture', { width: 8000, height: 8000, supersample: 4 })).ok);
+  });
+
+  if (st.screencap)
+    await t.step('Screencap (installed)', async () => {
+      await ok('still.set', { useScreencap: true });
+      const r = await ok('still.capture', { width: 640, height: 360, supersample: 2 });
+      made.push(r.path);
+      check('Screencap takes it', r.provider === 'Screencap' && r.width === 640 && r.height === 360);
+      const a = await ok('still.capture', { width: 640, height: 360, supersample: 1, transparent: true });
+      made.push(a.path);
+      check('transparent PNG has an alpha channel', a.provider === 'Screencap' && pngType(a.path) === 6, String(pngType(a.path)));
+    });
+
+  const wait = async () => {
+    let s;
+    for (let i = 0; i < 60; i++) {
+      await sleep(300);
+      s = await ok('still.status');
+      if (!s.batch.running) break;
+    }
+    return s;
+  };
+
+  await t.step('one per saved view', async () => {
+    const cam = await ok('camera.get');
+    const used = cam.slots.filter((x) => x.used).length;
+    const fovBefore = cam.fov;
+    await ok('camera.setFov', { fov: fovBefore + 3 });
+    await sleep(300);
+    const before = await ok('camera.activeSlot');
+    await ok('still.batch', { kind: 'views', width: 320, height: 180, supersample: 1 });
+    const s = await wait();
+    for (const r of s.batch.results) made.push(r.path);
+    check('a picture per saved view', used > 0 && s.batch.results.length === used && !s.batch.error, `${s.batch.results.length} of ${used} ${s.batch.error ?? ''}`);
+    await sleep(300);
+    // a view the batch didn't leave on one of the saved ones (its FOV differs from all of them)
+    check('the view is put back', near((await ok('camera.get')).fov, fovBefore + 3) && JSON.stringify(await ok('camera.activeSlot')) === JSON.stringify(before), JSON.stringify(before));
+  });
+
+  if (t.hello.timeline)
+    await t.step('one per shot', async () => {
+      await ok('shots.set', { shots: [{ id: 'a', name: 'Opening', start: 0, end: 1 }, { id: 'b', name: 'Close up', start: 1, end: 2 }] });
+      t.defer(() => req('shots.set', { shots: [] }));
+      await ok('shots.captureCamera', { id: 'a' });
+      await ok('camera.setFov', { fov: 30 });
+      await ok('shots.captureCamera', { id: 'b' });
+      await ok('timeline.seek', { t: 0.5 });
+      await ok('still.batch', { kind: 'shots', width: 320, height: 180, supersample: 1 });
+      const s = await wait();
+      for (const r of s.batch.results) made.push(r.path);
+      check('a picture per shot, named after it', s.batch.results.length === 2 && s.batch.results.some((r) => /Close up/.test(r.path)));
+      check('the playhead is put back', near((await ok('timeline.state')).time, 0.5));
+    });
+}

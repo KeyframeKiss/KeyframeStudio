@@ -22,6 +22,7 @@ namespace StudioEX.Bridge.Api
     {
         private static ShotApi _i;
         private static List<Dictionary<string, object>> _shots = new List<Dictionary<string, object>>();
+        internal static List<Dictionary<string, object>> All => _shots;
         private static Coroutine _queue;
         private static readonly Dictionary<string, object> QueueState = new Dictionary<string, object> { { "running", false } };
 
@@ -89,7 +90,7 @@ namespace StudioEX.Bridge.Api
             return _shots;
         }
 
-        private static bool ApplyCamera(Dictionary<string, object> shot)
+        internal static bool ApplyCamera(Dictionary<string, object> shot)
         {
             var cam = shot.GetObject("cam");
             if (cam == null) return false;

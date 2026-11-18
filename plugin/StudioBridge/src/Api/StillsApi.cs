@@ -1,0 +1,270 @@
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using BepInEx.Bootstrap;
+using HarmonyLib;
+using UnityStandardAssets.ImageEffects;
+using Studio;
+using StudioEX.Bridge.Net;
+using UnityEngine;
+
+namespace StudioEX.Bridge.Api
+{
+    /// <summary>
+    /// Still images of Studio's camera: supersampled (rendered larger, scaled down), PNG or JPG, optionally with a
+    /// transparent background. Screencap (Screenshot Manager, in BepisPlugins) does the capture when installed —
+    /// it's needed for transparency; ours renders the camera itself otherwise. Batches take one picture per saved
+    /// view or per shot and put the camera and playhead back afterwards.
+    /// </summary>
+    internal static class StillsApi
+    {
+        private const string ScreencapGuid = "com.bepis.bepinex.screenshotmanager";
+        private static bool _useScreencap = true;
+
+        // a running batch
+        private static bool _running;
+        private static int _done, _total;
+        private static string _current, _error;
+        private static readonly List<object> _results = new List<object>();
+
+        public static void Register(CommandRouter r)
+        {
+            r.Add("still.status", a => Status());
+            r.Add("still.capture", a =>
+            {
+                if (_running) throw new BridgeException("A batch of pictures is being taken");
+                return Capture(Options(a), a.GetString("name"));
+            });
+            r.Add("still.batch", StartBatch);
+            r.Add("still.set", a => { if (a.Has("useScreencap")) _useScreencap = a.GetBool("useScreencap", true); return Status(); });
+        }
+
+        private static bool ScreencapInstalled => Chainloader.PluginInfos.ContainsKey(ScreencapGuid);
+
+        private static string Folder => Path.GetFullPath(Path.Combine(UserData.Path, "cap"));
+
+        private static Dictionary<string, object> Status() => new Dictionary<string, object>
+        {
+            { "screencap", ScreencapInstalled }, { "useScreencap", _useScreencap }, { "folder", Folder },
+            { "screen", new List<object> { Screen.width, Screen.height } },
+            { "batch", new Dictionary<string, object> { { "running", _running }, { "done", _done }, { "total", _total }, { "current", _current }, { "error", _error }, { "results", _results.ToList() } } },
+        };
+
+        private sealed class Opts
+        {
+            public int Width, Height, Supersample = 2, Quality = 95;
+            public bool Transparent, Jpg;
+        }
+
+        private static Opts Options(Dictionary<string, object> a)
+        {
+            var o = new Opts
+            {
+                Width = a.GetInt("width", Screen.width),
+                Height = a.GetInt("height", Screen.height),
+                Supersample = Mathf.Clamp(a.GetInt("supersample", 2), 1, 4),
+                Transparent = a.GetBool("transparent"),
+                Jpg = a.GetString("format") == "jpg",
+                Quality = Mathf.Clamp(a.GetInt("quality", 95), 50, 100),
+            };
+            if (o.Width < 16 || o.Height < 16) throw new BridgeException("That size is too small");
+            if ((long)o.Width * o.Supersample * o.Height * o.Supersample > 8192L * 8192L) throw new BridgeException("Too big: lower the size or the quality (supersampling)");
+            if (o.Transparent && o.Jpg) throw new BridgeException("JPG can't be transparent — use PNG");
+            if (o.Transparent && !ScreencapInstalled) throw new BridgeException("Transparent pictures need Screencap (Screenshot Manager from BepisPlugins)");
+            return o;
+        }
+
+        // ------------------------------------------------------------------ one picture
+
+        private static object Capture(Opts o, string name)
+        {
+            if (RenderApi.Busy()) throw new BridgeException("VideoExport is recording");
+            Texture2D tex = null;
+            string provider;
+            bool theirs = ScreencapInstalled && (_useScreencap || o.Transparent);
+            if (theirs && (tex = ScreencapCapture(o)) != null) provider = "Screencap";
+            else
+            {
+                if (o.Transparent) throw new BridgeException("Screencap couldn't take the picture");
+                tex = OurCapture(o);
+                provider = "Keyframe Studio";
+            }
+            try
+            {
+                Directory.CreateDirectory(Folder);
+                string safe = string.IsNullOrEmpty(name) ? "" : "-" + new string(name.Select(ch => Path.GetInvalidFileNameChars().Contains(ch) ? '_' : ch).ToArray());
+                string file = Path.Combine(Folder, "KeyframeStudio-" + DateTime.Now.ToString("yyyyMMdd-HHmmss-fff") + safe + (o.Jpg ? ".jpg" : ".png"));
+                File.WriteAllBytes(file, o.Jpg ? tex.EncodeToJPG(o.Quality) : tex.EncodeToPNG());
+                return new Dictionary<string, object>
+                {
+                    { "path", file }, { "folder", Folder }, { "provider", provider },
+                    { "width", tex.width }, { "height", tex.height }, { "thumb", Thumb(tex, 240) },
+                };
+            }
+            finally { UnityEngine.Object.Destroy(tex); }
+        }
+
+        private static Texture2D ScreencapCapture(Opts o)
+        {
+            try
+            {
+                var inst = Chainloader.PluginInfos[ScreencapGuid].Instance;
+                var m = AccessTools.Method(inst.GetType(), "Capture", new[] { typeof(int), typeof(int), typeof(int), typeof(bool) });
+                return m?.Invoke(inst, new object[] { o.Width, o.Height, o.Supersample, o.Transparent }) as Texture2D;
+            }
+            catch (Exception e)
+            {
+                StudioBridgePlugin.Logger.LogWarning("Screencap: " + (e.InnerException ?? e).Message);
+                return null;
+            }
+        }
+
+        /// <summary>Render Studio's camera at (size × supersample) and scale down in halving steps (smooth, no shimmer).</summary>
+        private static Texture2D OurCapture(Opts o)
+        {
+            var cam = Camera.main ?? throw new BridgeException("No camera");
+            int w = o.Width * o.Supersample, h = o.Height * o.Supersample;
+            var big = RenderTexture.GetTemporary(w, h, 24, RenderTextureFormat.ARGB32);
+            var prevTarget = cam.targetTexture;
+            var dof = cam.GetComponent<DepthOfField>();
+            float blur = dof != null ? dof.maxBlurSize : 0;
+            if (dof != null) dof.maxBlurSize = blur * w / Mathf.Max(1, Screen.width); // the same blur at the bigger size
+            try
+            {
+                cam.targetTexture = big;
+                cam.Render();
+            }
+            finally
+            {
+                cam.targetTexture = prevTarget;
+                cam.ResetAspect();
+                if (dof != null) dof.maxBlurSize = blur;
+            }
+            var cur = big;
+            while (cur.width / 2 >= o.Width && cur.height / 2 >= o.Height)
+            {
+                var half = RenderTexture.GetTemporary(cur.width / 2, cur.height / 2, 0, RenderTextureFormat.ARGB32);
+                half.filterMode = FilterMode.Bilinear;
+                cur.filterMode = FilterMode.Bilinear;
+                Graphics.Blit(cur, half);
+                RenderTexture.ReleaseTemporary(cur);
+                cur = half;
+            }
+            var fin = RenderTexture.GetTemporary(o.Width, o.Height, 0, RenderTextureFormat.ARGB32);
+            cur.filterMode = FilterMode.Bilinear;
+            Graphics.Blit(cur, fin);
+            RenderTexture.ReleaseTemporary(cur);
+            var prev = RenderTexture.active;
+            RenderTexture.active = fin;
+            var tex = new Texture2D(o.Width, o.Height, TextureFormat.RGB24, false);
+            tex.ReadPixels(new Rect(0, 0, o.Width, o.Height), 0, 0);
+            tex.Apply();
+            RenderTexture.active = prev;
+            RenderTexture.ReleaseTemporary(fin);
+            return tex;
+        }
+
+        private static string Thumb(Texture2D src, int size)
+        {
+            try
+            {
+                float aspect = (float)src.width / src.height;
+                int w = aspect >= 1 ? size : Mathf.RoundToInt(size * aspect), h = aspect >= 1 ? Mathf.RoundToInt(size / aspect) : size;
+                var rt = RenderTexture.GetTemporary(w, h, 0, RenderTextureFormat.ARGB32);
+                Graphics.Blit(src, rt);
+                var prev = RenderTexture.active;
+                RenderTexture.active = rt;
+                var t = new Texture2D(w, h, TextureFormat.RGB24, false);
+                t.ReadPixels(new Rect(0, 0, w, h), 0, 0);
+                t.Apply();
+                RenderTexture.active = prev;
+                RenderTexture.ReleaseTemporary(rt);
+                var jpg = t.EncodeToJPG(80);
+                UnityEngine.Object.Destroy(t);
+                return "data:image/jpeg;base64," + Convert.ToBase64String(jpg);
+            }
+            catch { return null; }
+        }
+
+        // ------------------------------------------------------------------ batches
+
+        /// <summary>args: {kind: "views" | "shots", …options} — one picture per saved view or per shot (at its start, through its camera).</summary>
+        private static object StartBatch(Dictionary<string, object> a)
+        {
+            if (_running) throw new BridgeException("Already taking pictures");
+            var o = Options(a);
+            string kind = a.GetString("kind");
+            var s = Singleton<Studio.Studio>.Instance;
+            var jobs = new List<KeyValuePair<string, Action>>();
+            if (kind == "views")
+            {
+                var reset = s.cameraCtrl.ExportResetData();
+                for (int i = 0; i < s.sceneInfo.cameraData.Length; i++)
+                {
+                    var d = s.sceneInfo.cameraData[i];
+                    if (!CameraApi.Used(d, reset)) continue;
+                    int idx = i;
+                    jobs.Add(new KeyValuePair<string, Action>("view " + (i + 1), () => s.cameraCtrl.Import(s.sceneInfo.cameraData[idx])));
+                }
+                if (jobs.Count == 0) throw new BridgeException("No saved views yet — save some in Shoot › Shots & camera");
+            }
+            else if (kind == "shots")
+            {
+                var shots = (ShotApi.All ?? new List<Dictionary<string, object>>()).ToList();
+                if (shots.Count == 0) throw new BridgeException("No shots yet — add some in Shoot › Shots & camera");
+                foreach (var shot in shots)
+                {
+                    var sh = shot;
+                    jobs.Add(new KeyValuePair<string, Action>(sh.GetString("name") ?? "shot", () =>
+                    {
+                        TimelineApi.SeekTo((float)sh.GetDouble("start"));
+                        ShotApi.ApplyCamera(sh);
+                    }));
+                }
+            }
+            else throw new BridgeException("Pick saved views or shots");
+            _running = true;
+            _done = 0;
+            _total = jobs.Count;
+            _error = null;
+            _results.Clear();
+            StudioBridgePlugin.Instance.StartCoroutine(RunBatch(jobs, o));
+            return Status();
+        }
+
+        private static IEnumerator RunBatch(List<KeyValuePair<string, Action>> jobs, Opts o)
+        {
+            var s = Singleton<Studio.Studio>.Instance;
+            var camBack = s.cameraCtrl.Export();
+            float fovBack = s.cameraCtrl.fieldOfView;
+            float timeBack = TimelineApi.PlaybackTime();
+            try
+            {
+                foreach (var job in jobs)
+                {
+                    _current = job.Key;
+                    try { job.Value(); }
+                    catch (Exception e) { _error = job.Key + ": " + e.Message; continue; }
+                    // let the pose / camera settle (Timeline applies on the next frames)
+                    yield return null;
+                    yield return null;
+                    yield return new WaitForEndOfFrame();
+                    try { _results.Add(Capture(o, job.Key)); }
+                    catch (Exception e) { _error = job.Key + ": " + e.Message; }
+                    _done++;
+                }
+            }
+            finally
+            {
+                s.cameraCtrl.Import(camBack);
+                s.cameraCtrl.fieldOfView = fovBack;
+                if (TimelineApi.Available) TimelineApi.SeekTo(timeBack);
+                _running = false;
+                _current = null;
+                StudioBridgePlugin.Instance?.Broadcast("still.batchDone", Status());
+            }
+        }
+    }
+}

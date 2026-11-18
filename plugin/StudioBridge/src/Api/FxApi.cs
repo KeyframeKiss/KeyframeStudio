@@ -85,6 +85,28 @@ namespace StudioEX.Bridge.Api
             };
         }
 
+        /// <summary>For looks: every effect's values (on/off included).</summary>
+        public static Dictionary<string, object> Effects() => (Dictionary<string, object>)State()["effects"];
+
+        /// <summary>For looks: blend towards saved effects (numbers and colours by strength; on/off from the look past halfway). Undoable.</summary>
+        public static void ApplyEffects(Dictionary<string, object> all, float strength)
+        {
+            foreach (var e in all)
+            {
+                if (!Defaults.ContainsKey(e.Key) || !(e.Value is Dictionary<string, object> vals)) continue;
+                var next = CloneOne(_fx[e.Key]);
+                foreach (var v in vals)
+                {
+                    if (!Defaults[e.Key].TryGetValue(v.Key, out var def)) continue;
+                    var target = Parse(def, v.Value);
+                    if (target is float tf) next[v.Key] = Mathf.Lerp((float)next[v.Key], tf, strength);
+                    else if (target is float[] tc) { var cur = (float[])next[v.Key]; next[v.Key] = Enumerable.Range(0, 4).Select(i => Mathf.Lerp(cur[i], tc[i], strength)).ToArray(); }
+                    else if (strength >= 0.5f) next[v.Key] = target;
+                }
+                Change(e.Key, next, "look|" + e.Key);
+            }
+        }
+
         private static object Wire(object v) => v is float[] a ? a.Select(x => (object)(double)x).ToList() : v is float f ? (double)f : v;
 
         /// <summary>args: {effect, values: {name: value}} — only the given values change.</summary>

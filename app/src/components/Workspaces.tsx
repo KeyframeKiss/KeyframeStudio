@@ -23,6 +23,7 @@ import { LightRigsPanel } from './LightRigsPanel';
 import { LookPanel } from './LookPanel';
 import { MaterialEditorPage } from './MaterialEditor';
 import { EffectsPage } from './EffectsPage';
+import { StillsPage } from './StillsPage';
 import { AimLightsPanel, ProjectorsPanel } from './ProjectorsPanel';
 import { StudioWindowPage } from './StudioWindowPage';
 import { LookPresets } from './LookPresets';
@@ -414,6 +415,7 @@ const SHOOT_TABS: SubTab[] = [
   { id: 'shots', label: 'Shots & camera', icon: 'camera', hint: 'Shots, saved views, camera keys and moves, over the timeline' },
   { id: 'audio', label: 'Audio', icon: 'pulse', hint: 'The audio track that plays with the timeline' },
   { id: 'render', label: 'Render', icon: 'record', hint: 'Make a video with VideoExport' },
+  { id: 'stills', label: 'Stills', icon: 'camera', hint: 'High-quality pictures: supersampled, transparent background, one per saved view or shot' },
   { id: 'templates', label: 'Templates', icon: 'library', hint: "A scene's staging, reused in another scene" },
 ];
 
@@ -436,6 +438,11 @@ export function ShootWorkspace() {
           {tab === 'render' && (
             <div className="subpage">
               <RenderPanel />
+            </div>
+          )}
+          {tab === 'stills' && (
+            <div className="subpage">
+              <StillsPage />
             </div>
           )}
           {tab === 'templates' && (

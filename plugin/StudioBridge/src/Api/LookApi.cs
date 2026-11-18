@@ -25,7 +25,7 @@ namespace StudioEX.Bridge.Api
     /// </summary>
     internal static class LookApi
     {
-        public static readonly string[] Groups = { "effects", "toon", "lights", "materials" };
+        public static readonly string[] Groups = { "effects", "toon", "lights", "materials", "fx", "projectors", "xukmi" };
 
         private static string Folder => Path.GetFullPath(Path.Combine(UserData.Path, "StudioEX/looks"));
 
@@ -408,6 +408,9 @@ namespace StudioEX.Bridge.Api
                     if (rules.Count > 0) d["materials"] = rules;
                     continue;
                 }
+                if (g == "fx") { d["fx"] = FxApi.Effects(); continue; }
+                if (g == "projectors") { var p = LightsApi.CaptureProjectors(Anchor(null)); if (p.Count > 0) d["projectors"] = p; continue; }
+                if (g == "xukmi") { var x = XukmiFx.CaptureItems(); if (x.Count > 0) d["xukmi"] = x; continue; }
                 if (!snap.ContainsKey(g)) continue;
                 d[g] = snap[g];
             }
@@ -440,6 +443,30 @@ namespace StudioEX.Bridge.Api
                 if (preset.ContainsKey(g) && (groups.Count == 0 || groups.Contains(g))) filtered[g] = preset[g];
             if (filtered.ContainsKey("materials") && a.Has("ids")) filtered["materialsTargets"] = a.GetList("ids");
             float strength = a.Has("strength") ? a.GetFloat("strength") : 1f;
+            // everything the look touches is one undo step
+            UndoStack.BeginGroup();
+            try { ApplyFiltered(filtered, strength, a); }
+            finally { UndoStack.EndGroup("Apply look"); }
+            return Get();
+        }
+
+        /// <summary>The character looks are placed around: the first one asked for, else the first in the scene.</summary>
+        private static Transform Anchor(List<object> ids)
+        {
+            var s = Singleton<Studio.Studio>.Instance;
+            var c = (ids ?? new List<object>()).Select(i => SceneApi.FindOci(Convert.ToInt32(i)) as OCIChar).FirstOrDefault(x => x != null)
+                ?? s.dicObjectCtrl.OrderBy(kv => kv.Key).Select(kv => kv.Value as OCIChar).FirstOrDefault(x => x != null);
+            return c?.charInfo != null ? c.charInfo.transform : null;
+        }
+
+        private static void ApplyFiltered(Dictionary<string, object> filtered, float strength, Dictionary<string, object> a)
+        {
+            if (filtered.GetObject("fx") is Dictionary<string, object> fx) FxApi.ApplyEffects(fx, strength);
+            if (filtered.ContainsKey("projectors") && filtered["projectors"] is List<object> pl && strength >= 0.5f) LightsApi.AddProjectors(pl, Anchor(a.GetList("ids")));
+            if (filtered.ContainsKey("xukmi") && filtered["xukmi"] is List<object> xl) XukmiFx.ApplyItems(xl, strength);
+            filtered.Remove("fx");
+            filtered.Remove("projectors");
+            filtered.Remove("xukmi");
             UndoStack.Push(new LookUndo(Snapshot(), "preset:" + a.GetString("file")));
             if (filtered.ContainsKey("materials") && MaterialLookApi.Available)
             {
@@ -450,7 +477,6 @@ namespace StudioEX.Bridge.Api
                 MaterialLookApi.ApplyRules(mats, a.GetList("ids"), strength);
             }
             else Apply(filtered, strength);
-            return Get();
         }
 
         private static object DeletePreset(Dictionary<string, object> a)

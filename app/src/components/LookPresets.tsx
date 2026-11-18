@@ -25,6 +25,9 @@ const GROUPS = [
   { id: 'toon', label: 'Toon' },
   { id: 'lights', label: 'Lights' },
   { id: 'materials', label: 'Materials' },
+  { id: 'fx', label: 'Built-in effects' },
+  { id: 'projectors', label: 'Projectors' },
+  { id: 'xukmi', label: 'xukmi FX' },
 ] as const;
 
 /** Tell every look view to re-read the scene's look after a preset/reset. */
@@ -36,7 +39,7 @@ export function LookPresets({ wide }: { wide?: boolean }) {
   const rules = useStore((s) => s.lookRules);
   const [presets, setPresets] = useState<Preset[]>([]);
   const [strength, setStrength] = useState(1);
-  const [groups, setGroups] = useState<Set<string>>(new Set(['effects', 'toon', 'lights', 'materials']));
+  const [groups, setGroups] = useState<Set<string>>(new Set(['effects', 'toon', 'lights', 'materials', 'fx', 'projectors', 'xukmi']));
   const [saveName, setSaveName] = useState('');
   const [menu, setMenu] = useState<{ x: number; y: number; items: MenuItem[] } | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<Preset | null>(null);

@@ -33,9 +33,43 @@ namespace StudioEX.Bridge.Api
             r.Add("timeline.redo", a => Redo());
         }
 
+        private static List<IUndoEntry> _group;
+
+        /// <summary>Collect everything pushed until <see cref="EndGroup"/> into one undo step (e.g. applying a look).</summary>
+        public static void BeginGroup() => _group = new List<IUndoEntry>();
+
+        public static void EndGroup(string label)
+        {
+            var g = _group;
+            _group = null;
+            if (g == null || g.Count == 0) return;
+            _lastPush = -10f; // a group never merges into the step before it
+            Push(g.Count == 1 ? g[0] : new GroupUndo(g, label));
+        }
+
+        private sealed class GroupUndo : IUndoEntry
+        {
+            private readonly List<IUndoEntry> _parts; // in the order they happened
+            public GroupUndo(List<IUndoEntry> parts, string label) { _parts = parts; Label = label; }
+            public string Label { get; }
+            public bool Absorbs(IUndoEntry newer) => false;
+            public IUndoEntry Restore()
+            {
+                // undo last-first; the inverses happen in that order, so they redo in it too
+                var inverse = new List<IUndoEntry>();
+                for (int i = _parts.Count - 1; i >= 0; i--)
+                {
+                    var inv = _parts[i].Restore();
+                    if (inv != null) inverse.Add(inv);
+                }
+                return new GroupUndo(inverse, Label);
+            }
+        }
+
         public static void Push(IUndoEntry e)
         {
             if (e == null) return;
+            if (_group != null) { _group.Add(e); return; }
             float now = Time.unscaledTime;
             if (Undos.Count > 0 && now - _lastPush < MergeWindow && Undos[Undos.Count - 1].Absorbs(e))
             {

@@ -5176,3 +5176,52 @@ html.frameless .tooltip {
     grid-template-columns: 1fr 1fr;
   }
 }
+
+/* Shoot › Stills */
+.still-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.still-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 10px;
+}
+.still {
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+  background: repeating-conic-gradient(var(--bg-3) 0 25%, var(--bg-2) 0 50%) 0 0 / 14px 14px;
+}
+.still img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  object-fit: contain;
+}
+.still figcaption {
+  display: flex;
+  flex-direction: column;
+  padding: 6px 8px;
+  background: var(--bg-1);
+  font-size: 11px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.still figcaption small {
+  color: var(--text-2);
+}
+.render-page .cleanup-row > .switch {
+  flex: none;
+  width: 30px;
+  margin-left: auto;
+}
+.render-page .cleanup-row > span:first-child:has(.help-q) {
+  width: auto;
+  flex: 1;
+}

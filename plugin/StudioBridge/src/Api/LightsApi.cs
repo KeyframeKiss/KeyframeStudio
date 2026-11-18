@@ -179,6 +179,67 @@ namespace StudioEX.Bridge.Api
             { "modes", Modes.Cast<object>().ToList() },
         };
 
+        // ------------------------------------------------------------------ for looks: relative to a character
+
+        /// <summary>Projectors in the scene, positioned relative to <paramref name="anchor"/> (or the world when null).</summary>
+        public static List<object> CaptureProjectors(Transform anchor)
+        {
+            var list = new List<object>();
+            foreach (var kv in ProjectorFolders())
+            {
+                var t = kv.Value.objectItem.transform;
+                var pos = anchor != null ? Quaternion.Inverse(Yaw(anchor)) * (t.position - anchor.position) : t.position;
+                var rot = anchor != null ? Quaternion.Inverse(Yaw(anchor)) * t.rotation : t.rotation;
+                list.Add(new Dictionary<string, object>
+                {
+                    { "values", ProjectorOf(kv.Value).Data.Wire() }, { "visible", kv.Value.treeNodeObject == null || kv.Value.treeNodeObject.visible },
+                    { "pos", new List<object> { (double)pos.x, (double)pos.y, (double)pos.z } }, { "rot", new List<object> { (double)rot.eulerAngles.x, (double)rot.eulerAngles.y, (double)rot.eulerAngles.z } },
+                    { "relative", anchor != null },
+                });
+            }
+            return list;
+        }
+
+        /// <summary>Same settings and (within a centimetre / half a degree) the same place.</summary>
+        private static bool SameProjector(Dictionary<string, object> a, Dictionary<string, object> b)
+        {
+            if (Json.Serialize(a["values"]) != Json.Serialize(b["values"])) return false;
+            float[] V(Dictionary<string, object> d, string k) => ((List<object>)d[k]).Select(x => Convert.ToSingle(x, CultureInfo.InvariantCulture)).ToArray();
+            var pa = V(a, "pos"); var pb = V(b, "pos");
+            var ra = Quaternion.Euler(V(a, "rot")[0], V(a, "rot")[1], V(a, "rot")[2]);
+            var rb = Quaternion.Euler(V(b, "rot")[0], V(b, "rot")[1], V(b, "rot")[2]);
+            return Vector3.Distance(new Vector3(pa[0], pa[1], pa[2]), new Vector3(pb[0], pb[1], pb[2])) < 0.01f && Quaternion.Angle(ra, rb) < 0.5f;
+        }
+
+        private static Quaternion Yaw(Transform t) => Quaternion.Euler(0, t.eulerAngles.y, 0);
+
+        /// <summary>Add a look's projectors (skipping ones already there with the same values and place). Undoable.</summary>
+        public static int AddProjectors(List<object> list, Transform anchor)
+        {
+            int n = 0;
+            var existing = CaptureProjectors(anchor).OfType<Dictionary<string, object>>().ToList();
+            foreach (var o in list.OfType<Dictionary<string, object>>())
+            {
+                if (existing.Any(e => SameProjector(e, o))) continue; // applying a look twice shouldn't double it
+                var d = new ProjData();
+                if (o["values"] is Dictionary<string, object> v) d.Read(v);
+                var p = (o["pos"] as List<object>)?.Select(x => Convert.ToSingle(x, CultureInfo.InvariantCulture)).ToArray() ?? new float[3];
+                var r = (o["rot"] as List<object>)?.Select(x => Convert.ToSingle(x, CultureInfo.InvariantCulture)).ToArray() ?? new float[3];
+                Vector3 pos = new Vector3(p[0], p[1], p[2]);
+                Quaternion rot = Quaternion.Euler(r[0], r[1], r[2]);
+                if (o.GetBool("relative") && anchor != null) { pos = anchor.position + Yaw(anchor) * pos; rot = Yaw(anchor) * rot; }
+                var f = AddObjectFolder.Add();
+                f.name = Title(d);
+                f.objectInfo.changeAmount.pos = pos;
+                f.objectInfo.changeAmount.rot = rot.eulerAngles;
+                Attach(f, d);
+                if (!o.GetBool("visible", true) && f.treeNodeObject != null) f.treeNodeObject.SetVisible(false);
+                UndoStack.Push(new ProjAddUndo(f, d));
+                n++;
+            }
+            return n;
+        }
+
         private static string Title(ProjData d) =>
             "Projector · " + char.ToUpperInvariant(d.Shape[0]) + d.Shape.Substring(1) + (d.Mode == "light" ? "" : " " + d.Mode);
 
