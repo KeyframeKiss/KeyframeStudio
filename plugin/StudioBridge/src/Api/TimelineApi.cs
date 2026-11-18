@@ -221,6 +221,7 @@ namespace StudioEX.Bridge.Api
             r.Add("timeline.setKeyValue", SetKeyValue);
             r.Add("timeline.resetPose", a => ResetPose());
             RegisterExtras(r);
+            RegisterCleanup(r);
 
         }
 

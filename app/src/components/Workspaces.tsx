@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { bridge } from '../bridge/client';
 import { call, displayName, selectedCharacters, toast, useStore, type LibraryPage } from '../state/store';
 import { AddTrackPanel } from './AddTrackPanel';
+import { CleanupPanel } from './CleanupPanel';
 import { AnimationBrowser } from './AnimationBrowser';
 import { CameraPanel } from './CameraPanel';
 import { CharacterPanel } from './CharacterPanel';
@@ -123,6 +124,7 @@ export function AnimateWorkspace() {
         tabs={[
           { id: 'inspector', label: 'Inspector', render: () => <Inspector /> },
           { id: 'object', label: 'Transform', render: () => <ObjectPanel /> },
+          { id: 'cleanup', label: 'Cleanup', render: () => <CleanupPanel /> },
         ]}
       />
     </div>

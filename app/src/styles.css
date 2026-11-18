@@ -2627,3 +2627,67 @@ select {
   margin: 0 0 14px -6px;
   user-select: none;
 }
+
+/* Animate › Cleanup */
+.cleanup .btn.wide {
+  width: 100%;
+  justify-content: center;
+}
+.cleanup-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.cleanup-row > span:first-child {
+  width: 58px;
+  flex: none;
+  color: var(--text-2);
+  font-size: 11px;
+}
+.cleanup-row > :nth-child(2) {
+  flex: 1;
+  min-width: 0;
+}
+.cleanup-presets {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 4px;
+  margin-bottom: 8px;
+}
+.cleanup-list {
+  margin-top: 8px;
+  display: grid;
+  gap: 4px;
+}
+.cleanup-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.cleanup-jump {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  border: 1px solid var(--line-soft);
+  background: var(--bg-1);
+  border-radius: 6px;
+  padding: 5px 8px;
+  color: var(--text-1);
+  cursor: pointer;
+}
+.cleanup-jump:hover {
+  border-color: var(--accent-2);
+}
+.cleanup-jump b {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cleanup-jump small {
+  color: var(--text-3);
+  font-size: 10px;
+}

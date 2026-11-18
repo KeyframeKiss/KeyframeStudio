@@ -44,6 +44,8 @@ namespace StudioEX.Bridge
             gameObject.AddComponent<PoseThumbs>();
             PoseThumbs.Register(_router);
             LibraryMeta.Register(_router);
+            gameObject.AddComponent<MotionSampler>();
+            MotionSampler.Register(_router);
             gameObject.AddComponent<PreviewStream>(); // experimental live preview (roadmap Phase 3 spike)
             PreviewStream.Register(_router);
             CoreApi.Register(_router);

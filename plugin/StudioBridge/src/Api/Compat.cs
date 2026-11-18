@@ -45,7 +45,7 @@ namespace StudioEX.Bridge.Api
             {
                 Id = "timeline", Label = "Animation (dope sheet, graph, keys, auto-key, ghosts)",
                 ModName = "Timeline", Guid = StudioBridgePlugin.TimelineGuid, Tested = new[] { "1.3.0" },
-                Probe = TimelineApi.Probe, Prefixes = new[] { "timeline." },
+                Probe = TimelineApi.Probe, Prefixes = new[] { "timeline.", "motion." },
             },
             new Feature
             {

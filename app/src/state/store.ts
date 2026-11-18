@@ -564,6 +564,8 @@ async function edit<T>(cmd: string, args: Record<string, unknown>, reselect?: Ke
   await refreshTimeline();
   return r;
 }
+/** For panels: run an undoable timeline command, refresh, and re-select the given keys afterwards. */
+export const editTimeline = edit;
 
 export function moveSelectedKeys(dt: number) {
   const refs = selectedKeyRefs();

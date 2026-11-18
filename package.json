@@ -4,6 +4,7 @@
   "description": "Repository scripts. The app lives in app/, the CharaStudio plugin in plugin/.",
   "scripts": {
     "test": "node tests/run.mjs",
-    "test:list": "node tests/run.mjs --list"
+    "test:list": "node tests/run.mjs --list",
+    "test:unit": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test \"tests/unit/*.test.mjs\""
   }
 }

@@ -37,6 +37,13 @@ namespace StudioEX.Bridge.Api
         private Coroutine _bake;
         private float _nextGhostCheck;
 
+        /// <summary>A long job (motion sampling) keeps the bridge paused; call every frame so the watchdog waits.</summary>
+        public static void HoldBusy()
+        {
+            Busy = true;
+            _busySince = Time.unscaledTime;
+        }
+
         /// <summary>Safety net: a bake never takes more than a few frames; if Busy sticks, release it.</summary>
         public static void Watchdog()
         {

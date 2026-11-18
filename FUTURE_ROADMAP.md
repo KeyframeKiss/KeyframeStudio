@@ -290,6 +290,14 @@ Reuses the bone sampling already used for motion paths.
 - Curve smoothing and retiming tools.
 - Preview suggested fixes; undo each one individually.
 
+**Status (2026-11-17): done** (Animate › Cleanup). The tools work on the selected keys, or all keys of the selected tracks. Each fix is one undo step.
+- **Smooth:** strength and passes.
+- **Retime:** 50–200% or a custom amount, around the first key or the playhead, snapped to frames.
+- **Make loop:** each track ends on its starting value.
+- **Find sudden moves:** finds the stray key behind each spike. **Fix** puts it back on the line between its neighbours, which stay untouched.
+- **Check foot sliding:** samples the feet over the timeline and lists the ranges where a planted foot slides. There's no automatic fix; you key the foot in place.
+- The math is unit-tested (`npm run test:unit`). The plugin side is in suite 13.
+
 **Deliverable:** Faster animation authoring with less manual keyframe work.
 
 ---

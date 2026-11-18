@@ -31,6 +31,8 @@ export async function connectRenderer(port) {
       if (r.result?.exceptionDetails) throw new Error(r.result.exceptionDetails.exception?.description ?? 'renderer error');
       return r.result?.result?.value;
     },
+    /** Any DevTools Protocol command, e.g. Page.captureScreenshot. */
+    cmd: async (method, params) => (await send(method, params)).result,
     close: () => ws.close(),
   };
 }
