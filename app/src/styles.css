@@ -2691,3 +2691,11 @@ select {
   color: var(--text-3);
   font-size: 10px;
 }
+
+/* Animate › Camera › Camera moves */
+.cam-moves {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+  margin-bottom: 8px;
+}

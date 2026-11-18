@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { bridge } from '../bridge/client';
 import { call, liveTime, refreshTimeline, seekNow, toast, useStore } from '../state/store';
+import { CameraMoves } from './CameraMoves';
 import { Slider } from './CharacterPanel';
 
 import { pressable } from '../lib/pressable';
@@ -143,6 +144,8 @@ export function CameraPanel() {
           </div>
         </div>
       )}
+
+      {st.timeline && <CameraMoves onDone={load} />}
 
       {st.cameras.length > 0 && (
         <div className="section">

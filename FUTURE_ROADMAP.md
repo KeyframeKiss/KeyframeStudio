@@ -219,6 +219,11 @@ Extends the existing ten camera slots and camera keying.
 - Focus point selection, composition guides, and safe areas.
 - Camera movement presets and visual transition editing.
 
+**Status (2026-11-17): camera moves done** (Animate › Camera › Camera moves).
+- **Moves:** orbit, dolly, zoom, pan, crane and truck. Each has a direction and an amount, a length, and smooth or linear easing.
+- **Keying:** keys are written from the camera as framed at the playhead. Orbits and pans get a key every 45°, because Timeline turns the camera along the shortest path. Moves chain (the next starts where the last ended). Camera keys inside the range are replaced. One undo step per move.
+- **Not done:** direct camera handles, paths and composition guides in the viewport. They need the Phase 2 overlays, which were skipped.
+
 ### 4.4 Interactive Lighting
 Extends the existing Look workspace.
 
