@@ -3842,3 +3842,32 @@ html.frameless .tooltip {
   color: var(--text-3);
   padding: 4px 0 0 92px;
 }
+
+/* Auto + its options (transport) */
+.split-btn {
+  display: inline-flex;
+}
+.split-btn > .btn:first-child {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.split-btn .split-btn-more {
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  padding: 0 5px;
+  margin-left: 1px;
+}
+/* Animate › Face: shows the shared auto-key state */
+.face-auto {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  color: var(--text-3);
+}
+.face-auto.on {
+  color: var(--text-1);
+}
+.face-auto.on .rec-dot {
+  background: #ff4d6d;
+}

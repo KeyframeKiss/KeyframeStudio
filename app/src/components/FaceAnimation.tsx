@@ -45,15 +45,6 @@ export async function keyFace(chars: number[], models: string[]) {
   return (await editTimeline<number>('timeline.addKeys', { tracks: ids, t: liveTime() })) ?? 0;
 }
 
-const lsBool = (k: string, d: boolean) => {
-  try {
-    const v = localStorage.getItem(k);
-    return v == null ? d : v === '1';
-  } catch {
-    return d;
-  }
-};
-
 export function FaceAnimation() {
   const status = useStore((s) => s.status);
   const selection = useStore((s) => s.studioSelection);
@@ -65,7 +56,9 @@ export function FaceAnimation() {
   useStore((s) => s.showEnglish);
   const chars = useMemo(() => selectedCharacters(), [selection, nodes]); // eslint-disable-line react-hooks/exhaustive-deps
   const id = chars[0];
-  const [autoKey, setAutoKey] = useState(() => lsBool('kf.face.autokey', true));
+  // one auto-key for everything: the transport's Auto (R) also keys the changes made here
+  const autoKey = useStore((s) => s.autoKey);
+  const autoNew = useStore((s) => s.autoKeyNew);
   const [img, setImg] = useState<string | null>(null);
 
   // ---------------- close-up (one request in flight; not while playing) ----------------
@@ -107,7 +100,9 @@ export function FaceAnimation() {
     }
     window.clearTimeout(timer.current);
     timer.current = window.setTimeout(() => {
-      const models = [...toKey.current];
+      // like auto-key in Studio: without "also animate things that aren't animated yet", only existing tracks get keys
+      const tr = useStore.getState().tracks;
+      const models = [...toKey.current].filter((m) => autoNew || chars.some((c) => faceTrack(tr, c, m)));
       toKey.current.clear();
       if (models.length) keyFace(chars, models);
     }, 300);
@@ -133,15 +128,6 @@ export function FaceAnimation() {
       </div>
     );
 
-  const toggleAuto = () => {
-    setAutoKey(!autoKey);
-    try {
-      localStorage.setItem('kf.face.autokey', autoKey ? '0' : '1');
-    } catch {
-      /* storage unavailable */
-    }
-  };
-
   return (
     <div className="face-anim">
       <div className="face-anim-bar">
@@ -150,9 +136,9 @@ export function FaceAnimation() {
         {chars.length > 1 && <span className="kbd">+{chars.length - 1}</span>}
         <span className="sel-bar-sub">at {time.toFixed(2)}s</span>
         <span style={{ flex: 1 }} />
-        <button className={`btn ${autoKey ? 'on' : 'solid'}`} onClick={toggleAuto} title="On: every change below is keyed at the playhead. Off: change freely, then press Key face.">
-          <span className={`rec-dot ${autoKey ? 'live' : ''}`} /> Key as I change
-        </button>
+        <span className={`face-auto ${autoKey ? 'on' : ''}`} title="Auto-key is the Auto button under the timeline (R)">
+          <span className="rec-dot" /> {autoKey ? (autoNew ? 'Auto-key: changes are keyed' : 'Auto-key: changes to animated parts are keyed') : 'Auto-key off — press Key face'}
+        </span>
         <button
           className="btn primary"
           onClick={async () => {
@@ -169,7 +155,7 @@ export function FaceAnimation() {
         <div className="face-anim-controls">
           <ExpressionControls ids={chars} onChanged={onChanged} watch={stepTime} badge={(f) => (keyedHere.has(f) ? <span className="key-badge" title="Keyed at the playhead">◆</span> : null)} />
           <div className="face-hint" style={{ margin: '6px 2px 10px' }}>
-            {autoKey ? 'Changes are keyed at the playhead. ' : 'Not keying — press Key face when it looks right. '}
+            {autoKey ? 'Auto-key is on (Auto, under the timeline): changes are keyed at the playhead. ' : 'Auto-key is off: change freely, then press Key face — or turn on Auto under the timeline (R). '}
             Look direction, Blink and Lip sync switches aren't animatable in Timeline.
           </div>
           <div className="face-card">

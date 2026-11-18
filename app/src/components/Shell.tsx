@@ -256,9 +256,33 @@ export function TransportBar() {
       <button className={`btn solid ${pending > 0 ? 'attention' : ''}`} onClick={keyChanged} disabled={disabled} title={`Key everything you changed in Studio (Shift+Enter)${autoKeyNew ? ' — creates tracks for moved bones/objects' : ''}`}>
         Key changes{pending > 0 ? <span className="badge">{pending}</span> : null}
       </button>
-      <button className={`btn ${autoKey ? 'rec' : 'solid'}`} onClick={() => setAutoKey(!autoKey)} disabled={disabled} title="Auto-key (R): finished moves in Studio are keyed at the playhead. Right-click: toggle creating new tracks." onContextMenu={(e) => { e.preventDefault(); setAutoKey(autoKey, !autoKeyNew); }}>
-        <span className="rec-dot" /> Auto
-      </button>
+      <div className="split-btn">
+        <button className={`btn ${autoKey ? 'rec' : 'solid'}`} onClick={() => setAutoKey(!autoKey)} disabled={disabled} title="Auto-key (R): whatever you change — in Studio, or in the Face tab — is keyed at the playhead">
+          <span className="rec-dot" /> Auto
+        </button>
+        <Popover
+          align="right"
+          width={270}
+          trigger={(open, toggle) => (
+            <button className={`btn ${open ? 'on' : autoKey ? 'rec' : 'solid'} split-btn-more`} onClick={toggle} disabled={disabled} title="Auto-key options">
+              <Icon name="chevronDown" size={11} />
+            </button>
+          )}
+        >
+          <div className="layout-menu">
+            <div className="layout-menu-h">Auto-key</div>
+            <label>
+              <input type="checkbox" checked={autoKey} onChange={(e) => setAutoKey(e.target.checked)} /> On (R)
+            </label>
+            <label title="Moving a bone or object that has no track yet — or changing a face part with no track — creates its track">
+              <input type="checkbox" checked={autoKeyNew} onChange={(e) => setAutoKey(autoKey, e.target.checked)} /> Also animate things that aren't animated yet
+            </label>
+            <div className="hint" style={{ margin: '2px 0 0' }}>
+              Without the second option, only things that already have a track get keys. To key your changes once without auto-key, use Key changes (Shift+Enter).
+            </div>
+          </div>
+        </Popover>
+      </div>
       <button className="btn primary" onClick={() => window.dispatchEvent(new CustomEvent('studioex:key'))} disabled={disabled} title="Key selected tracks at playhead (K)">
         <Icon name="key" size={13} /> Key
       </button>
@@ -269,8 +293,6 @@ export function TransportBar() {
 function TimelineMoreMenu() {
   const showEnglish = useStore((s) => s.showEnglish);
   const tl = useTlInfo();
-  const autoKeyNew = useStore((s) => s.autoKeyNew);
-  const autoKey = useStore((s) => s.autoKey);
   const Row = ({ on, label, hint, onClick }: { on: boolean; label: string; hint?: string; onClick: () => void }) => (
     <div className="menu-item" onClick={onClick} title={hint}>
       <span style={{ width: 14, display: 'inline-flex' }}>{on ? <Icon name="check" size={13} /> : null}</span>
@@ -280,7 +302,6 @@ function TimelineMoreMenu() {
   return (
     <div>
       <Row on={showEnglish} label="English names" hint="Show AutoTranslator translations" onClick={() => { useStore.setState({ showEnglish: !showEnglish }); lsSet('studioex.english', showEnglish ? '0' : '1'); }} />
-      <Row on={autoKeyNew} label="Auto-key creates new tracks" hint="Moving an un-animated bone/object creates its track" onClick={() => setAutoKey(autoKey, !autoKeyNew)} />
       <Row on={!!tl?.uiVisible} label="Show Timeline's own window" hint="The original Timeline UI inside Studio" onClick={() => tl.has && setTimelineUiVisible(!tl.uiVisible)} />
     </div>
   );
