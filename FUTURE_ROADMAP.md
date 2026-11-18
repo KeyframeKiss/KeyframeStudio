@@ -38,6 +38,8 @@ The goal is not to replace working systems. It is to make existing tools easier 
 - Plan for Windows SmartScreen: code signing, or clear first-run instructions.
 - Publish a source repository with version history.
 
+**Note (2026-11-18):** the effect shaders are compiled with Unity 5.6.2f1 (`npm run build:shaders`) and embedded in the bridge DLL, so the installer ships one DLL and users never need Unity.
+
 ### 0.3 Test Infrastructure
 - Move the API test scripts into the repository.
 - Make every suite independent: each test sets up and cleans up its own tracks, so suites pass in any order on a fresh Studio session.
@@ -216,7 +218,8 @@ Built on the Phase 2 overlays in Studio's viewport; the Phase 3 preview is used 
 - **Saved outfits:** the outfit set, clothing states, shoes and accessory visibility, with favorites. Applying one is a single undo step and can dress several characters. Accessory on/off carries over only to the character it was saved from.
 - **Accessories:** grouped by body area, each area with an on/off switch, plus search and **Solo** (see one accessory alone, then restore).
 - **Clipping checks:** hold to hide all accessories or all clothes. These peeks stay out of undo.
-- **Not done:** per-item colours (Material Editor tweaks already live in Look › Materials) and editing accessories with handles in the viewport (Phase 2).
+- **Not done:** editing accessories with handles in the viewport (Phase 2).
+- **Material Editor (2026-11-18):** Look › Materials edits any material of the selected character or item through KK_MaterialEditor. It covers values, colours, textures (replace, export, tiling), shader, render queue and renderer switches, plus copy and paste. Any value can be a Timeline track. Koikatsu's internal part names are shown in plain English (`cf_O_mayuge` → Eyebrows).
 
 ### 4.3 Visual Camera Director
 Extends the existing ten camera slots and camera keying.
@@ -403,7 +406,61 @@ First check what installed screenshot and recording mods already do; drive them 
 - **Render queue:** renders the ticked shots one after another, each as its own video.
 - **Compatibility:** probes VideoExport's members and switches Render off with the reason if it changes. Settings changed here last for the session; VideoExport keeps its own saved defaults.
 
+**Stills (2026-11-18):** Shoot › Stills.
+- Pictures can be 1–4× supersampled, PNG or JPG, with an optional transparent background.
+- Take one picture now, or one per saved view or per shot. Batches put the camera and playhead back afterwards.
+- Screencap (BepisPlugins) takes the pictures when installed; transparency needs it. Otherwise Keyframe Studio renders the camera itself.
+
 **Deliverable:** A customizable production environment for multi-shot scenes and videos.
+
+---
+
+## Phase 8 — Keyframe Studio as the Editing Window
+
+**Priority: High | Scope: Large | Started 2026-11-18**
+
+The goal: people hide CharaStudio's menus and use Keyframe Studio as the editing window and the enhancement system for their images and videos. Keyframe Studio works *with* the plugins people already have (different kinds and versions). It also ships its own versions of the few that nearly everyone uses, so nobody has to install them.
+
+**Provider rule:** when the original plugin is installed it does the job (scenes stay compatible with other users); ours fills in when it's missing. Each feature has a switch to choose, and the app shows which one is active.
+
+### 8.1 Clean Studio Window
+One switch hides Studio's menus, the object list and other plugins' panels, leaving just the viewport. Options keep Timeline's window and the move / rotate handles. HideAllUI does it when installed; ours also catches panels opened later. Only what was hidden comes back, and everything returns on its own if Keyframe Studio closes or disconnects. **Done.**
+
+### 8.2 Effects (Look › Effects)
+Built-in post effects run on Studio's camera after its own effects:
+- two-tone fog
+- colour correction
+- contrast-adaptive sharpening
+- vignette
+- chromatic aberration
+- film grain
+- bokeh depth of field (focus can follow a character's eyes or the view centre)
+
+They're saved with the scene and undoable, and every value is a Timeline track. When xukmi FX Shaders is installed, its effect items in the scene are listed first: switch them, edit their values (Look › Materials) or add new ones. The page warns when two effects of the same kind are on.
+
+**Done.** Depth of field is built but not yet verified live.
+
+### 8.3 Camera Tools (Shoot › Shots & camera)
+- **First person:** from a character's eyes. RealPOV does it when installed.
+- **Follow:** keeps a body part centred. LockOnPlugin does it when installed.
+- **Frame guides:** thirds, centre, safe areas, and aspect frames with the outside dimmed. They're drawn over Studio's window only, never in renders.
+
+**Done.**
+
+### 8.4 Lighting (Look › Lighting)
+- **Projectors:** soft circle, ring, heart, star, blinds, window, leaf dapple; as light, shadow or paint. They live on Studio folders, so Studio's handles move them and Timeline animates them. They're saved with the scene. xukmi projectors are offered too.
+- **Aim lights:** a spot or directional light keeps pointing at a character's head, chest or hips. LightManager does body aiming when installed.
+
+**Done.**
+
+### 8.5 Complete Looks
+Look presets also carry the built-in effects, projectors (placed relative to the character) and xukmi FX items with their values. Applying a look is one undo step. **Done.**
+
+### 8.6 Next
+- Projector and aimed-light settings as Timeline tracks (their position already animates).
+- Other plugins worth the same treatment, chosen from what users actually install.
+
+**Gotchas learned:** Unity skips a projector whose GameObject is on a layer the camera doesn't draw (Studio's camera leaves out Default). Unity's API updater rewrites `_Projector` to `unity_Projector` inside shader sources. Studio's one-argument `SelectSingle` toggles: it deselects an already selected node.
 
 ---
 
@@ -428,12 +485,15 @@ All new features should follow these rules:
 | --- | --- |
 | Face Studio scope | Fine adjustment of existing characters' faces, built on KKPE's bone and blendshape edits. Not a character creator. |
 | Live preview (Phase 3) | Go for non-interactive previews only (720p@10 or 480p@15, raw frames). Interactive editing stays in Studio's viewport. See 3.3. |
+| Audio for lip-sync (6.2) | Keyframe Studio's own audio track, synced to Timeline and saved with the scene. |
+| Plugins vs built-in (Phase 8) | The installed plugin does the job when present; ours fills in otherwise, with a switch per feature. |
+| Shaders | Compiled with Unity 5.6.2f1 (Koikatsu's exact version) and embedded in the bridge DLL. |
 
 ## Open Decisions
 
 | Decision | Options | Needed before |
 | --- | --- | --- |
-| Audio playback for lip-sync | Use an installed mod, or build a Keyframe Studio audio track | Phase 6.2 |
+| Which other plugins get built-in versions | Decide from what users install most | Phase 8.6 |
 
 ## Recommended Development Order
 
@@ -445,6 +505,8 @@ All new features should follow these rules:
 6. Phase 5: Face Studio on top of KKPE.
 7. Phase 6: animation layers, lip-sync, and motion cleanup.
 8. Phase 7: sequencing, layouts, automation, and export.
+9. Phase 8: Keyframe Studio as the editing window (effects, camera tools, lighting, clean Studio window).
+10. Phase 0.2: installer, once the feature set settles.
 
 ## Success Criteria
 
