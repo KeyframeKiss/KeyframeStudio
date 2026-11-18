@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { ask } from './Dialogs';
 import { call, displayName, editTimeline, liveTime, parseKeyId, toast, useStore } from '../state/store';
 import { Slider } from './CharacterPanel';
 import { ContextMenu, type MenuItem } from './ContextMenu';
@@ -80,7 +81,7 @@ export function ClipsPanel() {
   const save = async () => {
     if (!sel.ok) return toast('Select keys (or tracks) spanning some time first');
     const n = name.trim() || `Clip ${clips.length + 1}`;
-    if (clips.some((c) => c.name === n) && !window.confirm(`Replace the clip “${n}”?`)) return;
+    if (clips.some((c) => c.name === n) && !(await ask(`Replace the clip “${n}”?`))) return;
     const r = await call<Clip[]>('clips.save', { name: n, tracks: sel.tracks, t0: sel.t0, t1: sel.t1 });
     if (r) {
       setClips(r);
@@ -149,7 +150,7 @@ export function ClipsPanel() {
                       { label: 'Apply at the playhead', action: () => apply(c) },
                       { label: 'Retake thumbnail from the current view', action: () => call<Clip[]>('clips.thumb', { file: c.file }).then((r) => r && setClips(r)) },
                       { sep: true },
-                      { label: 'Delete…', danger: true, action: () => window.confirm(`Delete the clip “${c.name}”?`) && call<Clip[]>('clips.delete', { file: c.file }).then((r) => r && setClips(r)) },
+                      { label: 'Delete…', danger: true, action: async () => (await ask(`Delete the clip “${c.name}”?`)) && call<Clip[]>('clips.delete', { file: c.file }).then((r) => r && setClips(r)) },
                     ],
                   });
                 }}

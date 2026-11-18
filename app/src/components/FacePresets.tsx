@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { ask } from './Dialogs';
 import { bridge } from '../bridge/client';
 import { ALL_FACE_BONES, FACE_FEATURES, twinOf } from '../lib/faceBones';
 import { toast, useStore } from '../state/store';
@@ -191,7 +192,7 @@ export function FacePresets({ ids, onApplied, kind = 'face' }: { ids: number[]; 
   const save = async (n: string, overwrite = false) => {
     const nm = n.trim();
     if (!nm || !ids.length) return;
-    if (!overwrite && list.some((p) => p.name.toLowerCase() === nm.toLowerCase()) && !window.confirm(`Replace the saved ${K.noun} “${nm}”?`)) return;
+    if (!overwrite && list.some((p) => p.name.toLowerCase() === nm.toLowerCase()) && !(await ask(`Replace the saved ${K.noun} “${nm}”?`))) return;
     try {
       if (kind === 'face') setList(normalize(await bridge.request<SavedFace[]>('face.savePreset', { id: ids[0], name: nm, bones: ALL_FACE_BONES })));
       else {
@@ -216,7 +217,7 @@ export function FacePresets({ ids, onApplied, kind = 'face' }: { ids: number[]; 
   };
 
   const remove = async (files: string[], label: string) => {
-    if (!window.confirm(`Delete ${label}? Characters that already use ${files.length > 1 ? 'them' : 'it'} keep their face.`)) return false;
+    if (!(await ask(`Delete ${label}? Characters that already use ${files.length > 1 ? 'them' : 'it'} keep their face.`))) return false;
     try {
       setList(normalize(await bridge.request<SavedFace[]>(`${K.cmd}.deletePreset`, { files })));
       if (active && files.includes(active)) setActive(null);
@@ -248,7 +249,7 @@ export function FacePresets({ ids, onApplied, kind = 'face' }: { ids: number[]; 
               ok: (v) => update(f, { tags: v.split(',').map((t) => t.trim()).filter(Boolean) }),
             }),
         },
-        { label: `Overwrite with current ${K.noun}…`, action: () => window.confirm(`Replace “${f.name}” with the current ${K.noun} (and thumbnail)?`) && save(f.name, true) },
+        { label: `Overwrite with current ${K.noun}…`, action: async () => (await ask(`Replace “${f.name}” with the current ${K.noun} (and thumbnail)?`)) && save(f.name, true) },
         { sep: true },
         { label: 'Delete…', danger: true, action: () => remove([f.file], `“${f.name}”`) },
       ],

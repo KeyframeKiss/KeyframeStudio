@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { CommandPalette } from './components/CommandPalette';
+import { DialogHost } from './components/Dialogs';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { PreviewPanel } from './components/PreviewPanel';
 import { RecordingBadge } from './components/QuickActions';
@@ -216,6 +217,7 @@ export function App() {
       </div>
 
       <CommandPalette />
+      <DialogHost />
       {previewOpen && <PreviewPanel />}
 
       {helpOpen && (

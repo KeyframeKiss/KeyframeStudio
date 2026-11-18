@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { ask } from './Dialogs';
 import { parseTags, useLibMeta } from '../lib/libmeta';
 import { call, toast, useStore } from '../state/store';
 import { bridge } from '../bridge/client';
@@ -172,7 +173,7 @@ export function LookPresets({ wide }: { wide?: boolean }) {
                     label: p.thumb ? 'Retake thumbnail from the current view' : 'Take thumbnail from the current view',
                     action: () => call<Preset[]>('look.thumb', { file: p.file }).then((l) => l && (setPresets(l), toast(`New thumbnail for “${p.name}”`))),
                   },
-                  { label: 'Overwrite with current look…', action: () => window.confirm(`Replace “${p.name}” (settings and thumbnail) with the current look? This can't be undone.`) && save(p.name) },
+                  { label: 'Overwrite with current look…', action: async () => (await ask(`Replace “${p.name}” (settings and thumbnail) with the current look? This can't be undone.`)) && save(p.name) },
                   { sep: true },
                   { label: 'Delete…', danger: true, action: () => setConfirmDelete(p) },
                 ],

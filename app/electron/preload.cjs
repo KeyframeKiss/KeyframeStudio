@@ -2,6 +2,8 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('studioEx', {
   isElectron: true,
+  // the window has no system title bar: the header must leave room for the window buttons
+  frameless: true,
   setAlwaysOnTop: (on) => ipcRenderer.invoke('window:setAlwaysOnTop', on),
   getAlwaysOnTop: () => ipcRenderer.invoke('window:getAlwaysOnTop'),
   getBounds: () => ipcRenderer.invoke('window:getBounds'),

@@ -86,6 +86,11 @@ function createWindow() {
     title: 'Keyframe Studio',
     icon: APP_ICON,
     autoHideMenuBar: true,
+    // No Windows title bar: the app's own header is the title bar (drag it to move the window, double-click to
+    // maximize) and Windows draws minimize / maximize / close inside it in the app's colours — keeping its
+    // snap layouts on the maximize button. Height and colours match .header in styles.css.
+    titleBarStyle: 'hidden',
+    titleBarOverlay: { color: '#17181d', symbolColor: '#b4b8c4', height: 47 },
     alwaysOnTop: !!state.alwaysOnTop,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),

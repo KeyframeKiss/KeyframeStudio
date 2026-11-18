@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { ask } from './Dialogs';
 import { bridge } from '../bridge/client';
 import { parseTags, useLibMeta } from '../lib/libmeta';
 import { pressable } from '../lib/pressable';
@@ -81,7 +82,7 @@ export function CharacterLibrary() {
   };
   const swap = async (c: Card) => {
     if (chars.length !== 1) return toast('Select one character to swap');
-    if (!window.confirm(`Swap the selected character for ${label(c)}? The pose and animation stay; this can't be undone.`)) return;
+    if (!(await ask(`Swap the selected character for ${label(c)}? The pose and animation stay; this can't be undone.`))) return;
     if (await call('cards.swap', { id: chars[0], path: c.path })) {
       lib.markUsed(keyOf(c));
       toast(`Now ${label(c)}`);

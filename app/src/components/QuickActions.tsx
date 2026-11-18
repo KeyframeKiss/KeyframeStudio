@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { ask } from './Dialogs';
 import { bridge } from '../bridge/client';
 import { deleteMacro, describeStep, isRecording, retarget, saveMacro, startRecording, stopRecording, updateMacro, useMacros, useRecording, type Macro } from '../lib/macros';
 import { refreshTimeline, toast, useStore } from '../state/store';
@@ -103,7 +104,7 @@ export function QuickActionsPage() {
                 <button className="btn small" onClick={() => setOpen(open === m.name ? null : m.name)}>
                   {open === m.name ? 'Hide' : 'Steps'}
                 </button>
-                <button className="btn small" onClick={() => window.confirm(`Delete “${m.name}”?`) && deleteMacro(m.name)}>
+                <button className="btn small" onClick={async () => (await ask(`Delete “${m.name}”?`)) && deleteMacro(m.name)}>
                   ✕
                 </button>
               </div>

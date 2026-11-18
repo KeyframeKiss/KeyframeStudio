@@ -3590,3 +3590,86 @@ select.input {
 .clip-target small {
   color: var(--text-3);
 }
+
+/* ---------- Themed pop-ups: questions (instead of window.confirm) and tooltips ---------- */
+.overlay {
+  animation: kf-fade 0.12s ease-out;
+}
+.dialog.ask {
+  width: min(420px, calc(100vw - 32px));
+  padding: 18px 20px 16px;
+  animation: kf-pop 0.14s ease-out;
+}
+.ask-msg {
+  margin: 0 0 6px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-0);
+  white-space: pre-line;
+}
+.dialog.ask .hint {
+  white-space: pre-line;
+}
+.ask-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+.btn.danger-solid {
+  background: var(--danger);
+  color: #fff;
+  font-weight: 700;
+}
+.btn.danger-solid:hover {
+  filter: brightness(1.1);
+}
+.dialog .btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.tooltip {
+  position: fixed;
+  z-index: 200;
+  max-width: 340px;
+  padding: 6px 9px;
+  border-radius: 6px;
+  background: var(--bg-3);
+  border: 1px solid var(--line);
+  color: var(--text-0);
+  font-size: 11.5px;
+  line-height: 1.45;
+  white-space: pre-line;
+  pointer-events: none;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  animation: kf-fade 0.1s ease-out;
+}
+@keyframes kf-fade {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes kf-pop {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.98);
+  }
+}
+
+/* ---------- The header is the window's title bar (Electron, no system frame) ---------- */
+/* Drag it to move the window, double-click to maximize. Windows draws minimize / maximize / close over its
+   right end in the header's colours (titleBarOverlay in electron/main.cjs), so keep that corner free. */
+html.frameless .header {
+  -webkit-app-region: drag;
+  padding-right: 146px;
+}
+html.frameless .header button,
+html.frameless .header input,
+html.frameless .header a,
+html.frameless .header select,
+html.frameless .overlay,
+html.frameless .menu,
+html.frameless .popover,
+html.frameless .tooltip {
+  -webkit-app-region: no-drag;
+}

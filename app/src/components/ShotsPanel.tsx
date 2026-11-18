@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { ask } from './Dialogs';
 import { bridge } from '../bridge/client';
 import { call, editTimeline, liveTime, refreshShots, seekNow, toast, useStore, type Shot } from '../state/store';
 
@@ -95,7 +96,7 @@ export function ShotsPanel() {
                     View
                   </button>
                   <span className="spacer" style={{ flex: 1 }} />
-                  <button className="btn small" onClick={() => window.confirm(`Delete “${s.name}”?`) && save(shots.filter((x) => x.id !== s.id))}>
+                  <button className="btn small" onClick={async () => (await ask(`Delete “${s.name}”?`)) && save(shots.filter((x) => x.id !== s.id))}>
                     ✕
                   </button>
                 </div>

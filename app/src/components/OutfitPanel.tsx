@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ask } from './Dialogs';
 import { call, displayName, selectedCharacters, toast, useStore } from '../state/store';
 import { Icon } from './Icon';
 import { StarIcon } from './StarIcon';
@@ -176,7 +177,7 @@ export function OutfitPanel() {
               <button className="btn solid small" onClick={() => apply(o)}>
                 Apply
               </button>
-              <button className="btn small" title="Delete this saved outfit" onClick={() => window.confirm(`Delete the saved outfit “${o.name}”?`) && call<Outfit[]>('store.delete', { kind: 'outfits', file: o.file }).then((r) => r && setOutfits(r))}>
+              <button className="btn small" title="Delete this saved outfit" onClick={async () => (await ask(`Delete the saved outfit “${o.name}”?`)) && call<Outfit[]>('store.delete', { kind: 'outfits', file: o.file }).then((r) => r && setOutfits(r))}>
                 ✕
               </button>
             </div>

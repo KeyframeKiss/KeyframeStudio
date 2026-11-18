@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { ask } from './Dialogs';
 import { call, refreshScene, refreshTimeline, toast, useStore } from '../state/store';
 import {
   cancelTranslation,
@@ -234,8 +235,8 @@ export function TranslatePanel() {
                 className="btn"
                 disabled={!canEngine || !improvable.length}
                 title={`Re-translate every Game and Machine row with ${ENGINE_LABEL[settings.engine]}. Your own edits are never touched.`}
-                onClick={() => {
-                  if (!window.confirm(`Re-translate ${improvable.length} names with ${ENGINE_LABEL[settings.engine]}? Your own edits stay as they are.`)) return;
+                onClick={async () => {
+                  if (!(await ask(`Re-translate ${improvable.length} names with ${ENGINE_LABEL[settings.engine]}? Your own edits stay as they are.`))) return;
                   run(() => translateEntries(improvable, settings.engine));
                 }}
               >

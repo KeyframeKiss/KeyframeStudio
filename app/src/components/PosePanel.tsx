@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ask } from './Dialogs';
 import { bridge } from '../bridge/client';
 import { call, displayName, selectedCharacters, toast, useStore } from '../state/store';
 import { ContextMenu, type MenuItem } from './ContextMenu';
@@ -166,15 +167,15 @@ export function PosePanel({ wide }: { wide?: boolean }) {
     if (ok !== undefined) setPoses((ps) => ps.map((x) => (x.path === p.path ? { ...x, ...patch } : x)));
   };
 
-  const makeThumbs = (files: string[]) => {
+  const makeThumbs = async (files: string[]) => {
     if (!need() || !files.length) return;
     const who = displayName(nodes[chars[0]]);
     const secs = Math.ceil(files.length / 25);
     if (
       files.length > 1 &&
-      !window.confirm(
+      !(await ask(
         `Make ${files.length} pose thumbnails?\n\n${who} will flick through the poses in Studio (about ${secs < 60 ? `${secs} s` : `${Math.ceil(secs / 60)} min`}) and is put back in their current pose afterwards. Auto-key is paused meanwhile. You can stop at any time.`,
-      )
+      ))
     )
       return;
     call<number>('pose.thumbs', { id: chars[0], files: files, missingOnly: files.length > 1 }).then((n) => {

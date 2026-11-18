@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { ask } from './Dialogs';
 import { bridge } from '../bridge/client';
 import { ALL_PARTS, applyTemplate, gatherTemplate, TEMPLATE_PARTS, templateSummary, type TemplateData, type TemplatePart } from '../lib/templates';
 import { call, refreshAudio, refreshShots, refreshTimeline, selectedCharacters, toast, useStore } from '../state/store';
@@ -29,7 +30,7 @@ export function TemplatesPanel() {
   const save = async () => {
     const n = name.trim();
     if (!n) return toast('Name the template first');
-    if (list.some((t) => t.name === n) && !window.confirm(`Replace the template “${n}”?`)) return;
+    if (list.some((t) => t.name === n) && !(await ask(`Replace the template “${n}”?`))) return;
     const data = await gatherTemplate(req);
     const r = await call<Template[]>('store.save', { kind: 'templates', name: n, data });
     if (r) {
@@ -95,7 +96,7 @@ export function TemplatesPanel() {
                       <button className="btn primary" style={{ flex: 1 }} onClick={() => apply(t)}>
                         Apply to this scene
                       </button>
-                      <button className="btn" title="Delete this template" onClick={() => window.confirm(`Delete the template “${t.name}”?`) && call<Template[]>('store.delete', { kind: 'templates', file: t.file }).then((r) => r && setList(r))}>
+                      <button className="btn" title="Delete this template" onClick={async () => (await ask(`Delete the template “${t.name}”?`)) && call<Template[]>('store.delete', { kind: 'templates', file: t.file }).then((r) => r && setList(r))}>
                         ✕
                       </button>
                     </div>

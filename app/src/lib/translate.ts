@@ -35,6 +35,8 @@ declare global {
   interface Window {
     studioEx?: {
       isElectron: boolean;
+      /** no system title bar: the header is the title bar (window buttons drawn over its right end) */
+      frameless?: boolean;
       setAlwaysOnTop(on: boolean): Promise<boolean>;
       getAlwaysOnTop(): Promise<boolean>;
       getBounds?(): Promise<{ x: number; y: number; width: number; height: number }>;

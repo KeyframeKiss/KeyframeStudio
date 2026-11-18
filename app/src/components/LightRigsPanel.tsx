@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { ask } from './Dialogs';
 import { call, displayName, selectedCharacters, toast, useStore } from '../state/store';
 
 interface RigLight {
@@ -79,7 +80,7 @@ export function LightRigsPanel() {
                   Apply
                 </button>
                 {!r.builtin && (
-                  <button className="btn small" title="Delete this saved rig" onClick={() => window.confirm(`Delete the saved rig “${r.name}”?`) && call<Rig[]>('light.deleteRig', { file: r.file }).then((x) => x && setRigs(x))}>
+                  <button className="btn small" title="Delete this saved rig" onClick={async () => (await ask(`Delete the saved rig “${r.name}”?`)) && call<Rig[]>('light.deleteRig', { file: r.file }).then((x) => x && setRigs(x))}>
                     ✕
                   </button>
                 )}
@@ -99,7 +100,7 @@ export function LightRigsPanel() {
               <span>{r.name}</span>
               <small>{r.lights} lights</small>
             </label>
-            <button className="btn small" title="Delete this rig's lights from the scene" onClick={() => window.confirm(`Remove the “${r.name}” rig and its lights from the scene? (Not undoable — like deleting in Studio.)`) && call<SceneRig[]>('light.removeRig', { folder: r.folder }).then((x) => x && setInScene(x))}>
+            <button className="btn small" title="Delete this rig's lights from the scene" onClick={async () => (await ask(`Remove the “${r.name}” rig and its lights from the scene? (Not undoable — like deleting in Studio.)`)) && call<SceneRig[]>('light.removeRig', { folder: r.folder }).then((x) => x && setInScene(x))}>
               Remove
             </button>
           </div>
