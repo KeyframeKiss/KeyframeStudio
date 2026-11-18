@@ -13,6 +13,16 @@ export const parseKeyId = (id: KeyId): KeyRef => {
   return { track: Number(id.slice(0, i)), t: Number(id.slice(i + 1)) };
 };
 
+export interface Shot {
+  id: string;
+  name: string;
+  start: number;
+  end: number;
+  notes: string;
+  cam?: unknown;
+  thumb?: string;
+}
+
 export interface AudioInfo {
   file: string | null;
   offset: number;
@@ -66,6 +76,8 @@ export interface AppState {
   pending: number;
   /** The scene's audio track (dialogue/music synced to Timeline) and its waveform, if any. */
   audio: AudioInfo | null;
+  /** Shot sequencer: the scene's shots (time ranges with their own camera). */
+  shots: Shot[];
   audioPeaks: { perSecond: number; peaks: number[] } | null;
   /** Key edits were made but Studio held them back to protect the unkeyed changes (the pose doesn't show them yet). */
   poseStale: boolean;
@@ -130,6 +142,7 @@ export const useStore = create<AppState>(() => ({
   poseStale: false,
   audio: null,
   audioPeaks: null,
+  shots: [],
   groupMode: (lsGet('studioex.groupMode') as 'objects' | 'folders') || 'objects',
   settingsOpen: false,
   workspace: (lsGet('studioex.workspace') as Workspace) || 'animate',
@@ -143,6 +156,12 @@ export const useStore = create<AppState>(() => ({
 // ---------------------------------------------------------------------------
 // Key what changed / auto-key
 // ---------------------------------------------------------------------------
+/** Re-read the scene's shots. */
+export async function refreshShots() {
+  const s = await bridge.request<Shot[]>('shots.get').catch(() => null);
+  set({ shots: s ?? [] });
+}
+
 /** Re-read the audio track (and its waveform when the file changed). */
 export async function refreshAudio() {
   const a = await bridge.request<AudioInfo>('audio.get').catch(() => null);
@@ -427,6 +446,7 @@ export function initBridge() {
       // is still starting Timeline isn't loaded yet; the timeline refresh below retries and these follow it.
       if (hello?.timeline) syncTimelineFlags();
       if (hello?.commands.includes('audio.get')) refreshAudio();
+      if (hello?.commands.includes('shots.get')) refreshShots();
       refreshScene();
       if (hello?.timeline) refreshTimeline();
       else if (hello) toast(hello.features?.find((f) => f.id === 'timeline')?.reason ?? 'Timeline plugin not found in this Studio install', 'error');
@@ -449,7 +469,10 @@ export function initBridge() {
   bridge.on('scene.changed', scheduleSceneRefresh);
   bridge.on('scene.reset', () => {
     set({ selKeys: new Set(), selTracks: new Set(), clipboard: null });
-    window.setTimeout(refreshAudio, 1500); // a loaded scene may bring its own audio
+    window.setTimeout(() => {
+      refreshAudio(); // a loaded scene may bring its own audio and shots
+      refreshShots();
+    }, 1500);
     window.dispatchEvent(new CustomEvent('studioex:scene-reset'));
     scheduleSceneRefresh();
     scheduleTimelineRefresh();

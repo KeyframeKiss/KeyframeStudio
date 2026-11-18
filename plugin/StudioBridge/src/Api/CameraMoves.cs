@@ -6,6 +6,7 @@ using StudioEX.Bridge.Net;
 using UnityEngine;
 using TL = Timeline.Timeline;
 using Interpolable = Timeline.Interpolable;
+using TLKeyframe = Timeline.Keyframe;
 
 namespace StudioEX.Bridge.Api
 {
@@ -139,6 +140,44 @@ namespace StudioEX.Bridge.Api
             RefreshView();
             AfterEdit();
             return new Dictionary<string, object> { { "t0", t0 }, { "t1", t1 }, { "keys", steps + 1 }, { "replaced", removed } };
+        }
+
+        /// <summary>
+        /// Shot cuts: for each (time, put the shot's camera in place), key the camera there and make the key before
+        /// it a hold, so the view jumps into the shot. One undo step; the camera is back where it was afterwards.
+        /// </summary>
+        public static object KeyShotCuts(List<KeyValuePair<float, Action>> cuts)
+        {
+            var cc = Singleton<Studio.Studio>.Instance.cameraCtrl;
+            var tracks = CameraTracks(true);
+            if (tracks.Count == 0) throw new BridgeException("Timeline's camera tracks are unavailable");
+            History.Push(History.Capture(tracks), "Build camera cuts");
+            var before = cc.Export();
+            float fov = cc.fieldOfView;
+            var hold = new AnimationCurve(new UnityEngine.Keyframe(0f, 0f, 0f, 0f), new UnityEngine.Keyframe(1f, 1f, float.PositiveInfinity, 0f));
+            try
+            {
+                foreach (var cut in cuts.OrderBy(c => c.Key))
+                {
+                    float t = Mathf.Clamp(cut.Key, 0f, TL.duration);
+                    cut.Value();
+                    foreach (var ip in tracks)
+                    {
+                        AddOrUpdateKey(ip, t);
+                        TLKeyframe prev = null;
+                        foreach (var kv in ip.keyframes) { if (kv.Key < t - 1e-4f) prev = kv.Value; else break; }
+                        if (prev != null) prev.curve = new AnimationCurve(hold.keys);
+                    }
+                }
+            }
+            finally
+            {
+                cc.Import(before);
+                cc.fieldOfView = fov;
+            }
+            RefreshView();
+            AfterEdit();
+            return cuts.Count;
         }
 
         private static void Apply(Studio.CameraControl cc, CamState s)

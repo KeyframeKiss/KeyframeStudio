@@ -80,6 +80,12 @@ namespace StudioEX.Bridge.Api
             },
             new Feature
             {
+                Id = "render", Label = "Render & export (video, frames)",
+                ModName = "VideoExport", Guid = RenderApi.Guid, Tested = new[] { "1.3.0" },
+                Probe = RenderApi.Probe, Prefixes = new[] { "render." },
+            },
+            new Feature
+            {
                 Id = "translator", Label = "English names (machine and manual translations)",
                 ModName = "XUnity AutoTranslator", Guid = "gravydevsupreme.xunity.autotranslator", Tested = new string[0],
                 Probe = () => null,

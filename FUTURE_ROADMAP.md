@@ -340,6 +340,11 @@ Reuses the bone sampling already used for motion paths.
 - Assign cameras and animation ranges; store shot-specific settings.
 - Shot markers, notes, and reusable shot templates.
 
+**Status (2026-11-17): done except templates** (Animate › Shots).
+- **Shots:** each has a name, start/end, notes, and a camera it remembers with a thumbnail. Shots are saved with the scene and shown as strips at the top of the dope sheet ruler.
+- **Build camera cuts:** keys a hard cut to each shot's camera, in one undo step.
+- **Render queue:** see 7.5.
+
 ### 7.2 Unified Visual Asset Library
 Extends the Library workspace and the Phase 1 organization features.
 
@@ -367,6 +372,14 @@ First check what installed screenshot and recording mods already do; drive them 
 - Camera and shot export profiles.
 - Frame-sequence export, render queue, and progress tracking.
 - Optional video encoding.
+
+**Status (2026-11-17): done** (Animate › Render), driving the installed VideoExport plugin.
+- **Settings:** size presets (720p to 4K, square, vertical), 24/30/60 fps, MP4/WEBM/GIF/AVI.
+- **Length:** whole timeline, seconds, or until stopped. Physics warm-up loops.
+- **Encoding:** auto-encode, and delete the frames afterwards.
+- **Recording:** Start and Stop with progress, and an output-folder button.
+- **Render queue:** renders the ticked shots one after another, each as its own video.
+- **Compatibility:** probes VideoExport's members and switches Render off with the reason if it changes. Settings changed here last for the session; VideoExport keeps its own saved defaults.
 
 **Deliverable:** A customizable production environment for multi-shot scenes and videos.
 

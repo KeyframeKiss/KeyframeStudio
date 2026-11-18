@@ -3,6 +3,7 @@ import { bridge } from '../bridge/client';
 import { call, displayName, selectedCharacters, toast, useStore, type LibraryPage } from '../state/store';
 import { AddTrackPanel } from './AddTrackPanel';
 import { AudioPanel } from './AudioPanel';
+import { ShotsPanel } from './ShotsPanel';
 import { CleanupPanel } from './CleanupPanel';
 import { AnimationBrowser } from './AnimationBrowser';
 import { CameraPanel } from './CameraPanel';
@@ -10,6 +11,7 @@ import { CharacterPanel } from './CharacterPanel';
 import { DopeSheet } from './DopeSheet';
 import { Icon } from './Icon';
 import { Inspector } from './Inspector';
+import { RenderPanel } from './RenderPanel';
 import { OutfitPanel } from './OutfitPanel';
 import { LightRigsPanel } from './LightRigsPanel';
 import { LookPanel } from './LookPanel';
@@ -113,6 +115,7 @@ export function AnimateWorkspace() {
           { id: 'tracks', label: 'Add track', render: () => <AddTrackPanel /> },
           { id: 'camera', label: 'Camera', render: () => <CameraPanel /> },
           { id: 'audio', label: 'Audio', render: () => <AudioPanel /> },
+          { id: 'shots', label: 'Shots', render: () => <ShotsPanel /> },
         ]}
       />
       <main className="ws-center">
@@ -129,6 +132,7 @@ export function AnimateWorkspace() {
           { id: 'inspector', label: 'Inspector', render: () => <Inspector /> },
           { id: 'object', label: 'Transform', render: () => <ObjectPanel /> },
           { id: 'cleanup', label: 'Cleanup', render: () => <CleanupPanel /> },
+          { id: 'render', label: 'Render', render: () => <RenderPanel /> },
         ]}
       />
     </div>

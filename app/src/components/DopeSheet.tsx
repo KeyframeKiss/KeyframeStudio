@@ -169,9 +169,10 @@ export function DopeSheet() {
   // redraw when the audio track or its waveform changes
   const audioPeaks = useStore((s) => s.audioPeaks);
   const audioInfo = useStore((s) => s.audio);
+  const shotsList = useStore((s) => s.shots);
   useEffect(() => {
     dirty.current = true;
-  }, [audioPeaks, audioInfo]);
+  }, [audioPeaks, audioInfo, shotsList]);
   const fitted = useRef(false);
   const lastAnchor = useRef<number | null>(null);
 
@@ -507,6 +508,14 @@ export function DopeSheet() {
       // ruler
       ctx.fillStyle = colors.bg1;
       ctx.fillRect(0, 0, w, RULER_H);
+      // shots: a thin coloured strip per shot along the top of the ruler (names are in the Shots tab)
+      st.shots.forEach((sh, i) => {
+        const x0 = Math.max(PAD, xOf(sh.start)),
+          x1 = Math.min(w, xOf(sh.end));
+        if (x1 <= x0) return;
+        ctx.fillStyle = i % 2 ? 'rgba(255,159,46,0.75)' : 'rgba(139,123,255,0.8)';
+        ctx.fillRect(x0 + 1, 0, Math.max(1, x1 - x0 - 2), 3);
+      });
       // the audio track's waveform, behind the tick labels (aligned with the keys)
       const au = st.audio,
         wave = st.audioPeaks;

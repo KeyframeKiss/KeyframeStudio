@@ -65,6 +65,11 @@ namespace StudioEX.Bridge.Api
         public static bool Playing() => Available && PlayingImpl();
         [MethodImpl(MethodImplOptions.NoInlining)] private static bool PlayingImpl() => TimelineImpl.IsReady && TL.isPlaying;
         public static void SeekTo(float t) { if (Available) SeekToImpl(t); }
+        /// <summary>Stop playback and put the playhead at t.</summary>
+        public static void PauseAt(float t) { if (Available) PauseAtImpl(t); }
+        [MethodImpl(MethodImplOptions.NoInlining)] private static void PauseAtImpl(float t) { if (TimelineImpl.IsReady) { TL.Pause(); TL.Seek(t); } }
+        public static void Play() { if (Available) PlayImpl(); }
+        [MethodImpl(MethodImplOptions.NoInlining)] private static void PlayImpl() { if (TimelineImpl.IsReady && !TL.isPlaying) TL.Play(); }
         [MethodImpl(MethodImplOptions.NoInlining)] private static void SeekToImpl(float t) { if (TimelineImpl.IsReady) TL.Seek(t); }
         public static int Pending() => Available ? PendingImpl() : 0;
         public static bool PoseStale() => Available && PoseStaleImpl();

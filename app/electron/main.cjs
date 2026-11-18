@@ -143,6 +143,15 @@ function createWindow() {
   ipcMain.handle('window:setAlwaysOnTop', (_e, on) => { win.setAlwaysOnTop(!!on); saveState(win); return win.isAlwaysOnTop(); });
   ipcMain.handle('window:getAlwaysOnTop', () => win.isAlwaysOnTop());
   // the renderer only gets the path the user picked (Studio reads and copies the file itself)
+  // open a folder in Explorer — only an existing local directory (never a file, so nothing gets executed)
+  ipcMain.handle('shell:openFolder', (_e, p) => {
+    try {
+      if (typeof p === 'string' && /^[a-z]:[\\/]/i.test(p) && fs.statSync(p).isDirectory()) return shell.openPath(p);
+    } catch {
+      /* missing */
+    }
+    return 'not a folder';
+  });
   ipcMain.handle('dialog:openAudio', async () => {
     const r = await dialog.showOpenDialog(win, { title: 'Choose a WAV file', filters: [{ name: 'WAV audio', extensions: ['wav'] }], properties: ['openFile'] });
     return r.canceled ? null : r.filePaths[0] ?? null;

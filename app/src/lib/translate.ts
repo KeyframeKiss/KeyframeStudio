@@ -44,6 +44,7 @@ declare global {
         openFolder(): Promise<string>;
       };
       openAudio?(): Promise<string | null>;
+      openFolder?(path: string): Promise<string>;
       appInfo?(): Promise<{ version: string; electron: string; chrome: string; node: string; os: string; logFile: string; home: string }>;
     };
   }
