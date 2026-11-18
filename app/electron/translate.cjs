@@ -1,4 +1,4 @@
-// Translation engines for Studio EX, run in the Electron main process (no browser CORS limits).
+// Translation engines for Keyframe Studio, run in the Electron main process (no browser CORS limits).
 // The renderer does the chunking/progress; each call here translates one small batch and returns
 // an array aligned with the input (null where an item failed).
 //

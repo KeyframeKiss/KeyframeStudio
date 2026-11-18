@@ -106,7 +106,7 @@ export function SceneBrowser() {
             <button className={show === 'fav' ? 'on' : ''} onClick={() => setShow('fav')} title="Favorite scenes">
               <StarIcon filled={show === 'fav'} size={12} /> Favorites
             </button>
-            <button className={show === 'recent' ? 'on' : ''} onClick={() => setShow('recent')} title="Scenes you opened from Studio EX, latest first">
+            <button className={show === 'recent' ? 'on' : ''} onClick={() => setShow('recent')} title="Scenes you opened from Keyframe Studio, latest first">
               Recent
             </button>
           </div>
@@ -231,7 +231,7 @@ export function SceneBrowser() {
                 : show === 'fav'
                   ? 'No favorite scenes yet — click the ★ on a scene.'
                   : show === 'recent'
-                    ? 'Scenes you open from Studio EX show up here.'
+                    ? 'Scenes you open from Keyframe Studio show up here.'
                     : 'No scenes match.'}
             </div>
           )}

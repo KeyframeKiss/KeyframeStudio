@@ -12,7 +12,7 @@ export class ErrorBoundary extends Component<{ name: string; children: ReactNode
   }
 
   componentDidCatch(error: Error, info: { componentStack?: string | null }) {
-    // console.error is captured into the Studio EX log (lib/log.ts)
+    // console.error is captured into the Keyframe Studio log (lib/log.ts)
     console.error(`[${this.props.name}] crashed:`, error, info?.componentStack ?? '');
   }
 

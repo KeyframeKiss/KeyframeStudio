@@ -23,9 +23,9 @@ const ENGINE_HELP: Record<Engine, string> = {
 };
 
 /**
- * Every Japanese string Studio EX has shown, with its translation and where it came from.
+ * Every Japanese string Keyframe Studio has shown, with its translation and where it came from.
  *  - Mine: your edits (zz_StudioEX_Overrides.txt) — always win.
- *  - Machine: Studio EX engines (zy_StudioEX_Machine.txt).
+ *  - Machine: Keyframe Studio engines (zy_StudioEX_Machine.txt).
  *  - Game: AutoTranslator's own cache / the repack's translation files.
  * All of them are pushed into AutoTranslator, so they fix the in-game UI too.
  */
@@ -225,7 +225,7 @@ export function TranslatePanel() {
               <button
                 className="btn primary"
                 disabled={!canEngine || !counts.missing}
-                title={canEngine ? 'Translate everything that has no translation yet' : 'Only available in the Studio EX window'}
+                title={canEngine ? 'Translate everything that has no translation yet' : 'Only available in the Keyframe Studio window'}
                 onClick={() => run(() => translateMissing(settings.engine))}
               >
                 Translate missing ({counts.missing})
@@ -322,7 +322,7 @@ export function TranslatePanel() {
         {!list.length && (
           <div className="empty">
             <strong>{entries.length ? 'Nothing matches' : 'Nothing collected yet'}</strong>
-            Japanese names shown anywhere in Studio EX appear here so you can translate or correct them.
+            Japanese names shown anywhere in Keyframe Studio appear here so you can translate or correct them.
           </div>
         )}
       </div>

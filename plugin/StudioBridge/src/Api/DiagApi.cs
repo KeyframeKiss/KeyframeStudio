@@ -9,7 +9,7 @@ using StudioEX.Bridge.Net;
 namespace StudioEX.Bridge.Api
 {
     /// <summary>
-    /// Everything a bug report needs from the Studio side: versions, installed mods, which Studio EX features
+    /// Everything a bug report needs from the Studio side: versions, installed mods, which Keyframe Studio features
     /// are on, and the recent log (this bridge's messages plus any mod's warnings and errors).
     /// </summary>
     internal static class DiagApi

@@ -9,7 +9,7 @@ using UnityEngine;
 namespace StudioEX.Bridge.Api
 {
     /// <summary>
-    /// EXPERIMENTAL (roadmap Phase 3 spike): streams Studio's camera view into the Studio EX window.
+    /// EXPERIMENTAL (roadmap Phase 3 spike): streams Studio's camera view into the Keyframe Studio window.
     ///
     /// Each captured frame renders Studio's main camera a second time into a RenderTexture (image effects
     /// included), reads it back to the CPU, encodes JPEG and broadcasts it as a binary WebSocket frame:

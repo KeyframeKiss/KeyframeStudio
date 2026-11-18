@@ -552,11 +552,11 @@ select {
   padding-right: 6px;
   white-space: nowrap;
 }
-.brand-mark {
-  width: 18px;
-  height: 18px;
-  border-radius: 5px;
-  background: conic-gradient(from 210deg, var(--accent), #ff5d8f, var(--accent-2), var(--accent));
+.brand-logo {
+  display: block;
+  height: 38px;
+  width: auto;
+  user-select: none;
 }
 .brand small {
   color: var(--text-3);
@@ -649,6 +649,10 @@ select {
 }
 .seg button {
   appearance: none;
+  display: inline-flex; /* icon + label on one line */
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
   border: 0;
   background: transparent;
   color: var(--text-2);
@@ -2611,4 +2615,15 @@ select {
 .pose-compare-col small {
   color: var(--text-3);
   min-height: 1em;
+}
+
+.about-logo {
+  display: block;
+  align-self: flex-start; /* the page is a flex column: don't stretch to its width */
+  height: 72px;
+  width: auto;
+  max-width: 100%;
+  object-fit: contain;
+  margin: 0 0 14px -6px;
+  user-select: none;
 }

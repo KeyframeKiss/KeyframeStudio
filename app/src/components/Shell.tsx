@@ -40,9 +40,8 @@ export function Header() {
 
   return (
     <header className="header">
-      <div className="brand" title={hello ? `Studio EX · bridge v${hello.plugin}` : 'Studio EX'}>
-        <span className="brand-mark" />
-        Studio EX
+      <div className="brand" title={hello ? `Keyframe Studio · bridge v${hello.plugin}` : 'Keyframe Studio'}>
+        <img className="brand-logo" src="brand/logo.png" alt="Keyframe Studio" draggable={false} />
       </div>
       <nav className="ws-tabs">
         {WORKSPACES.map((w) => (

@@ -8,8 +8,8 @@ using BepInEx.Bootstrap;
 namespace StudioEX.Bridge.Api
 {
     /// <summary>
-    /// Which mods each Studio EX feature hooks into, the versions it was tested with, and whether it works with
-    /// what is installed. A feature whose mod is missing or changed in a way Studio EX can't use is switched off
+    /// Which mods each Keyframe Studio feature hooks into, the versions it was tested with, and whether it works with
+    /// what is installed. A feature whose mod is missing or changed in a way Keyframe Studio can't use is switched off
     /// on its own (its commands answer with the reason); everything else keeps working.
     ///
     /// "Works" is checked, not assumed from the version number: each feature probes the exact classes, fields and
@@ -20,7 +20,7 @@ namespace StudioEX.Bridge.Api
         internal sealed class Feature
         {
             public string Id, Label, ModName, Guid;
-            public string[] Tested;            // versions verified with Studio EX
+            public string[] Tested;            // versions verified with Keyframe Studio
             public Func<string> Probe;         // null = usable, otherwise why not
             public string[] Commands = new string[0];
             public string[] Prefixes = new string[0];
@@ -103,14 +103,14 @@ namespace StudioEX.Bridge.Api
                 if (why != null)
                 {
                     f.Status = "off";
-                    f.Reason = f.ModName + " " + f.Version + " works differently from the version Studio EX supports" +
+                    f.Reason = f.ModName + " " + f.Version + " works differently from the version Keyframe Studio supports" +
                                (f.Tested.Length > 0 ? " (" + string.Join(", ", f.Tested) + ")" : "") + ": " + why;
                     StudioBridgePlugin.Logger.LogWarning("Feature off — " + f.Label + ". " + f.Reason);
                 }
                 else if (f.Tested.Length > 0 && !f.Tested.Any(v => VersionEquals(v, f.Version)))
                 {
                     f.Status = "untested";
-                    f.Reason = f.ModName + " " + f.Version + " hasn't been tested with Studio EX (tested: " + string.Join(", ", f.Tested) +
+                    f.Reason = f.ModName + " " + f.Version + " hasn't been tested with Keyframe Studio (tested: " + string.Join(", ", f.Tested) +
                                "); it looks compatible, so the feature stays on";
                 }
                 else f.Status = "ok";

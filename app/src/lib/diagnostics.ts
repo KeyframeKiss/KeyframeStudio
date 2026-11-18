@@ -26,9 +26,9 @@ export async function buildReport(status: string): Promise<string> {
   const info = (await window.studioEx?.appInfo?.().catch(() => undefined)) ?? undefined;
   const out: string[] = [];
   const h = (s: string) => out.push('', `== ${s} ==`);
-  out.push(`Studio EX diagnostics — ${new Date().toISOString()}`);
+  out.push(`Keyframe Studio diagnostics — ${new Date().toISOString()}`);
   h('App');
-  if (info) out.push(`Studio EX ${info.version} · Electron ${info.electron} · Chrome ${info.chrome} · ${info.os}`);
+  if (info) out.push(`Keyframe Studio ${info.version} · Electron ${info.electron} · Chrome ${info.chrome} · ${info.os}`);
   else out.push('Running outside Electron (browser dev mode)');
   out.push(`Bridge: ${status}`);
 
@@ -49,7 +49,7 @@ export async function buildReport(status: string): Promise<string> {
     for (const p of diag.plugins) out.push(`${p.name} ${p.version}  (${p.guid})`);
   } else out.push('Not connected — start CharaStudio to include its versions and log.');
 
-  h('Bridge log (recent warnings/errors and Studio EX messages)');
+  h('Bridge log (recent warnings/errors and Keyframe Studio messages)');
   out.push(...(bridgeLog.length ? bridgeLog : ['(empty)']));
   h('App log (recent)');
   const fileLines = (await window.studioEx?.log?.tail(200).catch(() => null)) ?? null;

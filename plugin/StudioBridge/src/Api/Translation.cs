@@ -25,7 +25,7 @@ namespace StudioEX.Bridge.Api
         private static readonly HashSet<string> Pending = new HashSet<string>();
         private static readonly Dictionary<string, string> Seen = new Dictionary<string, string>(); // text -> context
         private static Dictionary<string, string> _overrides;
-        private static Dictionary<string, string> _machine;          // text -> translation (Studio EX engines)
+        private static Dictionary<string, string> _machine;          // text -> translation (Keyframe Studio engines)
         private static Dictionary<string, string> _machineEngine;    // text -> engine id
         private static bool _injected;
 
@@ -48,7 +48,7 @@ namespace StudioEX.Bridge.Api
 
         private static string TextDir => Path.Combine(Paths.BepInExRootPath, Path.Combine("Translation", Path.Combine("en", "Text")));
         private static string OverridesPath => Path.Combine(TextDir, "zz_StudioEX_Overrides.txt");
-        // Machine translations made by Studio EX's engines (Google batch, DeepL, local AI). Loaded by
+        // Machine translations made by Keyframe Studio's engines (Google batch, DeepL, local AI). Loaded by
         // AutoTranslator too; sorted before the overrides file so your own edits always win.
         private static string MachinePath => Path.Combine(TextDir, "zy_StudioEX_Machine.txt");
 
@@ -190,7 +190,7 @@ namespace StudioEX.Bridge.Api
             else ov[text] = value.Trim();
 
             var sb = new StringBuilder();
-            sb.AppendLine("// Translation overrides written by Studio EX. Format: original=translation");
+            sb.AppendLine("// Translation overrides written by Keyframe Studio. Format: original=translation");
             foreach (var kv in ov) sb.Append(Escape(kv.Key)).Append('=').AppendLine(Escape(kv.Value));
             Directory.CreateDirectory(Path.GetDirectoryName(OverridesPath));
             File.WriteAllText(OverridesPath, sb.ToString(), new UTF8Encoding(false));
@@ -261,7 +261,7 @@ namespace StudioEX.Bridge.Api
                 l.Add(kv);
             }
             var sb = new StringBuilder();
-            sb.AppendLine("// Machine translations written by Studio EX (Library > Translations). Format: original=translation");
+            sb.AppendLine("// Machine translations written by Keyframe Studio (Library > Translations). Format: original=translation");
             sb.AppendLine("// Your own corrections live in zz_StudioEX_Overrides.txt and take priority.");
             foreach (var g in byEngine)
             {

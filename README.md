@@ -1,11 +1,11 @@
-# Studio EX
+# Keyframe Studio
 
 A modern, external editor for **Koikatsu CharaStudio**. Studio keeps doing what it's good at
-(rendering, characters, every mod and zipmod you have installed); Studio EX gives you a fast,
+(rendering, characters, every mod and zipmod you have installed); Keyframe Studio gives you a fast,
 keyboard-driven animation editor in its own window — ideal on a second monitor.
 
 ```
-┌───────────────────── CharaStudio (game) ─────────────────────┐        ┌──────────── Studio EX (Electron) ────────────┐
+┌───────────────────── CharaStudio (game) ─────────────────────┐        ┌──────────── Keyframe Studio (Electron) ────────────┐
 │  BepInEx + all your mods + Timeline + KKPE + …              │        │  Outliner · Dope sheet · Curve editor        │
 │  KKStudioEX.Bridge.dll  ── ws://127.0.0.1:47615 ────────────┼───────▶│  Inspector · Track browser · Undo/redo       │
 └──────────────────────────────────────────────────────────────┘        └──────────────────────────────────────────────┘
@@ -19,7 +19,7 @@ stay compatible with vanilla Timeline, and you can still open Timeline's own win
 | Folder | What |
 | --- | --- |
 | `plugin/StudioBridge` | BepInEx plugin (C#, .NET 3.5 / Unity 5.6). Local WebSocket server exposing scene + Timeline. |
-| `app` | Studio EX desktop app (Electron + React + TypeScript + Vite). |
+| `app` | Keyframe Studio desktop app (Electron + React + TypeScript + Vite). |
 
 ## Install / run
 
@@ -40,7 +40,7 @@ npm run dev      # hot-reloading dev mode (Vite + Electron)
 npm start        # production build + run
 ```
 
-Start CharaStudio; Studio EX connects automatically (status bar turns green).
+Start CharaStudio; Keyframe Studio connects automatically (status bar turns green).
 The port is configurable in `BepInEx/config/studioex.bridge.cfg`.
 
 ## Tests
@@ -82,7 +82,7 @@ version that still matches stays on and is marked "untested".
 2. **Tracks** tab → click a property (e.g. a bone, position, expression). It's added with a key at the playhead.
 3. Move the playhead, pose in Studio, press **K** (selected tracks) or **Shift+K** (whole object).
 4. Drag keys to retime, box-select, **1–5** for easing presets, or shape the curve in the Inspector.
-5. **Ctrl+Z** undoes any edit made from Studio EX.
+5. **Ctrl+Z** undoes any edit made from Keyframe Studio.
 
 Press **?** in the app for every shortcut.
 
@@ -103,13 +103,13 @@ Commands live in `plugin/StudioBridge/src/Api/*.cs`; wire types in `app/src/brid
 | **Poses** tab | Studio-compatible pose library (`.dat` and PNG poses, folders, thumbnails), save, apply, **mirror** (`M`), copy pose between characters |
 | **Scene browser** (`Ctrl+O`) | Thumbnail grid of `UserData/studio/scene`, folders, search, load, import (merge), save, new |
 | **Folders** | Timeline's own folders in the dope sheet (Objects/Folders switch): create from selected tracks (`Ctrl+G`), rename, move tracks in/out, ungroup, collapse (saved in the scene) |
-| **Key changes / Auto-key** | Studio EX notices what you changed in Studio since the last seek (any track type, plus bones/objects without tracks) — `K` with nothing selected or **Key changes** keys exactly that; **Auto** (`R`) keys it automatically when you release the mouse. Self-animating things (spinning items, physics bones) are detected and ignored |
+| **Key changes / Auto-key** | Keyframe Studio notices what you changed in Studio since the last seek (any track type, plus bones/objects without tracks) — `K` with nothing selected or **Key changes** keys exactly that; **Auto** (`R`) keys it automatically when you release the mouse. Self-animating things (spinning items, physics bones) are detected and ignored |
 | **Undo everywhere** | One history for timeline, character panel, ABMX, transform, light and item edits; a slider drag is one undo step |
 | **Object** tab | Transform for any object (multi-select edits only the axis you touch), item colors/alpha/glow/FK/anim speed, light color/intensity/range/spot/shadows, folder & camera names, view-through-camera |
 | **Camera** tab | Viewport snapshot, Studio's 10 saved views with thumbnails, FOV, **Key camera** / **Cut here** (hard cut), shot list with thumbnails, scene cameras |
 | **Look** tab | Every render setting in one place: color grade (LUT + KK_TwoLut second LUT + blend), bloom, depth of field, SSAO, vignette, fog, sun shafts, shadows, global toon shading (ramp, outline darkness/width, shadow color/depth, face options), character & map light. **Look presets** (UserData/StudioEX/looks, JSON + thumbnail): six starters, save your own, apply all or only some groups, at any strength (blend), undoable. **Materials**: bulk-edit any shader property across the selected characters/items through KK_MaterialEditor (saved like MaterialEditor edits) and include those tweaks in presets |
 | **Mod settings** (`Ctrl+,` / ⚙) | Every BepInEx plugin setting (100+ plugins) searchable in one window, typed editors, changed-only filter, reset to default |
-| **Translations** (Library) | Every Japanese string Studio EX has shown, tagged Yours / Machine / Game. **Auto-translate** new names in the background with Google (free, no setup), DeepL (free API key) or a local AI (Ollama / LM Studio, any OpenAI-compatible server). Machine results go to `zy_StudioEX_Machine.txt`, your edits to `zz_StudioEX_Overrides.txt` (always win); both are pushed into AutoTranslator so the in-game UI improves too. "Improve all" re-translates Game/Machine rows with a better engine |
+| **Translations** (Library) | Every Japanese string Keyframe Studio has shown, tagged Yours / Machine / Game. **Auto-translate** new names in the background with Google (free, no setup), DeepL (free API key) or a local AI (Ollama / LM Studio, any OpenAI-compatible server). Machine results go to `zy_StudioEX_Machine.txt`, your edits to `zz_StudioEX_Overrides.txt` (always win); both are pushed into AutoTranslator so the in-game UI improves too. "Improve all" re-translates Game/Machine rows with a better engine |
 
 ## Roadmap
 

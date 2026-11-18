@@ -51,11 +51,12 @@ export function DiagnosticsPage() {
   return (
     <div className="page">
       <div className="page-inner narrow" style={{ padding: 20, overflow: 'auto' }}>
+        <img className="about-logo" src="brand/logo-large.png" alt="Keyframe Studio" draggable={false} />
         <h2 className="page-title">About &amp; diagnostics</h2>
 
         <section className="diag-card">
           <div className="diag-row">
-            <span>Studio EX</span>
+            <span>Keyframe Studio</span>
             <b>{app ? `${app.version} · Electron ${app.electron} · ${app.os}` : 'browser dev mode'}</b>
           </div>
           <div className="diag-row">
@@ -75,7 +76,7 @@ export function DiagnosticsPage() {
               {busy ? 'Collecting…' : 'Copy diagnostics'}
             </button>
             {window.studioEx?.log && (
-              <button className="btn solid" onClick={() => window.studioEx?.log?.openFolder()} title="Studio EX's own log file">
+              <button className="btn solid" onClick={() => window.studioEx?.log?.openFolder()} title="Keyframe Studio's own log file">
                 Open log folder
               </button>
             )}

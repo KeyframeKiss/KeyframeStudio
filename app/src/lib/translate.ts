@@ -1,4 +1,4 @@
-// Batch machine translation for Studio EX.
+// Batch machine translation for Keyframe Studio.
 //
 // Engines run in the Electron main process (see electron/translate.cjs). Results are stored by the
 // plugin in BepInEx/Translation/en/Text/zy_StudioEX_Machine.txt and pushed into AutoTranslator, so the
@@ -77,7 +77,7 @@ export function saveSettings(s: TranslateSettings) {
 }
 
 export function listModels(s: TranslateSettings) {
-  if (!window.studioEx?.translate) return Promise.reject(new Error('Only available in the Studio EX window'));
+  if (!window.studioEx?.translate) return Promise.reject(new Error('Only available in the Keyframe Studio window'));
   return window.studioEx.translate.models(s);
 }
 
@@ -117,7 +117,7 @@ const failed = new Set<string>();
  */
 export async function translateEntries(entries: { text: string; context: string }[], engine: Engine, opts: { quiet?: boolean } = {}) {
   const api = window.studioEx?.translate;
-  if (!api) throw new Error('Auto-translation needs the Studio EX window (not a browser tab)');
+  if (!api) throw new Error('Auto-translation needs the Keyframe Studio window (not a browser tab)');
   if (useStore.getState().translateJob) throw new Error(BUSY);
   const items = cores(entries);
   if (!items.length) return 0;

@@ -36,9 +36,9 @@ export default async function (t) {
   if (items.length >= 2)
     await t.step('rename + undo', async () => {
       const it = items[0];
-      await ok('scene.rename', { ids: [it.id], name: 'Renamed by Studio EX' });
+      await ok('scene.rename', { ids: [it.id], name: 'Renamed by Keyframe Studio' });
       let s = await ok('scene.get');
-      check('rename applied', s.nodes.find((n) => n.id === it.id).name === 'Renamed by Studio EX');
+      check('rename applied', s.nodes.find((n) => n.id === it.id).name === 'Renamed by Keyframe Studio');
       await ok('undo');
       s = await ok('scene.get');
       check('rename undone', s.nodes.find((n) => n.id === it.id).name === it.name);

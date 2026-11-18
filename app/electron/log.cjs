@@ -1,4 +1,4 @@
-// Studio EX log file: what the app did and what went wrong, for bug reports.
+// Keyframe Studio log file: what the app did and what went wrong, for bug reports.
 // <userData>/logs/studioex.log, rolled over to studioex.1.log at 1 MB. Written by the main process; the
 // renderer sends its lines over IPC in small batches.
 const { app, shell } = require('electron');
@@ -66,7 +66,7 @@ function tail(n = 300) {
 
 function register(ipcMain) {
   ensure();
-  log('info', `Studio EX ${app.getVersion()} started (Electron ${process.versions.electron}, ${os.type()} ${os.release()} ${process.arch})`);
+  log('info', `Keyframe Studio ${app.getVersion()} started (Electron ${process.versions.electron}, ${os.type()} ${os.release()} ${process.arch})`);
   ipcMain.handle('log:write', (_e, lines) => write(Array.isArray(lines) ? lines.slice(0, 500) : []));
   ipcMain.handle('log:tail', (_e, n) => tail(Math.max(1, Math.min(2000, Number(n) || 300))));
   ipcMain.handle('log:openFolder', () => shell.openPath(ensure() && dir));

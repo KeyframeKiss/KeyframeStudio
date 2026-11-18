@@ -81,13 +81,13 @@ function Disconnected() {
         {status === 'open' ? (
           <>
             <h2>Timeline plugin missing</h2>
-            Studio EX edits Timeline animations — install Timeline (part of the HSPE/KKPE packs).
+            Keyframe Studio edits Timeline animations — install Timeline (part of the HSPE/KKPE packs).
           </>
         ) : (
           <>
             <span className={`status-dot ${status === 'connecting' ? 'connecting' : ''}`} style={{ display: 'inline-block' }} />
             <h2>Waiting for CharaStudio…</h2>
-            Start <code>CharaStudio.exe</code> with <code>KKStudioEX.Bridge</code> in <code>BepInEx/plugins</code>. Studio EX connects automatically.
+            Start <code>CharaStudio.exe</code> with <code>KKStudioEX.Bridge</code> in <code>BepInEx/plugins</code>. Keyframe Studio connects automatically.
           </>
         )}
       </div>

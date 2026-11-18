@@ -7,7 +7,7 @@ using StudioEX.Bridge.Net;
 namespace StudioEX.Bridge.Api
 {
     /// <summary>
-    /// Favorites, tags and "last used" for library items that are not Studio EX's own files: scenes,
+    /// Favorites, tags and "last used" for library items that are not Keyframe Studio's own files: scenes,
     /// animation clips and looks. Kept in UserData/StudioEX/library-meta.json as
     /// { kind: { key: { favorite, tags, lastUsed } } }, so the game's files are never touched.
     /// Keys are chosen by the app (scene path relative to the scene folder, "group/category/no", look file).

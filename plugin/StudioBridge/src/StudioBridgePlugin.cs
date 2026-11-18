@@ -15,7 +15,7 @@ namespace StudioEX.Bridge
     public class StudioBridgePlugin : BaseUnityPlugin
     {
         public const string GUID = "studioex.bridge";
-        public const string Name = "Studio EX Bridge";
+        public const string Name = "Keyframe Studio Bridge";
         public const string Version = "0.1.0";
         public const int ProtocolVersion = 1;
         internal const string TimelineGuid = "com.joan6694.illusionplugins.timeline";
@@ -36,7 +36,7 @@ namespace StudioEX.Bridge
             Instance = this;
             Logger = base.Logger;
             DiagApi.Install(); // keep recent log lines for "Copy diagnostics"
-            _port = Config.Bind("Connection", "Port", 47615, "Local WebSocket port the Studio EX app connects to (127.0.0.1 only).");
+            _port = Config.Bind("Connection", "Port", 47615, "Local WebSocket port the Keyframe Studio app connects to (127.0.0.1 only).");
 
             gameObject.AddComponent<ViewportTools>();
             ViewportTools.Register(_router);
@@ -69,8 +69,8 @@ namespace StudioEX.Bridge
             {
                 _server = new WebSocketServer(_port.Value);
                 _server.MessageReceived += (c, m) => { lock (_inbox) _inbox.Enqueue(new KeyValuePair<WsClient, string>(c, m)); };
-                _server.ClientConnected += c => Enqueue("Studio EX app connected (#" + c.Id + ")");
-                _server.ClientDisconnected += c => Enqueue("Studio EX app disconnected (#" + c.Id + ")");
+                _server.ClientConnected += c => Enqueue("Keyframe Studio app connected (#" + c.Id + ")");
+                _server.ClientDisconnected += c => Enqueue("Keyframe Studio app disconnected (#" + c.Id + ")");
                 _server.Log += Enqueue;
                 _server.Start();
                 Logger.LogInfo("Listening on ws://127.0.0.1:" + _port.Value);

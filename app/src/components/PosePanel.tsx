@@ -15,7 +15,7 @@ interface PoseFile {
   modified: number;
   png?: boolean;
   folder?: string;
-  /** cached thumbnail made by Studio EX (UserData/StudioEX/pose-thumbs) */
+  /** cached thumbnail made by Keyframe Studio (UserData/StudioEX/pose-thumbs) */
   thumb?: string;
   favorite?: boolean;
   tags?: string[];

@@ -1,5 +1,5 @@
 /**
- * App log: lines go to the Studio EX log file (Electron main writes it) in small batches, and the last few
+ * App log: lines go to the Keyframe Studio log file (Electron main writes it) in small batches, and the last few
  * hundred stay in memory for "Copy diagnostics". Uncaught errors and console errors/warnings are captured.
  */
 export type Level = 'error' | 'warn' | 'info';

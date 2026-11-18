@@ -1,4 +1,4 @@
-// Shared test harness for the live Studio EX suites: one WebSocket connection to the bridge plugin,
+// Shared test harness for the live Keyframe Studio suites: one WebSocket connection to the bridge plugin,
 // request helpers, checks, cleanups and a "fresh Studio" reset so every suite starts from the same state.
 import path from 'node:path';
 
@@ -53,7 +53,7 @@ export class Studio {
           await sleep(2000);
         }
       } catch (e) {
-        if (Date.now() > deadline) throw new Error(`Can't reach the Studio EX bridge at ${url} — is CharaStudio running with the plugin?`);
+        if (Date.now() > deadline) throw new Error(`Can't reach the Keyframe Studio bridge at ${url} — is CharaStudio running with the plugin?`);
         if (!warned) log('Waiting for CharaStudio…');
         warned = true;
         await sleep(3000);

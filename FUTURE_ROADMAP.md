@@ -1,8 +1,8 @@
-# Studio EX — Next Development Roadmap
+# Keyframe Studio — Next Development Roadmap
 
 ## Vision
 
-Make Studio EX a complete, modern, and flexible creative workspace for Koikatsu CharaStudio.
+Make Keyframe Studio a complete, modern, and flexible creative workspace for Koikatsu CharaStudio.
 
 The goal is not to replace working systems. It is to make existing tools easier to use, add direct visual manipulation, and reduce the steps required to create characters, scenes, and animations.
 
@@ -10,8 +10,8 @@ The goal is not to replace working systems. It is to make existing tools easier 
 
 1. **Stabilize first.** A release people can install, update, and report problems from.
 2. **Quick wins next.** Features that don't need new rendering technology ship early.
-3. **Cheapest path to direct manipulation.** Overlays and gizmos are drawn in Studio's own viewport, which already runs next to Studio EX with no lag and no extra rendering cost.
-4. **Test risky technology before depending on it.** A streamed preview inside Studio EX is built as a small spike with measurable go/no-go criteria, not as a foundation.
+3. **Cheapest path to direct manipulation.** Overlays and gizmos are drawn in Studio's own viewport, which already runs next to Keyframe Studio with no lag and no extra rendering cost.
+4. **Test risky technology before depending on it.** A streamed preview inside Keyframe Studio is built as a small spike with measurable go/no-go criteria, not as a foundation.
 5. **Scope decisions are made explicitly** (see *Open Decisions*), not implied by a feature list.
 
 ---
@@ -32,7 +32,7 @@ The goal is not to replace working systems. It is to make existing tools easier 
 ### 0.2 Complete Distribution
 - Create a one-click Windows installer (plugin and app together).
 - Detect Koikatsu, BepInEx, and supported plugin versions.
-- Install or update the Studio EX bridge.
+- Install or update the Keyframe Studio bridge.
 - Add version information and update handling.
 - Provide a clean uninstall that removes the bridge and app but keeps user data (looks, translations, settings).
 - Plan for Windows SmartScreen: code signing, or clear first-run instructions.
@@ -44,11 +44,11 @@ The goal is not to replace working systems. It is to make existing tools easier 
 - One command runs all suites and prints a pass/fail summary.
 
 ### 0.4 Diagnostics
-- Write a Studio EX log (bridge and app) with a "Copy diagnostics" button for bug reports.
+- Write a Keyframe Studio log (bridge and app) with a "Copy diagnostics" button for bug reports.
 - Record plugin and mod versions in the log.
 
 ### 0.5 Compatibility Matrix
-- List the Timeline, MaterialEditor, KKABMX, KKPE, XUnity AutoTranslator, and KK_TwoLut versions Studio EX hooks into, and which features depend on each.
+- List the Timeline, MaterialEditor, KKABMX, KKPE, XUnity AutoTranslator, and KK_TwoLut versions Keyframe Studio hooks into, and which features depend on each.
 - On an unknown version, disable only the affected feature and say why, instead of failing.
 
 **Status (2026-11-17): 0.3–0.5 done.**
@@ -113,16 +113,16 @@ Direct manipulation is drawn in CharaStudio's own viewport, extending the system
 ### 2.2 Gizmos and Handles
 - Improved position, rotation, and scale gizmos.
 - Clickable control points and handles.
-- Snapping and precision adjustment (modifier keys, numeric entry in Studio EX).
+- Snapping and precision adjustment (modifier keys, numeric entry in Keyframe Studio).
 
 ### 2.3 Selection
-- Click to select bones and objects in Studio's viewport, synchronized with Studio EX.
+- Click to select bones and objects in Studio's viewport, synchronized with Keyframe Studio.
 - Selection filters (bones only, lights only, accessories only).
 
 ### 2.4 Shared Editing Framework
 - One coordinate and selection model used by every overlay tool.
-- All edits go through existing Studio EX commands and the shared undo history.
-- Overlay visibility and editing modes controlled from Studio EX.
+- All edits go through existing Keyframe Studio commands and the shared undo history.
+- Overlay visibility and editing modes controlled from Keyframe Studio.
 
 **Deliverable:** Click-and-drag editing in the viewport users already work in, ready for later tools to build on.
 
@@ -132,7 +132,7 @@ Direct manipulation is drawn in CharaStudio's own viewport, extending the system
 
 **Priority: Medium | Scope: Small (spike)**
 
-A live preview rendered by Koikatsu and shown inside Studio EX is attractive but risky:
+A live preview rendered by Koikatsu and shown inside Keyframe Studio is attractive but risky:
 
 - A second camera re-renders the whole scene, including post-processing.
 - Unity 5.6 cannot easily share a GPU texture with Electron, so frames likely travel as compressed images (estimated 10–20 fps, 50–100 ms latency).
@@ -147,7 +147,7 @@ A live preview rendered by Koikatsu and shown inside Studio EX is attractive but
 - **Go** for non-interactive use if: ≥ 10 fps and the game loses ≤ 15% frame rate. Use the stream for face close-ups, before/after comparisons, and previews before applying.
 - **No-go:** keep all direct manipulation in Studio's viewport (Phase 2) and use snapshots for still previews.
 
-**Deliverable:** A measured decision on whether Studio EX gets its own live viewport.
+**Deliverable:** A measured decision on whether Keyframe Studio gets its own live viewport.
 
 ### 3.3 Results (2026-11-17)
 
@@ -228,7 +228,7 @@ Extends the existing Look workspace.
 Face Studio fine-tunes the face of a character already in the scene: eyes, brows, mouth, nose, cheeks, jaw and their shapes. It is not a character creator. It builds on **KKPE** (KK Pose Editor), which already stores per-character bone and blendshape adjustments in the scene, so edits made in Face Studio save, load and stay editable in KKPE as usual.
 
 ### 5.1 KKPE Bridge
-- Read and write KKPE's per-character bone adjustments (position, rotation, scale offsets) and blendshape values from Studio EX.
+- Read and write KKPE's per-character bone adjustments (position, rotation, scale offsets) and blendshape values from Keyframe Studio.
 - KKPE has no public API for this: access its internal edit data by reflection, add KKPE to the compatibility matrix (0.5), and disable Face Studio cleanly on an unsupported version.
 - Route every change through the shared undo history.
 
@@ -314,7 +314,7 @@ Saved layouts give most of the benefit of dockable panels at a fraction of the c
 - Project-specific presets.
 
 ### 7.5 Render and Export
-First check what installed screenshot and recording mods already do; drive them from Studio EX rather than rebuilding them.
+First check what installed screenshot and recording mods already do; drive them from Keyframe Studio rather than rebuilding them.
 
 - Resolution and frame-rate presets.
 - Camera and shot export profiles.
@@ -332,7 +332,7 @@ All new features should follow these rules:
 1. **Preserve compatibility.** Use existing CharaStudio and plugin APIs where practical.
 2. **Keep the interface simple.** Show relevant tools based on the current selection and task.
 3. **Use direct interaction.** Prefer clicking and dragging visual elements over searching through menus.
-4. **Reuse existing systems.** Extend Studio EX's current commands, state synchronization, and undo history.
+4. **Reuse existing systems.** Extend Keyframe Studio's current commands, state synchronization, and undo history.
 5. **Make changes reversible.** Support preview, apply, cancel, and undo where technically possible.
 6. **Maintain performance.** Keep preview rendering and editing responsive.
 7. **Keep advanced controls available.** Simplification must not remove useful functionality.
@@ -351,7 +351,7 @@ All new features should follow these rules:
 
 | Decision | Options | Needed before |
 | --- | --- | --- |
-| Audio playback for lip-sync | Use an installed mod, or build a Studio EX audio track | Phase 6.2 |
+| Audio playback for lip-sync | Use an installed mod, or build a Keyframe Studio audio track | Phase 6.2 |
 
 ## Recommended Development Order
 
@@ -366,7 +366,7 @@ All new features should follow these rules:
 
 ## Success Criteria
 
-Studio EX should make common creative tasks faster, easier to discover, and easier to correct. Measured targets:
+Keyframe Studio should make common creative tasks faster, easier to discover, and easier to correct. Measured targets:
 
 | Area | Target |
 | --- | --- |
@@ -376,6 +376,6 @@ Studio EX should make common creative tasks faster, easier to discover, and easi
 | Performance | No visible frame-rate drop in a 200-object scene with motion paths and ghosts on |
 | Reliability | Full test suite passes on a fresh Studio session before every release |
 | Installation | Install or update in under 2 minutes with no manual file copying |
-| Correctability | Every edit made in Studio EX can be undone |
+| Correctability | Every edit made in Keyframe Studio can be undone |
 
 Users should be able to select and edit characters, construct animations, configure lighting, and manage scenes without repeatedly switching through nested Koikatsu plugin windows. Advanced users keep precise control, and new users have a clear path to their first scene or animation.

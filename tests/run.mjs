@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Live test runner: drives a running CharaStudio through the Studio EX bridge plugin.
+// Live test runner: drives a running CharaStudio through the Keyframe Studio bridge plugin.
 //
 //   node tests/run.mjs                 run every suite
 //   node tests/run.mjs face timeline   run suites whose name contains any of the words
@@ -66,7 +66,7 @@ const studio = await Studio.connect({ log: (m) => console.log(dim(m)) }).catch((
   process.exit(1);
 });
 const hello = await studio.ok('hello');
-console.log(`Studio EX bridge ${hello.plugin} · Unity ${hello.unity} · ${chosen.length} suite${chosen.length > 1 ? 's' : ''}`);
+console.log(`Keyframe Studio bridge ${hello.plugin} · Unity ${hello.unity} · ${chosen.length} suite${chosen.length > 1 ? 's' : ''}`);
 for (const f of hello.features ?? []) if (f.status === 'off' || f.status === 'untested') console.log(yellow(`  ${f.status}: ${f.label} — ${f.reason}`));
 console.log('');
 

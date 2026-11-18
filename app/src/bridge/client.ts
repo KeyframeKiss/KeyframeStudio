@@ -1,4 +1,4 @@
-// WebSocket client for the in-game Studio EX Bridge plugin.
+// WebSocket client for the in-game Keyframe Studio Bridge plugin.
 // Request/response with ids, plus server-pushed events. Auto-reconnects.
 
 type Listener = (data: unknown) => void;

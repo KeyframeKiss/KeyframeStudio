@@ -1,11 +1,18 @@
-// Electron shell for Studio EX. The UI is a plain web app; this just gives it its own window.
+// Electron shell for Keyframe Studio. The UI is a plain web app; this just gives it its own window.
 const { app, BrowserWindow, ipcMain, shell, protocol, nativeImage } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
+// The app is called Keyframe Studio (it was Studio EX). Keep the data folder it has always used
+// (%APPDATA%\studio-ex: window position, settings, logs) so nothing is lost by the rename.
+app.setPath('userData', path.join(app.getPath('appData'), 'studio-ex'));
+app.setName('Keyframe Studio');
+if (process.platform === 'win32') app.setAppUserModelId('KeyframeStudio');
+const APP_ICON = path.join(__dirname, '..', 'build', 'icon.ico');
+
 // sximg://thumb/?p=<absolute path> → downscaled JPEG thumbnail of a Studio scene/pose PNG.
 // Restricted to .png files inside a UserData\studio folder so the renderer can't read arbitrary files.
-// Studio EX is a companion window: it must keep painting and updating while CharaStudio has focus or
+// Keyframe Studio is a companion window: it must keep painting and updating while CharaStudio has focus or
 // covers it. Chromium's occlusion detection otherwise stops painting it (blank window, frozen playhead).
 app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
 app.commandLine.appendSwitch('disable-renderer-backgrounding');
@@ -19,7 +26,7 @@ function thumbHandler(request) {
     const p = new URL(request.url).searchParams.get('p') || '';
     const norm = path.normalize(p);
     // Local drive paths only (a \\server\share path would make Windows send credentials to that server),
-    // a .png inside a UserData\studio folder, or one of Studio EX's cached pose thumbnails
+    // a .png inside a UserData\studio folder, or one of Keyframe Studio's cached pose thumbnails
     // (UserData\StudioEX\pose-thumbs\*.jpg) — checked again after resolving junctions/symlinks.
     const allowed = (f) =>
       /^[a-z]:\\/i.test(f) &&
@@ -70,7 +77,8 @@ function createWindow() {
     minWidth: 900,
     minHeight: 500,
     backgroundColor: '#15161a',
-    title: 'Studio EX',
+    title: 'Keyframe Studio',
+    icon: APP_ICON,
     autoHideMenuBar: true,
     alwaysOnTop: !!state.alwaysOnTop,
     webPreferences: {

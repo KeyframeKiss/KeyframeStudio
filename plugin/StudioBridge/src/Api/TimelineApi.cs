@@ -29,7 +29,7 @@ namespace StudioEX.Bridge.Api
         {
             get
             {
-                // installed AND exposes everything Studio EX reaches into (see Compat)
+                // installed AND exposes everything Keyframe Studio reaches into (see Compat)
                 if (_available == null) _available = Chainloader.PluginInfos.ContainsKey(StudioBridgePlugin.TimelineGuid) && Probe() == null;
                 return _available.Value;
             }
