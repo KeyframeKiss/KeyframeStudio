@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { Help } from './Help';
 import { bridge } from '../bridge/client';
 import { call, liveTime, refreshTimeline, seekNow, toast, useStore } from '../state/store';
 import { CameraMoves } from './CameraMoves';
@@ -68,8 +69,10 @@ export function CameraPanel() {
       <div className="look-card">
         <div className="look-card-head">
           <div>
-            <b>View</b>
-            <small>Studio's camera now</small>
+            <b>
+              View
+              <Help text="Studio's camera now" />
+            </b>
           </div>
           <button className="btn small solid" onClick={snap} title="Show what Studio's camera sees">
             Snapshot
@@ -108,8 +111,10 @@ export function CameraPanel() {
       <div className="look-card">
         <div className="look-card-head">
           <div>
-            <b>Saved views</b>
-            <small>Studio's views 1–10: click to go there, Save to store the current view</small>
+            <b>
+              Saved views
+              <Help text="Studio's views 1–10: click to go there, Save to store the current view" />
+            </b>
           </div>
         </div>
         <div className="look-card-body">
@@ -141,8 +146,10 @@ export function CameraPanel() {
         <div className="look-card">
           <div className="look-card-head">
             <div>
-              <b>Camera keys</b>
-              <small>Frame it in Studio, move the playhead, then key</small>
+              <b>
+                Camera keys
+                <Help text="Frame the shot in Studio, move the playhead, then key. Key camera glides from the previous key; Cut here jumps (an instant switch)." />
+              </b>
             </div>
           </div>
           <div className="look-card-body">
@@ -164,7 +171,7 @@ export function CameraPanel() {
                   <span className="sub" style={{ color: s.cut ? 'var(--accent)' : 'var(--text-3)' }}>{s.cut ? '✂ cut' : 'glide'}</span>
                 </div>
               ))}
-              {!shots.length && <div className="hint">No camera keys yet. Key (smooth) glides from the previous key; Cut jumps.</div>}
+              {!shots.length && <div className="hint">No camera keys yet.</div>}
             </div>
           </div>
         </div>

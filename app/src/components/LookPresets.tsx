@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Help } from './Help';
 import { ask } from './Dialogs';
 import { parseTags, useLibMeta } from '../lib/libmeta';
 import { call, toast, useStore } from '../state/store';
@@ -124,6 +125,7 @@ export function LookPresets({ wide }: { wide?: boolean }) {
           </div>
         </div>
         {wide && <span className="spacer" style={{ flex: 1 }} />}
+        <Help text="Click a look to apply it (the parts lit up above, at the strength set). Looks get a thumbnail of the current view when saved — the starters the first time you apply one in full. Right-click a look to retake its thumbnail, tag it or overwrite it with the current settings." />
         <button className="btn" title="Back to Studio's default look (undoable)" onClick={() => call('look.resetDefault').then((r) => r && lookChanged())}>
           Reset to default
         </button>
@@ -222,7 +224,6 @@ export function LookPresets({ wide }: { wide?: boolean }) {
           </a>
         </div>
       )}
-      <div className="hint">Looks get a thumbnail of the current view when saved (starters: the first time you apply one in full). Right-click a look to retake its thumbnail or overwrite it with the current settings.</div>
 
       {menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />}
       {prompt && <PromptDialog p={prompt} onClose={() => setPrompt(null)} />}

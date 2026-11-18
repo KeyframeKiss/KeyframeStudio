@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Help } from './Help';
 import { ask } from './Dialogs';
 import { call, displayName, selectedCharacters, toast, useStore } from '../state/store';
 import { Icon } from './Icon';
@@ -160,8 +161,11 @@ export function OutfitPanel() {
   return (
     <div className="panel-body outfit">
       <div className="section">
-        <h3>Saved outfits</h3>
-        {!list.length && <div className="hint" style={{ marginTop: 0 }}>Save what {charName} is wearing to switch back to it later, or dress others the same way.</div>}
+        <h3>
+          Saved outfits
+          <Help text="Save what the character is wearing to switch back to it later, or dress others the same way. Saves the outfit set, what's on or half-off, shoes and which accessories are shown." />
+        </h3>
+        {!list.length && <div className="hint" style={{ marginTop: 0 }}>No saved outfits for {charName} yet.</div>}
         <div className="outfit-list">
           {list.map((o) => (
             <div key={o.file} className="outfit-item">
@@ -189,7 +193,6 @@ export function OutfitPanel() {
             Save
           </button>
         </div>
-        <div className="hint">Saves the outfit set, what's on or half-off, shoes and which accessories are shown.</div>
       </div>
 
       <div className="section">

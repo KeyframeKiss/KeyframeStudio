@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Help } from './Help';
 import { bridge } from '../bridge/client';
 import type { WireTrack } from '../bridge/types';
 import { call, displayName, editTimeline, liveTime, seekNow, selectedCharacters, toast, useStore } from '../state/store';
@@ -135,6 +136,7 @@ export function FaceAnimation() {
         <b>{displayName(nodes[id])}</b>
         {chars.length > 1 && <span className="kbd">+{chars.length - 1}</span>}
         <span className="sel-bar-sub">at {time.toFixed(2)}s</span>
+        <Help text="Move the playhead, change the face below. With Auto-key on (Auto under the timeline, R) each change is keyed there; otherwise press Key face when it looks right. ◆ beside a control: it has a key at the playhead. Look direction and the Blink / Lip sync switches can't be animated in Timeline." />
         <span style={{ flex: 1 }} />
         <span className={`face-auto ${autoKey ? 'on' : ''}`} title="Auto-key is the Auto button under the timeline (R)">
           <span className="rec-dot" /> {autoKey ? (autoNew ? 'Auto-key: changes are keyed' : 'Auto-key: changes to animated parts are keyed') : 'Auto-key off — press Key face'}
@@ -154,10 +156,7 @@ export function FaceAnimation() {
         <div className="face-anim-view">{img ? <img src={img} alt="Face close-up" draggable={false} /> : <div className="empty">Rendering close-up…</div>}</div>
         <div className="face-anim-controls">
           <ExpressionControls ids={chars} onChanged={onChanged} watch={stepTime} badge={(f) => (keyedHere.has(f) ? <span className="key-badge" title="Keyed at the playhead">◆</span> : null)} />
-          <div className="face-hint" style={{ margin: '6px 2px 10px' }}>
-            {autoKey ? 'Auto-key is on (Auto, under the timeline): changes are keyed at the playhead. ' : 'Auto-key is off: change freely, then press Key face — or turn on Auto under the timeline (R). '}
-            Look direction, Blink and Lip sync switches aren't animatable in Timeline.
-          </div>
+
           <div className="face-card">
             <AudioPanel parts={['lipsync', 'face']} />
           </div>
@@ -206,6 +205,10 @@ function FaceLanes({ id, chars }: { id: number; chars: number[] }) {
 
   return (
     <div className="face-lanes">
+      <div className="face-lane-head">
+        Face keys
+        <Help text="Only this character's face tracks over the whole timeline. Click or drag a row to move the playhead, the key button keys that row at the playhead, right-click a key to delete it. The Timeline tab has the full dope sheet and curves." />
+      </div>
       {FACE_ROWS.map((r) => {
         const t = faceTrack(tracks, id, r.model);
         return (
@@ -246,7 +249,6 @@ function FaceLanes({ id, chars }: { id: number; chars: number[] }) {
           </div>
         );
       })}
-      <div className="face-lane-foot">Click or drag a row to move the playhead · ◆ keys at the playhead · the Timeline tab has the full dope sheet and curves</div>
       {menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />}
     </div>
   );

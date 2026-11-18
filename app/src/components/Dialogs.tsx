@@ -126,13 +126,22 @@ function TooltipHost() {
       target = el;
       el.dataset.tip = text;
       el.removeAttribute('title');
+      // a "?" is there to be read: show it almost at once
       timer = window.setTimeout(() => {
         if (target === el && el.isConnected) setTip({ text, rect: el.getBoundingClientRect() });
-      }, 550);
+      }, el.classList.contains('help-q') ? 120 : 550);
     };
     const out = (e: PointerEvent) => {
       if (target && !target.contains(e.relatedTarget as Node | null)) hide();
     };
+    const focus = (e: FocusEvent) => {
+      const el = e.target as HTMLElement | null;
+      if (!el?.classList?.contains('help-q')) return;
+      const text = el.getAttribute('title') ?? el.dataset.tip ?? '';
+      if (text) setTip({ text, rect: el.getBoundingClientRect() });
+    };
+    window.addEventListener('focusin', focus);
+    window.addEventListener('focusout', hide);
     window.addEventListener('pointerover', over, true);
     window.addEventListener('pointerout', out, true);
     window.addEventListener('pointerdown', hide, true);
@@ -141,6 +150,8 @@ function TooltipHost() {
     window.addEventListener('blur', hide);
     return () => {
       hide();
+      window.removeEventListener('focusin', focus);
+      window.removeEventListener('focusout', hide);
       window.removeEventListener('pointerover', over, true);
       window.removeEventListener('pointerout', out, true);
       window.removeEventListener('pointerdown', hide, true);

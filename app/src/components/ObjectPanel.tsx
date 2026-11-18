@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { Help } from './Help';
 import { bridge } from '../bridge/client';
 import { displayName, toast, useStore } from '../state/store';
 import { Num, Vec } from './AbmxSection';
@@ -132,7 +133,10 @@ export function ObjectPanel({ bare }: { bare?: boolean } = {}) {
 
       {tr && (
         <div className="section">
-          <h3>Transform</h3>
+          <h3>
+            Transform
+            <Help text="Drag a number to scrub (Shift = fine), click to type. With several objects selected, only the axis you change is applied to each." />
+          </h3>
           <div style={{ display: 'grid', gap: 6 }}>
             {tr.canPos && <Vec label="Position" v={tr.pos} step={0.01} onChange={(v) => axisPatch('pos', tr.pos, v)} />}
             {tr.canRot && <Vec label="Rotation" v={tr.rot} step={0.5} onChange={(v) => axisPatch('rot', tr.rot, v)} />}
@@ -155,7 +159,6 @@ export function ObjectPanel({ bare }: { bare?: boolean } = {}) {
               </button>
             )}
           </div>
-          <div className="hint">Drag a number to scrub (Shift = fine) · click to type{multi ? ' · only the axis you change is applied to every selected object' : ''}</div>
         </div>
       )}
 

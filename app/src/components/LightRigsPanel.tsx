@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Help } from './Help';
 import { ask } from './Dialogs';
 import { call, displayName, selectedCharacters, toast, useStore } from '../state/store';
 
@@ -60,9 +61,12 @@ export function LightRigsPanel() {
   return (
     <div className="panel-body rigs">
       <div className="section">
-        <h3>Lighting rigs</h3>
+        <h3>
+          Lighting rigs
+          <Help text="Ready-made light setups placed around the selected character, fitted to their height and the way they face. Apply adds the lights to the scene (undoable); “Light characters only” keeps them off the stage." />
+        </h3>
         <div className="hint" style={{ marginTop: 0 }}>
-          {chars.length ? `Lights go around ${displayName(nodes[chars[0]])}, fitted to their height and the way they face.` : 'Select a character to light.'}
+          {chars.length ? `Around ${displayName(nodes[chars[0]])}.` : 'Select a character to light.'}
         </div>
         <label className="rigs-opt" title="Rig lights affect characters only, so the map keeps its own lighting">
           <input type="checkbox" checked={charaOnly} onChange={(e) => setCharaOnly(e.target.checked)} /> Light characters only
@@ -113,7 +117,10 @@ export function LightRigsPanel() {
       </div>
 
       <div className="section">
-        <h3>Save as a rig</h3>
+        <h3>
+          Save as a rig
+          <Help text="Arrange lights in Studio around the selected character, then save: the rig remembers where they are relative to the character, so it fits any character later." />
+        </h3>
         <div style={{ display: 'flex', gap: 6 }}>
           <input className="input" style={{ flex: 1, minWidth: 0 }} placeholder="Rig name…" value={saveName} onChange={(e) => setSaveName(e.target.value)} />
           <button
@@ -131,7 +138,6 @@ export function LightRigsPanel() {
             Save
           </button>
         </div>
-        <div className="hint">Arrange lights in Studio around the selected character, then save: the rig remembers where they are relative to the character, so it fits anyone.</div>
       </div>
     </div>
   );

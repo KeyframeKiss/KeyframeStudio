@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { Help } from './Help';
 import { Icon } from './Icon';
 import { NumberField, TimeField } from './TopBar';
 import { ViewportControls } from './ViewportControls';
@@ -270,16 +271,16 @@ export function TransportBar() {
           )}
         >
           <div className="layout-menu">
-            <div className="layout-menu-h">Auto-key</div>
+            <div className="layout-menu-h">
+              Auto-key
+              <Help text="Whatever you change — in Studio, or in Animate › Face — is keyed at the playhead. Without the second option, only things that already have a track get keys. To key your changes once without auto-key, use Key changes (Shift+Enter)." />
+            </div>
             <label>
               <input type="checkbox" checked={autoKey} onChange={(e) => setAutoKey(e.target.checked)} /> On (R)
             </label>
             <label title="Moving a bone or object that has no track yet — or changing a face part with no track — creates its track">
               <input type="checkbox" checked={autoKeyNew} onChange={(e) => setAutoKey(autoKey, e.target.checked)} /> Also animate things that aren't animated yet
             </label>
-            <div className="hint" style={{ margin: '2px 0 0' }}>
-              Without the second option, only things that already have a track get keys. To key your changes once without auto-key, use Key changes (Shift+Enter).
-            </div>
           </div>
         </Popover>
       </div>
@@ -362,10 +363,12 @@ function AppMenu({ pinned, setPinned }: { pinned: boolean; setPinned: (v: boolea
               <label>
                 <input type="checkbox" checked={!sz.rightHidden} onChange={(e) => setPanelSizes(ws, { rightHidden: !e.target.checked })} /> Right panel
               </label>
-              <div className="hint" style={{ margin: '2px 0 4px' }}>Drag a panel's edge to resize it.</div>
             </>
           )}
-          <div className="layout-menu-h">Saved layouts</div>
+          <div className="layout-menu-h">
+            Saved layouts
+            <Help text="Drag a side panel's edge to resize it (double-click to hide it). A saved layout remembers panel sizes, compact mode and the window's size and position." />
+          </div>
           {list.map((l) => (
             <div key={l.name} className="layout-item">
               <button className="btn small solid" style={{ flex: 1, justifyContent: 'flex-start' }} onClick={() => applyLayout(l)} title={l.bounds ? 'Panels, tabs, compact mode and window position' : 'Panels, tabs and compact mode'}>

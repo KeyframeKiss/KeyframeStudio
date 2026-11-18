@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Help } from './Help';
 import { ask } from './Dialogs';
 import { bridge } from '../bridge/client';
 import { ALL_PARTS, applyTemplate, gatherTemplate, TEMPLATE_PARTS, templateSummary, type TemplateData, type TemplatePart } from '../lib/templates';
@@ -51,9 +52,10 @@ export function TemplatesPanel() {
   return (
     <div className="panel-body templates">
       <div className="section">
-        <div className="hint" style={{ marginTop: 0 }}>
-          A template is a scene's staging without its characters: timeline length, shots and cameras, look, lighting rigs, render settings and audio. Save one, then apply it to another scene.
-        </div>
+        <h3>
+          Templates
+          <Help text="A template is a scene's staging without its characters: timeline length, shots and cameras, look, lighting rigs, render settings and audio. Save one, then apply any part of it to another scene." />
+        </h3>
         <div style={{ display: 'flex', gap: 4 }}>
           <input className="input" style={{ flex: 1, minWidth: 0 }} placeholder="Save this scene as…" value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && save()} />
           <button className="btn primary" disabled={!name.trim()} onClick={save}>
@@ -63,7 +65,7 @@ export function TemplatesPanel() {
       </div>
       {list.length > 0 && (
         <div className="section">
-          <h3>Templates</h3>
+          <h3>Saved</h3>
           <div className="clip-list">
             {list.map((t) => (
               <div key={t.file} className={`clip-item ${open === t.file ? 'open' : ''}`}>

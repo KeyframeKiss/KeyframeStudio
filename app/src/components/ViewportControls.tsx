@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { bridge } from '../bridge/client';
 import { toast, useStore } from '../state/store';
+import { Help } from './Help';
 import { Icon } from './Icon';
 import { Popover } from './Shell';
 import { NumberField } from './TopBar';
@@ -8,6 +9,12 @@ import { NumberField } from './TopBar';
 interface VpState {
   paths: boolean;
   pathsCamera: boolean;
+  pathsBody: boolean;
+  pathsBones: string;
+  pathsDrawn: number;
+  pathsBaking: boolean;
+  /** why nothing is drawn (empty when paths show) */
+  pathsNote: string;
   ghosts: boolean;
   ghostsAuto: boolean;
   ghostCount: number;
@@ -28,6 +35,15 @@ export function ViewportControls() {
     if (status !== 'open') return;
     bridge.request<VpState>('viewport.get').then(setSt).catch(() => setSt(null));
   }, [status, revision]);
+  // body paths are traced in the background: Studio says when they're drawn
+  useEffect(() => bridge.on('viewport.changed', (d) => setSt(d as VpState)), []);
+  // while paths are on but empty, re-read now and then (selection changes in Studio don't bump the revision)
+  const empty = !!st?.paths && !!st.pathsNote;
+  useEffect(() => {
+    if (!empty || status !== 'open') return;
+    const h = window.setInterval(() => bridge.request<VpState>('viewport.get').then(setSt).catch(() => {}), 1500);
+    return () => window.clearInterval(h);
+  }, [empty, status]);
 
   if (!st) return null;
   const set = (patch: Partial<VpState>) => {
@@ -40,8 +56,18 @@ export function ViewportControls() {
 
   return (
     <div className="group">
-      <button className={`btn ${st.paths ? 'on' : ''}`} title="Motion paths in Studio's viewport for the selected objects" onClick={() => set({ paths: !st.paths })}>
-        <Icon name="paths" size={14} /> Paths
+      <button
+        className={`btn ${st.paths ? 'on' : ''} ${empty ? 'paths-empty' : ''}`}
+        title={empty ? `Paths: ${st.pathsNote}` : "Motion paths in Studio's view: where the selection travels over the timeline (dots at keys). Characters: hands, feet and head."}
+        onClick={() => {
+          const on = !st.paths;
+          set({ paths: on });
+          // say right away when there'll be nothing to see
+          if (on) window.setTimeout(() => bridge.request<VpState>('viewport.get').then((v) => { setSt(v); if (v.pathsNote && !v.pathsBaking) toast(`Paths: ${v.pathsNote}`, 'info'); }).catch(() => {}), 700);
+        }}
+      >
+        <Icon name="paths" size={14} /> Paths{st.paths && st.pathsBaking ? ' …' : ''}
+        {empty && !st.pathsBaking && <span className="paths-dot" />}
       </button>
       <button
         className={`btn ${st.ghosts ? 'on' : ''}`}
@@ -62,14 +88,43 @@ export function ViewportControls() {
         <div style={{ display: 'grid', gap: 10, padding: 6 }}>
           <div className="menu-label" style={{ padding: 0 }}>
             Motion paths
+            <Help text="Lines in Studio's view showing where things travel over the timeline, with dots at keys. Objects, items, IK targets and the camera target follow their position keys. For characters, the hands, feet and head are traced by quickly stepping through the timeline once (a short flicker in Studio) whenever the animation changes; it waits while you have unkeyed changes." />
           </div>
+          {st.paths && st.pathsNote && <div className="paths-note">{st.pathsNote}</div>}
+          <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <input type="checkbox" checked={st.pathsBody} onChange={(e) => set({ pathsBody: e.target.checked })} />
+            Characters' body
+          </label>
+          {st.pathsBody && (
+            <div className="seg" style={{ marginLeft: 22 }}>
+              {(['hands', 'feet', 'head'] as const).map((b) => {
+                const on = st.pathsBones.split(',').includes(b);
+                return (
+                  <button
+                    key={b}
+                    className={on ? 'on' : ''}
+                    onClick={() =>
+                      set({
+                        pathsBones: (['hands', 'feet', 'head'] as const)
+                          .filter((x) => (x === b ? !on : st.pathsBones.split(',').includes(x)))
+                          .join(','),
+                      })
+                    }
+                  >
+                    {b[0].toUpperCase() + b.slice(1)}
+                  </button>
+                );
+              })}
+            </div>
+          )}
           <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <input type="checkbox" checked={st.pathsCamera} onChange={(e) => set({ pathsCamera: e.target.checked })} />
-            Include camera target path
+            Camera target
           </label>
           <div className="menu-sep" />
           <div className="menu-label" style={{ padding: 0 }}>
             Onion skin
+            <Help text="Ghosts: translucent copies of the selection at neighbouring keys (blue before, orange after). They're built by briefly jumping to other times (a quick flicker in Studio) and wait while you have unkeyed changes so your pose is never reset." />
           </div>
           <div className="seg">
             <button className={st.ghostMode === 'keys' ? 'on' : ''} onClick={() => set({ ghostMode: 'keys' })}>
@@ -119,9 +174,6 @@ export function ViewportControls() {
           >
             Update ghosts now
           </button>
-          <div className="hint" style={{ margin: 0 }}>
-            Ghosts are built by briefly jumping to other times (a quick flicker in Studio). They wait while you have unkeyed changes so your pose is never reset.
-          </div>
         </div>
       </Popover>
     </div>

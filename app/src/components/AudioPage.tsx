@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { Help } from './Help';
 import { call, liveTime, refreshAudio, seekNow, showTab, toast, useStore } from '../state/store';
 import { Slider } from './CharacterPanel';
 
@@ -40,8 +41,10 @@ export function AudioPage() {
       <div className="look-card">
         <div className="look-card-head">
           <div>
-            <b>Audio track</b>
-            <small>A WAV that plays with the timeline (Space) and is saved with the scene</small>
+            <b>
+              Audio track
+              <Help text="A WAV that plays with the timeline (Space) and is saved with the scene" />
+            </b>
           </div>
           {audio && (
             <button className="btn small" onClick={() => call('audio.clear').then(refreshAudio)} title="Remove the audio from this scene">
@@ -74,8 +77,10 @@ export function AudioPage() {
           <div className="look-card">
             <div className="look-card-head">
               <div>
-                <b>Timing</b>
-                <small>Where the audio starts on the timeline</small>
+                <b>
+                  Timing
+                  <Help text="Where the audio starts on the timeline" />
+                </b>
               </div>
             </div>
             <div className="look-card-body">
@@ -98,8 +103,10 @@ export function AudioPage() {
           <div className="look-card">
             <div className="look-card-head">
               <div>
-                <b>Volume</b>
-                <small>How loud it plays in Studio while you animate</small>
+                <b>
+                  Volume
+                  <Help text="How loud it plays in Studio while you animate" />
+                </b>
               </div>
             </div>
             <div className="look-card-body">
@@ -115,17 +122,14 @@ export function AudioPage() {
           <div className="look-card">
             <div className="look-card-head">
               <div>
-                <b>Lip-sync</b>
-                <small>Mouth keys from this audio, with A / I / U / E / O shapes</small>
+                <b>
+                  Lip-sync
+                  <Help text="Mouth keys from this audio, with A / I / U / E / O shapes. It's with the face controls (Animate › Face) so you can see and fix the result in one place: select the character who speaks, then Generate lip-sync." />
+                </b>
               </div>
               <button className="btn small solid" onClick={() => showTab('animate', 'face')}>
                 Animate › Face ›
               </button>
-            </div>
-            <div className="look-card-body">
-              <div className="hint" style={{ margin: 0 }}>
-                Lip-sync is with the face controls, so you can see and fix the result in one place: select the character who speaks, then Generate lip-sync.
-              </div>
             </div>
           </div>
         </div>

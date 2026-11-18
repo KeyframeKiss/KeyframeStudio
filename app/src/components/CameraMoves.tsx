@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Help } from './Help';
 import { call, liveTime, refreshTimeline, seekNow, toast, togglePlay, useStore } from '../state/store';
 import { Slider } from './CharacterPanel';
 
@@ -45,8 +46,10 @@ export function CameraMoves({ onDone }: { onDone: () => void }) {
     <div className="look-card">
       <div className="look-card-head">
         <div>
-          <b>Camera moves</b>
-          <small>A ready-made move from the camera as it is now</small>
+          <b>
+            Camera moves
+            <Help text={`A ready-made move starting from the camera as it is now. ${m.hint}. ${move === 'crane' || move === 'truck' ? 'Distance is relative to how far the camera is from its subject. ' : ''}Frame the start in Studio first; camera keys inside the move are replaced.`} />
+          </b>
         </div>
       </div>
       <div className="look-card-body">
@@ -97,9 +100,6 @@ export function CameraMoves({ onDone }: { onDone: () => void }) {
         <button className="btn solid" disabled={!last} onClick={preview} title="Play the last move from its start">
           ▶ Preview
         </button>
-      </div>
-      <div className="hint">
-        {m.hint}. {move === 'crane' || move === 'truck' ? 'Distance is relative to how far the camera is from its subject. ' : ''}Frame the start in Studio first; camera keys inside the move are replaced.
       </div>
       </div>
     </div>

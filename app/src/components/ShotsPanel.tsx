@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Help } from './Help';
 import { ask } from './Dialogs';
 import { call, editTimeline, liveTime, refreshShots, seekNow, showTab, toast, useStore, type Shot } from '../state/store';
 
@@ -53,8 +54,10 @@ export function ShotsPanel() {
     <div className="look-card shots-board">
       <div className="look-card-head">
         <div>
-          <b>Shots</b>
-          <small>Time ranges with their own camera — they also show along the top of the timeline</small>
+          <b>
+            Shots
+            <Help text="A shot is a time range with its own camera and notes; shots also show along the top of the timeline. Click a shot to edit it and go there, double-click to look through its camera. Build camera cuts switches the camera at each shot; Render can make one video per shot." />
+          </b>
         </div>
         {shots.length > 0 && (
           <>
@@ -74,10 +77,7 @@ export function ShotsPanel() {
       </div>
       <div className="look-card-body">
         {!shots.length ? (
-          <div className="shots-empty">
-            <b>No shots yet</b>
-            Frame a view in Studio, put the playhead where the shot starts and press <b>+ Shot at playhead</b>. Each shot remembers its camera; Build camera cuts then switches between them, and Render can make one video per shot.
-          </div>
+          <div className="shots-empty">No shots yet — frame a view in Studio, put the playhead where it starts, press + Shot at playhead.</div>
         ) : (
           <div className="shot-strip">
             {ordered.map((s) => {

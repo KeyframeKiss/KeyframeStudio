@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Help } from './Help';
 import { ask } from './Dialogs';
 import { bridge } from '../bridge/client';
 import { deleteMacro, describeStep, isRecording, retarget, saveMacro, startRecording, stopRecording, updateMacro, useMacros, useRecording, type Macro } from '../lib/macros';
@@ -74,10 +75,10 @@ export function QuickActionsPage() {
   return (
     <div className="page">
       <div className="page-inner narrow" style={{ padding: 20, overflow: 'auto' }}>
-        <h2 className="page-title">Quick actions</h2>
-        <div className="hint" style={{ marginTop: 0 }}>
-          Record a sequence of changes made in Keyframe Studio (expression, outfit, look, keys…) and replay it with one click or from Ctrl+K. With “Use the selection”, it works on whatever is selected when you run it.
-        </div>
+        <h2 className="page-title">
+          Quick actions
+          <Help text="Record a sequence of changes made in Keyframe Studio (expression, outfit, look, keys…) and replay it with one click or from Ctrl+K. With “Use the selection”, it works on whatever is selected when you run it." />
+        </h2>
         <button
           className={`btn ${rec.on ? 'solid on' : 'primary'}`}
           style={{ margin: '10px 0' }}

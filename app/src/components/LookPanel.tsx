@@ -1,4 +1,5 @@
 import { Children, useCallback, useEffect, useRef, useState } from 'react';
+import { Help } from './Help';
 import { bridge } from '../bridge/client';
 import { call, displayName, showTab, toast, useStore } from '../state/store';
 import { Slider } from './CharacterPanel';
@@ -85,10 +86,8 @@ export function LookPanel() {
   return (
     <div className="look-page">
       <div className="look-page-bar">
-        <span className="hint" style={{ margin: 0 }}>
-          Changes show in Studio right away, are undoable (Ctrl+Z) and are saved with the scene.
-        </span>
         <span style={{ flex: 1 }} />
+        <Help text="Changes show in Studio right away, are undoable (Ctrl+Z) and are saved with the scene." />
         <button className="btn" title="Back to Studio's default look (undoable)" onClick={() => call('look.resetDefault').then((r) => r !== undefined && load())}>
           Reset to Studio default
         </button>
@@ -243,8 +242,10 @@ function LookGroup({ title, hint, children }: { title: string; hint?: string; ch
   return (
     <section className="look-group">
       <div className="look-group-head">
-        <h3>{title}</h3>
-        {hint && <span>{hint}</span>}
+        <h3>
+          {title}
+          {hint && <Help text={hint} />}
+        </h3>
       </div>
       {/* one column per card (they line up as a row), wrapping only when the window is narrow */}
       <div className="look-cards" style={{ '--n': Math.max(1, Children.count(children)) } as React.CSSProperties}>
@@ -260,8 +261,10 @@ function LookCard({ title, desc, on, onToggle, extra, wide, children }: { title:
     <div className={`look-card ${on === false ? 'off' : ''} ${wide ? 'wide' : ''}`}>
       <div className="look-card-head">
         <div>
-          <b>{title}</b>
-          {desc && <small>{desc}</small>}
+          <b>
+            {title}
+            {desc && <Help text={desc} />}
+          </b>
         </div>
         {extra}
         {onToggle && <Switch on={!!on} onChange={onToggle} />}

@@ -220,10 +220,6 @@ export function CurveEditor({ curve, onCommit, disabled }: Props) {
           ))}
         </svg>
       </div>
-      <div className="hint">
-        Drag points/handles · <span className="kbd">Alt</span> breaks tangents · double-click adds a point · right-click removes. A→B is the blend from this key to
-        the next.
-      </div>
     </div>
   );
 }

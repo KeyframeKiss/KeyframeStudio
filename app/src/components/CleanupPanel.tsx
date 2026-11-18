@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Help } from './Help';
 import { bridge } from '../bridge/client';
 import type { WireTrack } from '../bridge/types';
 import { findPops, footSlides, popCulprits, smoothKeys, type Attrs, type KeyVal, type SlideRange } from '../lib/motion';
@@ -181,7 +182,10 @@ export function CleanupPanel() {
       </div>
 
       <div className="section">
-        <h3>Retime</h3>
+        <h3>
+          Retime
+          <Help text="Stretch or squeeze the selected keys in time around the first key or the playhead. Longer than 100% = slower. Keys snap to frames." />
+        </h3>
         <div className="cleanup-row">
           <span>Around</span>
           <div className="seg">
@@ -210,7 +214,6 @@ export function CleanupPanel() {
             Apply
           </button>
         </div>
-        <div className="hint">Longer than 100% = slower. Keys snap to frames.</div>
       </div>
 
       <div className="section">
@@ -232,7 +235,10 @@ export function CleanupPanel() {
       </div>
 
       <div className="section">
-        <h3>Find problems</h3>
+        <h3>
+          Find problems
+          <Help text="Sudden moves: keys that jump much more than their neighbours (click one to go there and fix it). Foot sliding: ranges where a planted foot drifts — fix by keying the foot (or its IK target) in place at the start and end of each range." />
+        </h3>
         <button className="btn solid wide" disabled={busy} onClick={findSudden} title="Moves much faster than the rest of that track — usually a stray key">
           Find sudden moves {scope.list.length ? 'in selection' : 'in all tracks'}
         </button>
@@ -282,7 +288,6 @@ export function CleanupPanel() {
                 </button>
               </div>
             ))}
-            <div className="hint">Fix by keying the foot (or its IK target) in place at the start and end of each range.</div>
           </div>
         )}
       </div>

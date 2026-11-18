@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Help } from './Help';
 import type { KeyInfo } from '../bridge/types';
 import { fromFlat, presetFor, PRESETS, toFlat } from '../lib/curve';
 import {
@@ -129,7 +130,9 @@ function KeyInspector({ first, count }: { first: { track: number; t: number }; c
 
       <div className="section">
         <h3>
-          Easing to next key <span className="spacer" />
+          Easing to next key
+          <Help text="How this key blends into the next one. Drag points and handles · Alt breaks tangents · double-click adds a point · right-click removes one. Presets: 1–5." />
+          <span className="spacer" />
           <span style={{ textTransform: 'none', letterSpacing: 0, fontWeight: 600, color: preset ? 'var(--accent)' : 'var(--text-2)' }}>
             {preset ? preset.label : 'Custom'}
           </span>

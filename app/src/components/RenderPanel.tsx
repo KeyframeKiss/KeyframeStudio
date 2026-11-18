@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { Help } from './Help';
 import { bridge } from '../bridge/client';
 import { call, refreshShots, seekNow, toast, useStore } from '../state/store';
 
@@ -168,8 +169,10 @@ export function RenderPanel() {
         <div className="look-card">
           <div className="look-card-head">
             <div>
-              <b>What to render</b>
-              <small>The whole timeline, or each shot as its own video</small>
+              <b>
+                What to render
+                <Help text="The whole timeline, or each shot as its own video" />
+              </b>
             </div>
           </div>
           <div className="look-card-body">
@@ -207,7 +210,10 @@ export function RenderPanel() {
                   </div>
                 )}
                 <div className="cleanup-row">
-                  <span>Warm-up</span>
+                  <span>
+                    Warm-up
+                    <Help text="Plays the timeline this many times before recording, so hair and clothes physics have settled when recording starts (whole timeline only)." />
+                  </span>
                   <div className="seg" title="Plays the timeline this many times before recording so hair and clothes physics settle (whole timeline only)">
                     {[0, 1, 2, 3].map((n) => (
                       <button key={n} className={s.prewarm === n ? 'on' : ''} disabled={running || s.limit !== 'Timeline'} onClick={() => set({ prewarm: n })}>
@@ -216,7 +222,6 @@ export function RenderPanel() {
                     ))}
                   </div>
                 </div>
-                <div className="hint" style={{ marginTop: 0 }}>Warm-up plays first so hair and clothes settle before recording starts.</div>
               </>
             ) : (
               <div className="render-shots">
@@ -252,8 +257,10 @@ export function RenderPanel() {
         <div className="look-card">
           <div className="look-card-head">
             <div>
-              <b>Picture</b>
-              <small>Size of the video and frames per second</small>
+              <b>
+                Picture
+                <Help text="Size of the video and frames per second" />
+              </b>
             </div>
           </div>
           <div className="look-card-body">
@@ -291,8 +298,10 @@ export function RenderPanel() {
         <div className="look-card">
           <div className="look-card-head">
             <div>
-              <b>File</b>
-              <small>Format and what happens to the frames</small>
+              <b>
+                File
+                <Help text="Format and what happens to the frames" />
+              </b>
             </div>
           </div>
           <div className="look-card-body">
@@ -316,8 +325,10 @@ export function RenderPanel() {
         <div className="look-card">
           <div className="look-card-head">
             <div>
-              <b>Output</b>
-              <small>Where the videos go</small>
+              <b>
+                Output
+                <Help text="Where the videos go. Renders what Studio's camera sees (shots: each through its own camera). More options in VideoExport's own window (Ctrl+E in Studio)." />
+              </b>
             </div>
             {window.studioEx?.openFolder && (
               <button className="btn small solid" onClick={() => window.studioEx?.openFolder?.(st.outputFolder)}>
@@ -327,7 +338,6 @@ export function RenderPanel() {
           </div>
           <div className="look-card-body">
             <code className="render-path">{st.outputFolder}</code>
-            <div className="hint">Renders what Studio's camera sees{what === 'shots' ? " (each shot through its own camera)" : ''}. More options: VideoExport's own window (Ctrl+E in Studio).</div>
           </div>
         </div>
       </div>

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Help } from './Help';
 import { bridge } from '../bridge/client';
 import { toast, useStore } from '../state/store';
 
@@ -132,10 +133,9 @@ export function ShapesPanel({ id, onChanged }: { id: number; onChanged: () => vo
         <button className="btn" disabled={!totalChanged} onClick={() => reset()} title="Reset every changed shape">
           Reset all
         </button>
+        <Help text="The mesh shapes expressions are made of. A changed value stays on top of the current expression and is saved with the scene (KKPE). Double-click a slider to put it back." />
       </div>
-      <div className="face-hint" style={{ margin: '0 0 4px' }}>
-        Mesh shapes the expressions are made of. A changed value stays on top of the current expression and is saved with the scene (KKPE).
-      </div>
+
       <div className="face-cards">
         {view.map((set) => {
           const isOpen = open[set.key] || !!q || onlyChanged;

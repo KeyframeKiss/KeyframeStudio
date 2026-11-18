@@ -4439,3 +4439,81 @@ html.frameless .tooltip {
   color: var(--accent);
   border-top-color: color-mix(in srgb, var(--accent) 50%, var(--line));
 }
+
+/* "?" explanations beside headings (the text shows in the tooltip) */
+.help-q {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 14px;
+  height: 14px;
+  margin-left: 5px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  color: var(--text-3);
+  font-size: 9.5px;
+  font-weight: 700;
+  font-style: normal;
+  line-height: 1;
+  text-transform: none;
+  letter-spacing: 0;
+  vertical-align: middle;
+  cursor: help;
+}
+.help-q:hover,
+.help-q:focus-visible {
+  color: var(--accent);
+  border-color: var(--accent);
+  outline: none;
+}
+.paths-empty {
+  position: relative;
+}
+.paths-dot {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.paths-note {
+  font-size: 11px;
+  color: var(--text-1);
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--accent-soft);
+}
+.menu-label {
+  display: flex;
+  align-items: center;
+}
+.face-lane-head {
+  display: flex;
+  align-items: center;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  margin-bottom: 3px;
+}
+.layout-menu-h {
+  display: flex;
+  align-items: center;
+}
+.page-title {
+  display: flex;
+  align-items: center;
+}
+
+/* a row label with a "?" stays on one line */
+.cleanup-row > span:first-child:has(.help-q) {
+  width: auto;
+  min-width: 58px;
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+}

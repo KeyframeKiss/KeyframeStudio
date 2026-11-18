@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Help } from './Help';
 import { parseTags, useLibMeta } from '../lib/libmeta';
 import { pressable } from '../lib/pressable';
 import { call, displayName, useStore } from '../state/store';
@@ -177,7 +178,10 @@ export function AnimationBrowser({
     <div className={embedded ? 'page' : 'overlay'} onClick={embedded ? undefined : onClose}>
       <div className={embedded ? 'page-inner' : 'dialog'} style={embedded ? undefined : { width: 'min(980px, calc(100vw - 32px))', height: 'min(640px, calc(100vh - 64px))', display: 'flex', flexDirection: 'column', padding: 0 }} onClick={(e) => e.stopPropagation()}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '14px 16px', borderBottom: '1px solid var(--line)' }}>
-          <h2 style={{ margin: 0, flex: 'none' }}>Animations</h2>
+          <h2 style={{ margin: 0, flex: 'none', display: 'flex', alignItems: 'center' }}>
+            Animations
+            <Help text="Click to preview on the selected character(s) · double-click to apply and close · ★ to keep a favorite · right-click for tags." />
+          </h2>
           <input className="input" autoFocus placeholder="Search every animation (incl. mods) and your tags…" value={query} onChange={(e) => setQuery(e.target.value)} style={{ flex: 1 }} />
           {!embedded && (
             <button className="btn" onClick={onClose}>
@@ -240,9 +244,6 @@ export function AnimationBrowser({
             </div>
           </div>
         )}
-        <div className="hint" style={{ padding: '8px 16px', borderTop: '1px solid var(--line)', margin: 0 }}>
-          Click to preview on the selected character(s) · double-click to apply and close · ★ to keep a favorite · right-click for tags
-        </div>
       </div>
       {menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />}
       {prompt && <PromptDialog p={prompt} onClose={() => setPrompt(null)} />}

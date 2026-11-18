@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Help } from './Help';
 import { blinkKeys, LIPSYNC_DEFAULTS, lipSyncKeys, type LipSyncOptions } from '../lib/lipsync';
 import { vowelKeys, vowelPatterns, vowelTrack, type Spectrum } from '../lib/vowels';
 import { call, displayName, editTimeline, liveTime, refreshAudio, selectedCharacters, toast, useStore } from '../state/store';
@@ -215,7 +216,10 @@ export function AudioPanel({ parts = ['track', 'lipsync', 'face'] }: { parts?: A
 
       {parts.includes('lipsync') && (
       <div className="section">
-        <h3>Lip-sync</h3>
+        <h3>
+          Lip-sync
+          <Help text="The mouth opens with the audio's loudness and (with Vowels) takes the A / I / U / E / O shape of each sound. Rough but quick — refine the keys by hand afterwards. Replaces the character's mouth keys where the audio plays." />
+        </h3>
         {!audio && (
           <div className="hint" style={{ marginTop: 0 }}>
             Needs the voice as a WAV (it plays with the timeline and is saved with the scene).{' '}
@@ -227,7 +231,7 @@ export function AudioPanel({ parts = ['track', 'lipsync', 'face'] }: { parts?: A
           </div>
         )}
         <div className="hint" style={{ marginTop: 0 }}>
-          {who ? `${who}'s mouth opens with the audio's loudness${vowels ? ' and takes the A / I / U / E / O shape of each sound' : ''}.` : 'Select the character who speaks.'} Rough but quick — refine keys by hand afterwards.
+          {who ? `For ${who}.` : 'Select the character who speaks.'}
         </div>
         <div className="cleanup-row">
           <span>Shapes</span>
@@ -274,7 +278,10 @@ export function AudioPanel({ parts = ['track', 'lipsync', 'face'] }: { parts?: A
 
       {parts.includes('face') && (
       <div className="section">
-        <h3>Face</h3>
+        <h3>
+          Blinks
+          <Help text="Add blinks puts natural blinks over the whole timeline on the Eyes open track. Tip: turn off the character's automatic blinking (Blink, under Eyes) so it doesn't fight the keys." />
+        </h3>
         <button className="btn solid wide" disabled={!chars.length} onClick={keyFace} title="Keys eyes, eyelids, eyebrows, mouth, mouth open and neck direction at the playhead">
           Key face at playhead
         </button>
@@ -285,7 +292,6 @@ export function AudioPanel({ parts = ['track', 'lipsync', 'face'] }: { parts?: A
         <button className="btn solid wide" disabled={!chars.length} onClick={blink} title="Adds natural blinks over the whole timeline on the Eyes Open track">
           Add blinks
         </button>
-        <div className="hint">Tip: turn off the character's automatic blinking (Blink, under Eyes) so it doesn't fight the keys.</div>
       </div>
       )}
     </div>

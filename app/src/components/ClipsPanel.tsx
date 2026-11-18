@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Help } from './Help';
 import { ask } from './Dialogs';
 import { call, displayName, editTimeline, liveTime, parseKeyId, toast, useStore } from '../state/store';
 import { Slider } from './CharacterPanel';
@@ -123,13 +124,15 @@ export function ClipsPanel({ wide }: { wide?: boolean } = {}) {
 
       <div className="section">
         <h3>
-          Clips <span className="spacer" />
+          Clips
+          <Help text="A clip is a stretch of one object's animation — a wave, a nod, a laugh, a walk cycle — to reuse on any character. Click a clip for its options, double-click to apply it at the playhead, right-click to retake its thumbnail or delete it." />
+          <span className="spacer" />
           <small className="hint" style={{ margin: 0, textTransform: 'none', letterSpacing: 0 }}>
             {clips.length}
           </small>
         </h3>
         {clips.length > 5 && <input className="input" placeholder="Find a clip…" value={query} onChange={(e) => setQuery(e.target.value)} style={{ width: '100%', marginBottom: 6 }} />}
-        {!clips.length && <div className="hint">No clips yet. A clip is a stretch of one object's animation — a wave, a nod, a laugh, a walk cycle — to reuse on any character.</div>}
+        {!clips.length && <div className="hint">No clips yet.</div>}
         <div className="clip-list">
           {list.map((c) => (
             <div key={c.file} className={`clip-item ${open === c.file ? 'open' : ''}`}>

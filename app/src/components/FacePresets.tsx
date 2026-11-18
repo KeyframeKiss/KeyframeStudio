@@ -588,9 +588,6 @@ function FaceGallery(p: {
           ))}
           {!p.shown.length && <div className="empty">Nothing matches these filters.</div>}
         </div>
-        <div className="hint" style={{ margin: 0 }}>
-          Click a face to apply it (the gallery stays open so you can compare) · right-click for rename, tags and more · ★ keeps a face at the front.
-        </div>
       </div>
     </div>
   );
