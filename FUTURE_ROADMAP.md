@@ -58,7 +58,7 @@ The goal is not to replace working systems. It is to make existing tools easier 
 
 ### 0.6 Test Existing Workflows
 
-**Status (2026-11-17): large scenes done; external-plugin undo still open.** `node tests/run.mjs stress` builds 212 objects, 120 tracks and 5,400 keys. Results:
+**Status (2026-11-18): done.** Undo next to outside changes: character and look undo restored their whole snapshot, so a change made in Studio's own windows (or by another plugin) between an edit and its undo was reverted too. They now restore only the fields the edit changed, like object undo already did. Save + load keeps tracks, aliases, folders, shots and KKPE face edits (suite 23). Large scenes (earlier): `node tests/run.mjs stress` builds 212 objects, 120 tracks and 5,400 keys. Results:
 - The plugin uses 0.3 ms of each Studio frame.
 - Change detection takes about 3 ms every 0.4 s. It used to parse XML twice per track per scan; it now compares the raw text once.
 - Moving or undoing all 5,280 keys takes under 70 ms.
@@ -296,6 +296,11 @@ Builds on the existing Timeline integration.
 - Reusable animation segments.
 - Better transition and loop editing.
 
+**Status (2026-11-18): done as motion clips** (Animate › Motion clips). Timeline keeps one key list per track, so there are no true layers; clips with blending cover the same needs.
+- **Save:** the selected keys (or tracks) of one character or object become a clip with a thumbnail, in UserData/StudioEX/clips. Tracks are written with Timeline's own interpolable writer, so bones, face parts and any mod's track type keep their parameter.
+- **Apply:** at the playhead, on the same or another character (parameters are re-resolved on the target, like Timeline's single-file load). Replace, or add on top (the clip's movement as an offset: a nod over an idle). Strength, blend in/out, speed, repeats. Missing tracks are created. One undo step.
+- **Tests:** suite 20 (save, retarget, replace/add/strength/blend, speed and loops, end-of-timeline trim, undo).
+
 ### 6.2 Facial Animation and Lip-Sync
 Lip-sync needs audio that plays in sync with Timeline inside Studio. Treat that as its own sub-project, and first check which installed mods already handle audio playback.
 
@@ -304,12 +309,13 @@ Lip-sync needs audio that plays in sync with Timeline inside Studio. Treat that 
 - Mouth shapes, expressions, gaze, and blink tracks over time.
 - Reusable facial performance clips.
 
-**Status (2026-11-17): done except reusable clips** (Animate › Audio).
+**Status (2026-11-18): done** (Shoot › Audio & lip-sync). Reusable facial clips are motion clips (6.1).
 - **Audio track:** a WAV plays in sync with Timeline (play, pause, seek, loop, drift corrected), with a start offset, volume and mute. It's saved with the scene through KKAPI scene data. The installed audio mods (KKVMDPlay with Timeline VMD Sync) handle only VMD audio, and Studio's outside sound can't seek, so the plugin plays the clip itself through Studio's WAV loader.
 - **Waveform:** shown in the dope sheet's time ruler.
 - **Lip-sync:** Mouth Open keys from the loudness, with sensitivity, noise threshold, smoothing, widest opening and keys per second. It replaces earlier lip-sync where the audio plays. Not phoneme-accurate.
 - **Face:** "Key face at playhead" (eyes, eyelids, brows, mouth, neck) and natural blinks over the whole timeline.
 - **Tests:** the math is unit-tested; suite 17 covers the plugin side.
+- **Vowels (2026-11-18):** the plugin computes an LPC spectral envelope of the voice per window (resampled to ~11 kHz); the app finds the first two formants, picks the nearest of A/I/U/E/O (shifted to the speaker's range), smooths the sequence, and keys the character's matching Mouth pattern (found by shape name, e.g. `f00_a_l_op`) along with Mouth Open. Unit tests use synthetic envelopes; suite 21 synthesizes a sung "a i u e o" WAV and checks the recognition end to end.
 - **Not done:** reusable facial performance clips, and vowel mouth shapes.
 
 ### 6.3 Motion Cleanup Tools
@@ -340,10 +346,11 @@ Reuses the bone sampling already used for motion paths.
 - Assign cameras and animation ranges; store shot-specific settings.
 - Shot markers, notes, and reusable shot templates.
 
-**Status (2026-11-17): done except templates** (Animate › Shots).
+**Status (2026-11-18): done** (Shoot › Shots, Shoot › Templates).
 - **Shots:** each has a name, start/end, notes, and a camera it remembers with a thumbnail. Shots are saved with the scene and shown as strips at the top of the dope sheet ruler.
 - **Build camera cuts:** keys a hard cut to each shot's camera, in one undo step.
 - **Render queue:** see 7.5.
+- **Templates:** save a scene's staging without its characters (timeline length and frame rate, shots and cameras, look, lighting rig names, render settings, audio) and apply any part of it to another scene. Suite 22.
 
 ### 7.2 Unified Visual Asset Library
 Extends the Library workspace and the Phase 1 organization features.

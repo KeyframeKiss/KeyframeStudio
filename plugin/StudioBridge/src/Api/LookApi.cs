@@ -35,7 +35,8 @@ namespace StudioEX.Bridge.Api
             r.Add("look.set", a =>
             {
                 string keys = string.Join(",", a.Keys.SelectMany(g => a.GetObject(g)?.Keys.Select(k => g + "." + k) ?? new[] { g }).OrderBy(k => k).ToArray());
-                UndoStack.Push(new LookUndo(Snapshot(), keys));
+                if (!a.GetBool("noUndo")) UndoStack.Push(new LookUndo(Snapshot(), keys));
+                a.Remove("noUndo");
                 Apply(a, 1f);
                 return Get();
             });
@@ -284,8 +285,28 @@ namespace StudioEX.Bridge.Api
             public IUndoEntry Restore()
             {
                 var inverse = new LookUndo(Snapshot(), _keys);
-                Apply(_state, 1f);
+                Apply(Only(_state, _keys), 1f);
                 return inverse;
+            }
+
+            /// <summary>
+            /// Just the settings this edit changed ("effects.bloomIntensity,toon.lineWidth"): a fog colour picked in
+            /// Studio's own window since then stays. Presets and resets change everything, so they restore all.
+            /// </summary>
+            private static Dictionary<string, object> Only(Dictionary<string, object> state, string keys)
+            {
+                if (keys == "reset" || keys.StartsWith("preset")) return state;
+                var outd = new Dictionary<string, object>();
+                foreach (var k in keys.Split(','))
+                {
+                    int dot = k.IndexOf('.');
+                    if (dot < 0) { if (state.ContainsKey(k)) outd[k] = state[k]; continue; }
+                    string g = k.Substring(0, dot), f = k.Substring(dot + 1);
+                    if (!(state.GetObject(g) is Dictionary<string, object> grp) || !grp.ContainsKey(f)) return state;
+                    if (!(outd.GetObject(g) is Dictionary<string, object> o)) outd[g] = o = new Dictionary<string, object>();
+                    o[f] = grp[f];
+                }
+                return outd;
             }
         }
 

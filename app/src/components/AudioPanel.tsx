@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { blinkKeys, LIPSYNC_DEFAULTS, lipSyncKeys, type LipSyncOptions } from '../lib/lipsync';
+import { vowelKeys, vowelPatterns, vowelTrack, type Spectrum } from '../lib/vowels';
 import { call, displayName, editTimeline, liveTime, refreshAudio, selectedCharacters, toast, useStore } from '../state/store';
 import { Slider } from './CharacterPanel';
 
@@ -26,6 +27,21 @@ export function AudioPanel() {
   const [opts, setOpts] = useState<LipSyncOptions>(LIPSYNC_DEFAULTS);
   const [blinkEvery, setBlinkEvery] = useState(4);
   const [busy, setBusy] = useState(false);
+  const [vowels, setVowels] = useState(() => {
+    try {
+      return localStorage.getItem('kf.lipsync.vowels') !== '0';
+    } catch {
+      return true;
+    }
+  });
+  const pickVowels = (on: boolean) => {
+    setVowels(on);
+    try {
+      localStorage.setItem('kf.lipsync.vowels', on ? '1' : '0');
+    } catch {
+      /* storage unavailable */
+    }
+  };
 
   // the folder can change any time (files copied in by hand): re-read it when the list is opened
   const loadFiles = () => call<{ file: string; size: number }[]>('audio.files').then((f) => f && setFiles(f));
@@ -72,10 +88,44 @@ export function AudioPanel() {
         curve: 'linear',
         label: 'Lip-sync',
       });
-      if (n) toast(`Lip-sync: ${n} mouth keys for ${who} — press Space to watch. Ctrl+Z to undo`);
+      let shapes = 0;
+      if (vowels) shapes = await vowelShapes(env, end);
+      if (n) toast(`Lip-sync: ${n} mouth keys${shapes ? ` and ${shapes} vowel shapes` : ''} for ${who} — press Space to watch. Ctrl+Z to undo`);
     } finally {
       setBusy(false);
     }
+  };
+
+  /** A / I / U / E / O mouth patterns on the Mouth track, from the voice's formants. Returns how many keys. */
+  const vowelShapes = async (env: { rate: number; values: number[]; offset: number }, end: number) => {
+    const [spec, patterns, chara] = await Promise.all([
+      call<Spectrum>('audio.spectrum', { rate: env.rate }),
+      call<{ ptn: number; open: string; close: string }[]>('face.mouthPatterns', { id: chars[0] }),
+      call<{ face: { mouthPtn: number } }>('chara.get', { id: chars[0] }),
+    ]);
+    if (!spec || !patterns || !chara) return 0;
+    const map = vowelPatterns(patterns);
+    if (Object.keys(map).length < 3) {
+      toast(`${who}'s mouth has no vowel shapes to use — only the opening is animated`, 'info');
+      return 0;
+    }
+    const rest = chara.face.mouthPtn;
+    const labels = vowelTrack(spec, env.values);
+    const keys = vowelKeys(labels, spec.rate)
+      .map((k) => ({ t: Math.round((env.offset + k.t) * 1000) / 1000, v: k.v ? map[k.v] ?? rest : rest }))
+      .filter((k) => k.t >= 0 && k.t <= end);
+    if (!keys.length) return 0;
+    const track = await trackFor(chars[0], 'characterMouth');
+    if (track == null) return 0;
+    return (
+      (await editTimeline<number>('timeline.writeKeys', {
+        track,
+        keys: keys.map((k) => ({ t: k.t, value: { value: k.v } })),
+        clear: [Math.max(0, env.offset), end],
+        curve: 'step',
+        label: 'Lip-sync vowels',
+      })) ?? 0
+    );
   };
 
   // ---------------- face helpers ----------------
@@ -159,7 +209,18 @@ export function AudioPanel() {
       <div className="section">
         <h3>Lip-sync</h3>
         <div className="hint" style={{ marginTop: 0 }}>
-          {who ? `${who}'s mouth opens with the audio's loudness.` : 'Select the character who speaks.'} Rough but quick — refine keys by hand afterwards.
+          {who ? `${who}'s mouth opens with the audio's loudness${vowels ? ' and takes the A / I / U / E / O shape of each sound' : ''}.` : 'Select the character who speaks.'} Rough but quick — refine keys by hand afterwards.
+        </div>
+        <div className="cleanup-row">
+          <span>Shapes</span>
+          <div className="seg">
+            <button className={!vowels ? 'on' : ''} onClick={() => pickVowels(false)} title="Only Mouth Open: the mouth opens and closes">
+              Open / close
+            </button>
+            <button className={vowels ? 'on' : ''} onClick={() => pickVowels(true)} title="Also keys the Mouth pattern: A, I, U, E or O from the sound (works best on clear speech or singing)">
+              Vowels
+            </button>
+          </div>
         </div>
         <div className="cleanup-row">
           <span>Sensitivity</span>
@@ -187,7 +248,7 @@ export function AudioPanel() {
             ))}
           </div>
         </div>
-        <button className="btn primary wide" disabled={busy || !audio || !chars.length} onClick={lipSync} title="Replaces the character's Mouth Open keys where the audio plays">
+        <button className="btn primary wide" disabled={busy || !audio || !chars.length} onClick={lipSync} title={vowels ? "Replaces the character's Mouth Open and Mouth keys where the audio plays" : "Replaces the character's Mouth Open keys where the audio plays"}>
           {busy ? 'Working…' : 'Generate lip-sync'}
         </button>
       </div>

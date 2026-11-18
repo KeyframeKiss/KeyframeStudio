@@ -4,10 +4,12 @@ import { call, displayName, selectedCharacters, toast, useStore, type LibraryPag
 import { Group, SelectionHeader, Stack } from './InspectorStack';
 import { AudioPanel } from './AudioPanel';
 import { ShotsPanel } from './ShotsPanel';
+import { TemplatesPanel } from './TemplatesPanel';
 import { CharacterLibrary } from './CharacterLibrary';
 import { QuickActionsPage } from './QuickActions';
 import { columns, leftCss, rightCss, setPanelSizes, usePanelSizes } from '../lib/layout';
 import { CleanupPanel } from './CleanupPanel';
+import { ClipsPanel } from './ClipsPanel';
 import { AnimationBrowser } from './AnimationBrowser';
 import { CameraPanel } from './CameraPanel';
 import { CharacterPanel } from './CharacterPanel';
@@ -104,6 +106,9 @@ function AnimateInspector() {
           <Inspector />
         </Group>
       )}
+      <Group ws="animate" id="clips" icon="scissors" title="Motion clips" defaultOpen={false}>
+        <ClipsPanel />
+      </Group>
       <Group ws="animate" id="cleanup" icon="sliders" title="Cleanup" defaultOpen={false}>
         <CleanupPanel />
       </Group>
@@ -327,6 +332,9 @@ export function ShootWorkspace() {
         <Disconnected />
       </main>
       <Stack>
+        <Group ws="shoot" id="templates" icon="library" title="Templates" defaultOpen={false}>
+          <TemplatesPanel />
+        </Group>
         <Group ws="shoot" id="render" icon="record" title="Render">
           <RenderPanel />
         </Group>

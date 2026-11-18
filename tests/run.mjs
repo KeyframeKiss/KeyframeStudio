@@ -71,6 +71,8 @@ console.log(`Keyframe Studio bridge ${hello.plugin} · Unity ${hello.unity} · $
 for (const f of hello.features ?? []) if (f.status === 'off' || f.status === 'untested') console.log(yellow(`  ${f.status}: ${f.label} — ${f.reason}`));
 console.log('');
 
+// suites change the timeline's length and frame rate: put them back afterwards
+const timelineBefore = await studio.ok('timeline.state').catch(() => null);
 const summary = [];
 const started = Date.now();
 for (const s of chosen) {
@@ -105,6 +107,7 @@ for (const s of chosen) {
 }
 
 await freshStudio(studio).catch(() => {});
+if (timelineBefore) await studio.ok('timeline.setSettings', { duration: timelineBefore.duration, fps: timelineBefore.fps }).catch(() => {});
 studio.close();
 const pass = summary.reduce((n, s) => n + s.pass, 0);
 const fail = summary.reduce((n, s) => n + s.fail, 0);

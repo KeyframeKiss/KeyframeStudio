@@ -57,6 +57,7 @@ namespace StudioEX.Bridge.Api
             r.Add("audio.clear", a => { Clear(); return Get(); });
             r.Add("audio.peaks", a => Peaks(Mathf.Clamp(a.GetInt("perSecond", 100), 10, 400)));
             r.Add("audio.envelope", a => Envelope(Mathf.Clamp(a.GetInt("rate", 30), 5, 120)));
+            r.Add("audio.spectrum", a => Spectrum(Mathf.Clamp(a.GetInt("rate", 60), 10, 120)));
             try { RegisterSceneData(); }
             catch (Exception e) { StudioBridgePlugin.Logger.LogWarning("Audio track won't be saved with scenes (KKAPI): " + e.Message); }
         }
@@ -164,6 +165,91 @@ namespace StudioEX.Bridge.Api
                 env.Add(Math.Round(rms, 4));
             }
             return new Dictionary<string, object> { { "rate", rate }, { "offset", (double)Offset }, { "duration", (double)_i._clip.length }, { "max", Math.Round(max, 4) }, { "values", env } };
+        }
+
+/// <summary>
+        /// The voice's spectral envelope per window (`rate` per second), in dB at 40 points 80 Hz apart from 140 Hz:
+        /// linear prediction (LPC) on the audio resampled to about 11 kHz, so the peaks are the resonances that
+        /// tell vowels apart (formants), not the pitch's harmonics. Values are flat: window after window.
+        /// </summary>
+        private static object Spectrum(int rate)
+        {
+            var m = _i._mono;
+            if (m == null) throw new BridgeException("Load an audio file first");
+            int sr = _i._rate;
+            int dec = Mathf.Max(1, Mathf.RoundToInt(sr / 11025f));
+            float fs = (float)sr / dec;
+            // low-pass (box average over the decimation step) and decimate
+            int len = m.Length / dec;
+            var x = new float[len];
+            for (int i = 0; i < len; i++)
+            {
+                float sum = 0f;
+                for (int k = 0; k < dec; k++) sum += m[i * dec + k];
+                x[i] = sum / dec;
+            }
+            const int bands = 40, order = 12;
+            const float from = 100f, width = 80f;
+            int win = Mathf.RoundToInt(0.03f * fs);
+            int hop = Mathf.Max(1, Mathf.RoundToInt(fs / rate));
+            int n = (len + hop - 1) / hop;
+            var frame = new double[win];
+            var r = new double[order + 1];
+            var a = new double[order + 1];
+            var tmp = new double[order + 1];
+            var outv = new List<object>(n * bands);
+            for (int w = 0; w < n; w++)
+            {
+                int center = w * hop + hop / 2;
+                double energy = 0;
+                for (int i = 0; i < win; i++)
+                {
+                    int j = center - win / 2 + i;
+                    double v = j >= 1 && j < len ? x[j] - 0.97 * x[j - 1] : 0; // pre-emphasis
+                    v *= 0.54 - 0.46 * Math.Cos(2 * Math.PI * i / (win - 1)); // Hamming
+                    frame[i] = v;
+                    energy += v * v;
+                }
+                if (energy < 1e-10)
+                {
+                    for (int b = 0; b < bands; b++) outv.Add(-100.0);
+                    continue;
+                }
+                for (int k = 0; k <= order; k++)
+                {
+                    double s2 = 0;
+                    for (int i = k; i < win; i++) s2 += frame[i] * frame[i - k];
+                    r[k] = s2;
+                }
+                r[0] *= 1.0001; // a touch of white noise keeps Levinson stable
+                // Levinson–Durbin
+                Array.Clear(a, 0, a.Length);
+                a[0] = 1;
+                double err = r[0];
+                for (int i = 1; i <= order; i++)
+                {
+                    double acc = r[i];
+                    for (int j = 1; j < i; j++) acc += a[j] * r[i - j];
+                    double k = -acc / err;
+                    Array.Copy(a, tmp, a.Length);
+                    for (int j = 1; j < i; j++) a[j] = tmp[j] + k * tmp[i - j];
+                    a[i] = k;
+                    err *= 1 - k * k;
+                    if (err <= 1e-12) break;
+                }
+                double gain = 10 * Math.Log10(Math.Max(err, 1e-12));
+                for (int b = 0; b < bands; b++)
+                {
+                    double om = 2 * Math.PI * (from + (b + 0.5) * width) / fs;
+                    double re = 0, im = 0;
+                    for (int k = 0; k <= order; k++) { re += a[k] * Math.Cos(om * k); im -= a[k] * Math.Sin(om * k); }
+                    outv.Add(Math.Round(gain - 10 * Math.Log10(re * re + im * im + 1e-12), 1));
+                }
+            }
+            return new Dictionary<string, object>
+            {
+                { "rate", rate }, { "offset", (double)Offset }, { "bands", bands }, { "from", (double)from }, { "width", (double)width }, { "values", outv },
+            };
         }
 
         // ---------------- follow the playhead ----------------

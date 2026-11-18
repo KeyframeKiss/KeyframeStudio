@@ -40,7 +40,15 @@ const pretty = (n: string) => {
   return out.length ? out[0] + (out.length > 1 ? ` · ${out.slice(1).join(' ')}` : '') : rest;
 };
 const groupOf = (n: string) => (n.includes('.') ? n.slice(0, n.indexOf('.')).replace(/_/g, ' ') : '');
-/** Shapes in their groups (eyes, mouth…), keeping the original order. */const byGroup = <T extends { name: string }>(list: T[]): [string, T[]][] => {  const m = new Map<string, T[]>();  for (const x of list) {    const g = groupOf(x.name);    m.set(g, [...(m.get(g) ?? []), x]);  }  return [...m.entries()];};
+/** Shapes in their groups (eyes, mouth…), keeping the original order. */
+const byGroup = <T extends { name: string }>(list: T[]): [string, T[]][] => {
+  const m = new Map<string, T[]>();
+  for (const x of list) {
+    const g = groupOf(x.name);
+    m.set(g, [...(m.get(g) ?? []), x]);
+  }
+  return [...m.entries()];
+};
 const GROUP_NAMES: Record<string, string> = {
   'eye face': 'Eyes', 'kuti face': 'Mouth', 'kuti yaeba': 'Mouth (fangs)', 'kuti ha': 'Mouth (teeth)', 'kuti sita': 'Mouth (tongue)',
   mayuge: 'Brows', tooth: 'Teeth', 'eye line': 'Eyelines', 'eye siroL': 'Eye whites', 'eye siroR': 'Eye whites', 'eye naL': 'Eye highlights',

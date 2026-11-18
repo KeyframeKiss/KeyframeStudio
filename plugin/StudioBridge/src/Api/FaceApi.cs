@@ -77,6 +77,7 @@ namespace StudioEX.Bridge.Api
         public static void Register(CommandRouter r)
         {
             r.Add("face.get", a => Get(a));
+            r.Add("face.mouthPatterns", a => MouthPatterns(CharaApi.Chara(a.GetInt("id"))));
             r.Add("face.set", a => Set(a));
             r.Add("face.reset", a => Reset(a));
             r.Add("face.view", a => View(a));
@@ -1146,5 +1147,40 @@ namespace StudioEX.Bridge.Api
             WeightCache.Clear();
             FaceBaker.Clear();
         }
+
+        /// <summary>
+        /// Each mouth pattern's closed and open shape on the face mesh (e.g. "f00_a_l_op"), read from the game's
+        /// mouth controller, so lip-sync can pick the A/I/U/E/O patterns by name. Empty if the layout differs.
+        /// </summary>
+        private static object MouthPatterns(OCIChar oc)
+        {
+            var list = new List<object>();
+            try
+            {
+                var ctrl = oc.charInfo.mouthCtrl;
+                var targets = AccessTools.Field(ctrl.GetType(), "FBSTarget")?.GetValue(ctrl) as IList;
+                if (targets == null) return list;
+                foreach (var target in targets)
+                {
+                    var smr = AccessTools.Method(target.GetType(), "GetSkinnedMeshRenderer")?.Invoke(target, null) as SkinnedMeshRenderer;
+                    if (smr == null || smr.sharedMesh == null || !smr.name.Contains("face")) continue;
+                    var ptns = AccessTools.Field(target.GetType(), "PtnSet")?.GetValue(target) as IList;
+                    if (ptns == null) continue;
+                    var mesh = smr.sharedMesh;
+                    for (int i = 0; i < ptns.Count; i++)
+                    {
+                        var p = ptns[i];
+                        int close = Convert.ToInt32(AccessTools.Field(p.GetType(), "Close")?.GetValue(p) ?? -1);
+                        int open = Convert.ToInt32(AccessTools.Field(p.GetType(), "Open")?.GetValue(p) ?? -1);
+                        string name(int ix) => ix >= 0 && ix < mesh.blendShapeCount ? mesh.GetBlendShapeName(ix) : "";
+                        list.Add(new Dictionary<string, object> { { "ptn", i }, { "close", name(close) }, { "open", name(open) } });
+                    }
+                    break;
+                }
+            }
+            catch (Exception e) { StudioBridgePlugin.Logger.LogDebug("Mouth patterns not readable: " + e.Message); }
+            return list;
+        }
+
     }
 }

@@ -250,9 +250,34 @@ namespace StudioEX.Bridge.Api
             {
                 var alive = _states.Keys.Where(c => c.charInfo != null && Singleton<Studio.Studio>.Instance.dicObjectCtrl.ContainsValue(c)).ToList();
                 var inverse = Capture(alive, _keys, Label);
-                foreach (var c in alive) Apply(c, _states[c]);
+                // only what this edit changed: a mouth pattern picked in Studio's own window since then stays
+                foreach (var c in alive) Apply(c, Only(_states[c], _keys));
                 return inverse;
             }
+        }
+
+        /// <summary>Request fields → the snapshot fields they change (the rest are named the same).</summary>
+        private static readonly Dictionary<string, string[]> SnapshotFields = new Dictionary<string, string[]>
+        {
+            { "clothes", new[] { "clothesStates" } }, { "clothesAll", new[] { "clothesStates" } },
+            { "accessory", new[] { "accessoriesVisible" } }, { "accessoriesAll", new[] { "accessoriesVisible" } },
+            { "fkPart", new[] { "fkParts" } }, { "ikPart", new[] { "ikParts" } },
+            { "coordinate", new[] { "coordinate", "clothesStates", "accessoriesVisible" } },
+            { "anime", new[] { "anime", "animeSpeed", "option1", "option2" } },
+        };
+
+        /// <summary>The part of a snapshot that the given edit keys touched (all of it for an unknown key).</summary>
+        private static Dictionary<string, object> Only(Dictionary<string, object> snap, string keys)
+        {
+            var want = new HashSet<string>();
+            foreach (var k in keys.Split(','))
+            {
+                if (k.Length == 0) continue;
+                if (SnapshotFields.TryGetValue(k, out var fields)) foreach (var f in fields) want.Add(f);
+                else if (snap.ContainsKey(k)) want.Add(k);
+                else return snap; // something we don't map: restoring everything is the safe choice
+            }
+            return snap.Where(kv => want.Contains(kv.Key)).ToDictionary(kv => kv.Key, kv => kv.Value);
         }
 
         private static void Apply(OCIChar c, Dictionary<string, object> a)

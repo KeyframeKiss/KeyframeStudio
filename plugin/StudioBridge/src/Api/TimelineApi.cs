@@ -228,6 +228,7 @@ namespace StudioEX.Bridge.Api
             RegisterExtras(r);
             RegisterCleanup(r);
             RegisterCameraMoves(r);
+            RegisterClips(r);
 
         }
 

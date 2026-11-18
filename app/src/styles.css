@@ -3516,3 +3516,77 @@ select.input {
 .shoot-top.no-shots {
   grid-template-columns: minmax(200px, 0.5fr) minmax(0, 1.5fr);
 }
+
+/* ---------- Animate › Motion clips ---------- */
+.clip-list {
+  display: grid;
+  gap: 4px;
+}
+.clip-item {
+  border: 1px solid var(--line-soft);
+  border-radius: 6px;
+  background: var(--bg-2);
+  overflow: hidden;
+}
+.clip-item.open {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+}
+.clip-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px;
+  cursor: pointer;
+}
+.clip-row:hover {
+  background: var(--bg-3);
+}
+.clip-row img,
+.clip-ph {
+  width: 64px;
+  height: 36px;
+  object-fit: cover;
+  border-radius: 4px;
+  flex: none;
+}
+.clip-ph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-0);
+  color: var(--text-3);
+  font-weight: 800;
+}
+.clip-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.clip-text b,
+.clip-text small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.clip-text small {
+  color: var(--text-3);
+}
+.clip-apply .btn.wide {
+  width: 100%;
+  justify-content: center;
+}
+.clip-apply {
+  padding: 6px 8px 8px;
+  border-top: 1px solid var(--line-soft);
+}
+.clip-target {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.clip-target small {
+  color: var(--text-3);
+}

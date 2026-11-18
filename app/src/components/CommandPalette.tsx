@@ -82,6 +82,8 @@ function PaletteInner() {
       { id: 'shoot.render', group: 'Shoot', title: 'Render video', keywords: 'export mp4 webm gif videoexport', run: () => showPanel('shoot', 'render') },
       { id: 'shoot.audio', group: 'Shoot', title: 'Audio & lip-sync', keywords: 'wav sound voice mouth', run: () => showPanel('shoot', 'audio') },
       { id: 'anim.track', group: 'Keys', title: 'Add animation track…', keywords: 'property animate new track', run: () => { if (useStore.getState().workspace !== 'shoot') setWorkspace('animate'); window.setTimeout(() => window.dispatchEvent(new CustomEvent('kf:add-track')), 50); } },
+      { id: 'anim.clips', group: 'Keys', title: 'Motion clips (save / apply)', keywords: 'clip reuse segment wave nod walk cycle library', run: () => showPanel('animate', 'clips') },
+      { id: 'shoot.templates', group: 'Shoot', title: 'Production templates', keywords: 'template staging setup reuse scene', run: () => showPanel('shoot', 'templates') },
       { id: 'anim.cleanup', group: 'Keys', title: 'Clean up keys (smooth, retime, loop)', keywords: 'smooth retime loop pops sliding', run: () => showPanel('animate', 'cleanup') },
       { id: 'lib.scenes', group: 'Scenes', title: 'Open scene browser', kbd: 'Ctrl O', keywords: 'load import', run: () => openLibrary('scenes') },
       { id: 'scene.save', group: 'Scenes', title: 'Save scene (new file)', run: () => call('scene.save').then((r) => r !== undefined && toast('Scene saved')) },
