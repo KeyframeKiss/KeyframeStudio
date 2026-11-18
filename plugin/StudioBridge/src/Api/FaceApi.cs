@@ -68,6 +68,12 @@ namespace StudioEX.Bridge.Api
             }
         }
 
+        /// <summary>For Compat: null when KKPE's bone editor can be used.</summary>
+        public static string ProbeBones() => Resolve() ? null : "its bone editor (PoseController / BonesEditor) isn't laid out as expected";
+
+        /// <summary>For Compat: null when KKPE's blendshape editor can be used.</summary>
+        public static string ProbeShapes() => ResolveShapes() ? null : "its blendshape editor (BlendShapesEditor) isn't laid out as expected";
+
         public static void Register(CommandRouter r)
         {
             r.Add("face.get", a => Get(a));

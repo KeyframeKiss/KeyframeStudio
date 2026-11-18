@@ -2423,3 +2423,91 @@ select {
 .face-pick {
   transform: none;
 }
+
+/* Library › About & diagnostics */
+.diag-card {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--bg-1);
+  padding: 12px 14px;
+  display: grid;
+  gap: 6px;
+}
+.diag-row {
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  gap: 10px;
+  font-size: 12px;
+}
+.diag-row span {
+  color: var(--text-2);
+}
+.diag-row b {
+  font-weight: 600;
+  color: var(--text-0);
+}
+.diag-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+}
+.diag-h {
+  margin: 18px 0 8px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-2);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.diag-features {
+  display: grid;
+  gap: 4px;
+}
+.diag-feature {
+  display: grid;
+  grid-template-columns: 118px 1fr;
+  gap: 10px;
+  align-items: start;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--bg-1);
+  border: 1px solid var(--line-soft);
+}
+.diag-feature b {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+}
+.diag-feature small {
+  display: block;
+  color: var(--text-3);
+  font-size: 11px;
+  margin-top: 2px;
+}
+.diag-feature small.diag-reason {
+  color: var(--text-2);
+}
+.diag-pill {
+  justify-self: start;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.diag-pill.ok {
+  background: rgba(107, 220, 139, 0.15);
+  color: #6bdc8b;
+}
+.diag-pill.warn {
+  background: rgba(255, 196, 77, 0.15);
+  color: #ffc44d;
+}
+.diag-pill.bad {
+  background: rgba(255, 93, 93, 0.15);
+  color: var(--danger);
+}
+.diag-pill.muted {
+  background: var(--bg-3);
+  color: var(--text-3);
+}

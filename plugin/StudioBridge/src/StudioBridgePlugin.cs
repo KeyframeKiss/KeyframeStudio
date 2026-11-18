@@ -35,6 +35,7 @@ namespace StudioEX.Bridge
         {
             Instance = this;
             Logger = base.Logger;
+            DiagApi.Install(); // keep recent log lines for "Copy diagnostics"
             _port = Config.Bind("Connection", "Port", 47615, "Local WebSocket port the Studio EX app connects to (127.0.0.1 only).");
 
             gameObject.AddComponent<ViewportTools>();
@@ -45,6 +46,7 @@ namespace StudioEX.Bridge
             gameObject.AddComponent<PreviewStream>(); // experimental live preview (roadmap Phase 3 spike)
             PreviewStream.Register(_router);
             CoreApi.Register(_router);
+            DiagApi.Register(_router);
             UndoStack.Register(_router);
             ObjectApi.Register(_router);
             CameraApi.Register(_router);

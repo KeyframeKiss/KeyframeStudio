@@ -7,7 +7,22 @@ export interface Hello {
   unity: string;
   timeline: boolean;
   translator: boolean;
+  /** Mod-dependent features and whether they work with what's installed (missing in older plugins). */
+  features?: Feature[];
+  paths?: { game: string; userData: string; bepinexLog: string };
   commands: string[];
+}
+
+export interface Feature {
+  id: string;
+  label: string;
+  mod: string;
+  guid: string;
+  version: string | null;
+  tested: string[];
+  /** ok · untested (works, version not tested) · off (incompatible) · missing (not installed) */
+  status: 'ok' | 'untested' | 'off' | 'missing';
+  reason: string | null;
 }
 
 export type NodeType = 'Char' | 'Item' | 'Light' | 'Folder' | 'Route' | 'RoutePoint' | 'Camera' | 'node' | string;

@@ -132,6 +132,7 @@ function createWindow() {
 
 app.whenReady().then(() => {
   protocol.handle('sximg', thumbHandler);
+  require('./log.cjs').register(ipcMain);
   require('./translate.cjs').register(ipcMain);
   createWindow();
 });

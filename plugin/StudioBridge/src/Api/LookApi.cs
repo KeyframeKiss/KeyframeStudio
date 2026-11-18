@@ -68,6 +68,13 @@ namespace StudioEX.Bridge.Api
 
         private static bool TwoLutAvailable => Chainloader.PluginInfos.ContainsKey("com.deathweasel.bepinex.twolut");
 
+        /// <summary>For Compat: null when the second LUT slot can be read and set.</summary>
+        public static string ProbeTwoLut()
+        {
+            var p = TwoLutProp;
+            return p != null && p.CanRead && p.CanWrite && p.PropertyType == typeof(int) ? null : "CurrentLut2LocalSlot not found";
+        }
+
         private static PropertyInfo TwoLutProp
         {
             get

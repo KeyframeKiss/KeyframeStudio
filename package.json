@@ -1,0 +1,9 @@
+{
+  "name": "studio-ex-repo",
+  "private": true,
+  "description": "Repository scripts. The app lives in app/, the CharaStudio plugin in plugin/.",
+  "scripts": {
+    "test": "node tests/run.mjs",
+    "test:list": "node tests/run.mjs --list"
+  }
+}

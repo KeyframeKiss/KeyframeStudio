@@ -29,10 +29,22 @@ namespace StudioEX.Bridge.Api
         {
             get
             {
-                if (_available == null) _available = Chainloader.PluginInfos.ContainsKey(StudioBridgePlugin.TimelineGuid);
+                // installed AND exposes everything Studio EX reaches into (see Compat)
+                if (_available == null) _available = Chainloader.PluginInfos.ContainsKey(StudioBridgePlugin.TimelineGuid) && Probe() == null;
                 return _available.Value;
             }
         }
+
+        /// <summary>Null when Timeline is usable; otherwise what's missing.</summary>
+        public static string Probe()
+        {
+            if (!Chainloader.PluginInfos.ContainsKey(StudioBridgePlugin.TimelineGuid)) return "not installed";
+            try { return ProbeImpl(); }
+            catch (Exception e) { return (e.InnerException ?? e).Message; }
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static string ProbeImpl() => TimelineImpl.Probe();
 
         public static void Register(CommandRouter r)
         {
@@ -145,6 +157,20 @@ namespace StudioEX.Bridge.Api
         private static readonly MethodInfo M_interpolate = AccessTools.Method(typeof(TL), "Interpolate");
 
         private static TL Self => (TL)F_self.GetValue(null);
+
+        /// <summary>Every private Timeline member this bridge uses must exist (they're resolved by name).</summary>
+        public static string Probe()
+        {
+            var missing = new List<string>();
+            foreach (var f in typeof(TimelineImpl).GetFields(BindingFlags.NonPublic | BindingFlags.Static))
+            {
+                if (f.FieldType != typeof(FieldInfo) && f.FieldType != typeof(MethodInfo) && f.FieldType != typeof(Type)) continue;
+                if (f.GetValue(null) == null) missing.Add(f.Name.TrimStart('F', 'M', '_'));
+            }
+            var tree = typeof(TL).GetField("_interpolablesTree", BindingFlags.NonPublic | BindingFlags.Instance)?.FieldType;
+            if (tree == null || AccessTools.Field(tree, "_nodes") == null || AccessTools.Field(tree, "_rootGroup") == null) missing.Add("tree internals");
+            return missing.Count == 0 ? null : "missing " + string.Join(", ", missing.ToArray());
+        }
 
         public static bool IsReady => Self != null && (bool)F_loaded.GetValue(Self);
 

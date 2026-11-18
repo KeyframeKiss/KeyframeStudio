@@ -20,6 +20,7 @@ const paths: Record<string, string> = {
   undo: 'M5.5 3L2.5 6l3 3M2.5 6H10a3.5 3.5 0 010 7H7',
   redo: 'M10.5 3l3 3-3 3M13.5 6H6a3.5 3.5 0 000 7h3',
   help: 'M6 6a2 2 0 113 1.7c-.6.4-1 .8-1 1.6V10M8 12.2v.3',
+  pulse: 'M1.5 8.5h3l1.5-4 3 7.5 1.5-3.5h4',
   fit: 'M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4',
   legacy: 'M2.5 3.5h11v9h-11zM2.5 6h11M5 8.5h6M5 10.5h4',
   check: 'M3.5 8.5l3 3 6-7',

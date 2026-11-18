@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import { bridge, type ConnectionStatus } from '../bridge/client';
 import type { Hello, KeyRef, SceneData, SceneNode, TimelineData, TimelineState, TrackModel, WireGroup, WireTrack } from '../bridge/types';
+import { log } from '../lib/log';
 import { snapToFrame } from '../lib/time';
 
 export type KeyId = string;
@@ -71,7 +72,7 @@ export interface AppState {
 }
 
 export type Workspace = 'animate' | 'pose' | 'look' | 'library';
-export type LibraryPage = 'scenes' | 'translate' | 'settings' | 'shortcuts';
+export type LibraryPage = 'scenes' | 'translate' | 'settings' | 'shortcuts' | 'about';
 
 export function setWorkspace(w: Workspace) {
   set({ workspace: w });
@@ -242,6 +243,7 @@ export function lsSet(k: string, v: string) {
 let toastId = 1;
 export function toast(text: string, kind: Toast['kind'] = 'info') {
   const id = toastId++;
+  if (kind === 'error') log('error', text, 'ui');
   set((s) => ({ toasts: [...s.toasts.slice(-3), { id, kind, text }] }));
   window.setTimeout(() => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })), kind === 'error' ? 5000 : 2500);
 }
@@ -355,6 +357,7 @@ export function initBridge() {
   if (bridgeStarted) return;
   bridgeStarted = true;
   bridge.on('$status', async (s) => {
+    if (s !== get().status) log('info', `bridge ${s}`, 'bridge');
     set({ status: s as ConnectionStatus });
     // Offline: stop extrapolating the playhead (and the canvases redrawing every frame for it).
     if (s !== 'open') {
@@ -364,6 +367,10 @@ export function initBridge() {
     if (s === 'open') {
       const hello = await call<Hello>('hello');
       set({ hello: hello ?? null });
+      if (hello) {
+        log('info', `connected to bridge ${hello.plugin} (Unity ${hello.unity})`, 'bridge');
+        for (const f of hello.features ?? []) if (f.status === 'off' || f.status === 'untested') log(f.status === 'off' ? 'warn' : 'info', `${f.label}: ${f.reason}`, 'compat');
+      }
       // Plugin state survives app restarts; read auto-key back instead of assuming off.
       if (hello?.timeline) call<{ on: boolean; newTracks: boolean }>('timeline.setAutoKey', {}).then((r) => r && set({ autoKey: r.on }));
       // ...and unkeyed changes / held-back edits (only their changes are pushed as events)
@@ -371,7 +378,7 @@ export function initBridge() {
         call<{ pending?: number; poseStale?: boolean }>('timeline.state').then((r) => r && set({ pending: r.pending ?? 0, poseStale: !!r.poseStale }));
       refreshScene();
       if (hello?.timeline) refreshTimeline();
-      else if (hello) toast('Timeline plugin not found in this Studio install', 'error');
+      else if (hello) toast(hello.features?.find((f) => f.id === 'timeline')?.reason ?? 'Timeline plugin not found in this Studio install', 'error');
     }
   });
   bridge.on('timeline.tick', (d) => {

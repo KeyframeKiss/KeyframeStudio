@@ -38,6 +38,12 @@ declare global {
       setAlwaysOnTop(on: boolean): Promise<boolean>;
       getAlwaysOnTop(): Promise<boolean>;
       translate?: Bridge;
+      log?: {
+        write(lines: { level: string; source: string; text: string }[]): Promise<void>;
+        tail(n: number): Promise<string[]>;
+        openFolder(): Promise<string>;
+      };
+      appInfo?(): Promise<{ version: string; electron: string; chrome: string; node: string; os: string; logFile: string; home: string }>;
     };
   }
 }

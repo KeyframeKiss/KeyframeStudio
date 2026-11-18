@@ -1,0 +1,115 @@
+#!/usr/bin/env node
+// Live test runner: drives a running CharaStudio through the Studio EX bridge plugin.
+//
+//   node tests/run.mjs                 run every suite
+//   node tests/run.mjs face timeline   run suites whose name contains any of the words
+//   node tests/run.mjs --list          list suites
+//   options: --yes (don't ask before replacing the open scene), --verbose (print every check)
+//
+// Every suite starts from an empty scene (see freshStudio) and cleans up any files it creates, so suites
+// can run alone or in any order. The scene open in Studio is replaced: save your work first.
+import fs from 'node:fs';
+import path from 'node:path';
+import readline from 'node:readline';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { Studio, freshStudio, makeContext } from './lib/harness.mjs';
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+const args = process.argv.slice(2);
+const flags = new Set(args.filter((a) => a.startsWith('--')));
+const words = args.filter((a) => !a.startsWith('--')).map((w) => w.toLowerCase());
+const verbose = flags.has('--verbose');
+const SUITE_TIMEOUT = 300000;
+
+const files = fs
+  .readdirSync(path.join(here, 'suites'))
+  .filter((f) => f.endsWith('.mjs'))
+  .sort();
+const suites = [];
+for (const f of files) {
+  const mod = await import(pathToFileURL(path.join(here, 'suites', f)).href);
+  suites.push({ file: f, name: mod.name ?? f.replace(/\.mjs$/, ''), run: mod.default });
+}
+const chosen = words.length ? suites.filter((s) => words.some((w) => s.file.toLowerCase().includes(w) || s.name.toLowerCase().includes(w))) : suites;
+
+if (flags.has('--list')) {
+  for (const s of suites) console.log(`${s.file.padEnd(28)} ${s.name}`);
+  process.exit(0);
+}
+if (!chosen.length) {
+  console.log(`No suite matches: ${words.join(' ')}  (use --list)`);
+  process.exit(1);
+}
+
+const color = process.stdout.isTTY ? (c, s) => `\x1b[${c}m${s}\x1b[0m` : (_c, s) => s;
+const green = (s) => color(32, s),
+  red = (s) => color(31, s),
+  dim = (s) => color(2, s),
+  yellow = (s) => color(33, s);
+
+async function confirm() {
+  if (flags.has('--yes')) return true;
+  if (!process.stdin.isTTY) {
+    console.log('The tests replace the scene open in CharaStudio. Re-run with --yes to confirm.');
+    return false;
+  }
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  const a = await new Promise((r) => rl.question('The tests replace the scene open in CharaStudio (save your work first). Continue? [y/N] ', r));
+  rl.close();
+  return /^y(es)?$/i.test(a.trim());
+}
+
+if (!(await confirm())) process.exit(1);
+
+const studio = await Studio.connect({ log: (m) => console.log(dim(m)) }).catch((e) => {
+  console.log(red(e.message));
+  process.exit(1);
+});
+const hello = await studio.ok('hello');
+console.log(`Studio EX bridge ${hello.plugin} · Unity ${hello.unity} · ${chosen.length} suite${chosen.length > 1 ? 's' : ''}`);
+for (const f of hello.features ?? []) if (f.status === 'off' || f.status === 'untested') console.log(yellow(`  ${f.status}: ${f.label} — ${f.reason}`));
+console.log('');
+
+const summary = [];
+const started = Date.now();
+for (const s of chosen) {
+  const t0 = Date.now();
+  const { t, cleanups } = makeContext(studio, hello);
+  let crashed = null;
+  try {
+    await freshStudio(studio);
+    await Promise.race([s.run(t), new Promise((_, rej) => setTimeout(() => rej(new Error(`timed out after ${SUITE_TIMEOUT / 1000}s`)), SUITE_TIMEOUT))]);
+  } catch (e) {
+    if (!e.skip) crashed = e;
+  }
+  for (const fn of cleanups.reverse()) {
+    try {
+      await fn();
+    } catch (e) {
+      t.check('cleanup', false, e.message);
+    }
+  }
+  if (crashed) t.check('suite ran to the end', false, crashed.message);
+  const r = t.results;
+  const secs = ((Date.now() - t0) / 1000).toFixed(1);
+  if (r.skipped) console.log(`${yellow('–')} ${s.name} ${dim(`skipped: ${r.skipped}`)}`);
+  else if (r.fail === 0) console.log(`${green('✔')} ${s.name} ${dim(`${r.pass} checks · ${secs}s`)}`);
+  else {
+    console.log(`${red('✘')} ${s.name} ${dim(`${r.pass} passed · ${secs}s`)} ${red(`${r.fail} failed`)}`);
+    for (const f of r.failures) console.log(red(`    ✘ ${f}`));
+  }
+  if (verbose) for (const l of r.lines) console.log(dim(`    ${l}`));
+  summary.push({ name: s.name, ...r });
+}
+
+await freshStudio(studio).catch(() => {});
+studio.close();
+const pass = summary.reduce((n, s) => n + s.pass, 0);
+const fail = summary.reduce((n, s) => n + s.fail, 0);
+const skipped = summary.filter((s) => s.skipped).length;
+const bad = summary.filter((s) => s.fail > 0).length;
+console.log('');
+console.log(
+  `${bad ? red(`${bad} of ${summary.length} suites failed`) : green(`All ${summary.length - skipped} suites passed`)} · ${pass} checks passed${fail ? `, ${red(fail + ' failed')}` : ''}${skipped ? `, ${skipped} skipped` : ''} · ${((Date.now() - started) / 1000).toFixed(0)}s`,
+);
+process.exit(bad ? 1 : 0);

@@ -43,6 +43,39 @@ npm start        # production build + run
 Start CharaStudio; Studio EX connects automatically (status bar turns green).
 The port is configurable in `BepInEx/config/studioex.bridge.cfg`.
 
+## Tests
+
+Live suites drive a running CharaStudio through the bridge (`tests/suites/*.mjs`). Each suite starts from an
+empty scene and removes the files it creates, so they run alone or in any order. **They replace the scene open
+in Studio — save first.** Needs Node 22+.
+
+```powershell
+npm test                      # every suite, pass/fail summary (asks before touching Studio)
+node tests/run.mjs face look  # suites whose name contains a word
+node tests/run.mjs --list     # what exists · --yes skips the question · --verbose prints every check
+```
+
+## Diagnostics and compatibility
+
+**Library › About & diagnostics** shows versions and which features work with the installed mods, and
+**Copy diagnostics** puts a bug-report text on the clipboard. The report has versions, installed plugins,
+feature status and the recent bridge and app logs, with the Windows user name hidden. The app log is in
+`%APPDATA%\studio-ex\logs\studioex.log`.
+
+Each mod-dependent feature checks the exact classes and members it uses when Studio starts. A feature whose
+mod is missing or changed is switched off on its own, and its commands answer with the reason. An untested
+version that still matches stays on and is marked "untested".
+
+| Feature | Mod | Tested with |
+| --- | --- | --- |
+| Animation (dope sheet, graph, keys, auto-key, ghosts) | Timeline | 1.3.0 |
+| Face Studio: face parts, saved faces | KKPE | 2.17.0 |
+| Face Studio: shapes (blendshapes) | KKPE | 2.17.0 |
+| Bone sliders (ABMX) | KKABMX | 5.2 |
+| Look: material tweaks, material rules in presets | Material Editor | 3.7.0 |
+| Look: second colour LUT | KK_TwoLut | — |
+| English names | XUnity AutoTranslator | — |
+
 ## Animation workflow
 
 1. Select an object (Scene tab, or click it in Studio).

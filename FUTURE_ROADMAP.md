@@ -51,6 +51,11 @@ The goal is not to replace working systems. It is to make existing tools easier 
 - List the Timeline, MaterialEditor, KKABMX, KKPE, XUnity AutoTranslator, and KK_TwoLut versions Studio EX hooks into, and which features depend on each.
 - On an unknown version, disable only the affected feature and say why, instead of failing.
 
+**Status (2026-11-17): 0.3–0.5 done.**
+- **Tests:** `npm test` runs 11 live suites (170 checks, about 2 minutes) with a pass/fail summary. Each suite starts from an empty scene and cleans up its files.
+- **Diagnostics:** an app log file, a bridge log buffer and Library › About & diagnostics with "Copy diagnostics". The report hides the Windows user name.
+- **Compatibility:** per-feature probes of the exact mod members used, versions tested, and features switched off on their own with the reason (see README).
+
 ### 0.6 Test Existing Workflows
 - Validate large scenes with many objects and tracks (200+ objects, 100+ tracks, 5,000+ keys).
 - Test undo/redo with external plugin changes.

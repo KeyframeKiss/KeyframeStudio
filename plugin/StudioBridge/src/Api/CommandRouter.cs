@@ -28,6 +28,9 @@ namespace StudioEX.Bridge.Api
                 if (req == null) throw new BridgeException("Request must be a JSON object");
                 req.TryGetValue("id", out id);
                 string cmd = req.GetString("cmd");
+                // a feature switched off for compatibility answers with the reason (not "unknown command")
+                var blocked = cmd == null ? null : Compat.BlockReason(cmd);
+                if (blocked != null) throw new BridgeException(blocked);
                 if (cmd == null || !_handlers.TryGetValue(cmd, out var handler))
                     throw new BridgeException("Unknown command: " + cmd);
                 var result = handler(req.GetObject("args") ?? new Dictionary<string, object>());
@@ -61,6 +64,8 @@ namespace StudioEX.Bridge.Api
                 { "unity", UnityEngine.Application.unityVersion },
                 { "timeline", TimelineApi.Available },
                 { "translator", Translation.Available },
+                { "features", Compat.Report() },
+                { "paths", DiagApi.Paths() },
                 { "commands", new List<string>(r.Commands) },
             });
             r.Add("ping", a => a.GetDouble("t"));

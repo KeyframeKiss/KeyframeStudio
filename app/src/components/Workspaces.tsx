@@ -21,6 +21,7 @@ import { FaceStudio } from './FaceStudio';
 import { ErrorBoundary } from './ErrorBoundary';
 import { SHORTCUTS } from './shortcuts';
 
+import { DiagnosticsPage } from './DiagnosticsPage';
 /** Panel with a compact tab strip; remembers its tab per workspace. */
 function TabbedPanel({ id, tabs, side }: { id: string; tabs: { id: string; label: string; icon?: string; render: () => ReactNode }[]; side: 'left' | 'right' }) {
   const key = `studioex.tab.${id}`;
@@ -243,6 +244,7 @@ const PAGES: { id: LibraryPage; label: string; icon: string; hint: string }[] = 
   { id: 'translate', label: 'Translations', icon: 'translate', hint: 'Fix Japanese → English names' },
   { id: 'settings', label: 'Mod settings', icon: 'settings', hint: 'Every plugin option' },
   { id: 'shortcuts', label: 'Shortcuts', icon: 'keyboard', hint: 'Keyboard & mouse' },
+  { id: 'about', label: 'About & diagnostics', icon: 'pulse', hint: 'Versions, mods, bug reports' },
 ];
 
 export function LibraryWorkspace() {
@@ -271,6 +273,7 @@ export function LibraryWorkspace() {
           </div>
         )}
         {page === 'settings' && <ModSettings />}
+        {page === 'about' && <DiagnosticsPage />}
         {page === 'shortcuts' && (
           <div className="page">
             <div className="page-inner narrow" style={{ padding: 20, overflow: 'auto' }}>
@@ -286,7 +289,7 @@ export function LibraryWorkspace() {
             </div>
           </div>
         )}
-        {page !== 'shortcuts' && page !== 'translate' && <Disconnected />}
+        {page !== 'shortcuts' && page !== 'translate' && page !== 'about' && <Disconnected />}
       </main>
     </div>
   );
