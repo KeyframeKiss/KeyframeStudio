@@ -353,8 +353,8 @@ export function LookWorkspace() {
               </div>
             )}
             {tab === 'settings' && (
-              <div className="subpage look-wide">
-                <LookPanel showPresets={false} />
+              <div className="subpage">
+                <LookPanel />
               </div>
             )}
             {tab === 'lighting' && (

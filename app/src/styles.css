@@ -3697,15 +3697,6 @@ html.frameless .tooltip {
   width: 96px;
   height: 54px;
 }
-/* Look › Settings: the sections flow in columns instead of one tall strip */
-.look-wide > .panel-body {
-  column-width: 340px;
-  column-gap: 0;
-  padding: 4px 8px 16px;
-}
-.look-wide > .panel-body > * {
-  break-inside: avoid;
-}
 /* Pose › Outfit: clothes | saved outfits + accessories */
 .outfit-page {
   display: grid;
@@ -3870,4 +3861,131 @@ html.frameless .tooltip {
 }
 .face-auto.on .rec-dot {
   background: #ff4d6d;
+}
+
+/* ---------- Look › Settings: sections of cards ---------- */
+.look-page {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 10px 18px 28px;
+}
+.look-page-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0 6px;
+}
+.look-group {
+  margin-top: 14px;
+}
+.look-group-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 0 2px 8px;
+}
+.look-group-head h3 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-0);
+}
+.look-group-head span {
+  font-size: 11.5px;
+  color: var(--text-3);
+}
+.look-cards {
+  display: grid;
+  grid-template-columns: repeat(var(--n, 3), minmax(0, 1fr));
+  gap: 10px;
+  align-items: start;
+}
+@container (max-width: 1100px) {
+  .look-cards {
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  }
+}
+.look-card {
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.look-card.wide {
+  grid-column: 1 / -1;
+}
+.look-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+}
+.look-card-head > div {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.look-card-head b {
+  font-size: 12.5px;
+}
+.look-card-head small {
+  color: var(--text-3);
+  font-size: 11px;
+}
+.look-card-body {
+  padding: 2px 12px 12px;
+}
+.look-card.off .look-card-body {
+  opacity: 0.4;
+}
+.look-card.off .look-card-head b {
+  color: var(--text-2);
+}
+.look-two {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 6px 28px;
+}
+.look-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.look-chips .btn {
+  height: 24px;
+  font-size: 11px;
+}
+.color-input {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 24px;
+  padding: 0 8px 0 3px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg-2);
+  cursor: pointer;
+}
+.color-input:hover {
+  border-color: var(--text-3);
+}
+.color-input span {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.15);
+}
+.color-input code {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-1);
+}
+.color-input input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
 }

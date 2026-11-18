@@ -1,8 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { Children, useCallback, useEffect, useRef, useState } from 'react';
 import { bridge } from '../bridge/client';
-import { call, displayName, toast, useStore } from '../state/store';
-import { CollapsibleSection, Slider } from './CharacterPanel';
-import { LookPresets } from './LookPresets';
+import { call, displayName, showTab, toast, useStore } from '../state/store';
+import { Slider } from './CharacterPanel';
 
 import { pressable } from '../lib/pressable';
 type RGBA = [number, number, number, number];
@@ -39,12 +38,12 @@ export interface MatRule {
 const hex = (c: number[]) => '#' + c.slice(0, 3).map((v) => Math.round(Math.max(0, Math.min(1, v)) * 255).toString(16).padStart(2, '0')).join('');
 const fromHex = (h: string, a = 1): RGBA => [parseInt(h.slice(1, 3), 16) / 255, parseInt(h.slice(3, 5), 16) / 255, parseInt(h.slice(5, 7), 16) / 255, a];
 
-export function LookPanel({ showPresets = true }: { showPresets?: boolean }) {
+/** Look › Settings: every render setting, grouped into sections of cards (live, undoable). */
+export function LookPanel() {
   const status = useStore((s) => s.status);
   const revision = useStore((s) => s.revision);
+  const selection = useStore((s) => s.studioSelection);
   const [look, setLook] = useState<Look | null>(null);
-  const [open, setOpen] = useState<Record<string, boolean>>({ presets: true, grade: true, bloom: true, dof: false, ssao: false, vignette: false, fog: false, sun: false, toon: true, lights: true, materials: false });
-  const tog = (id: string) => setOpen((o) => ({ ...o, [id]: !o[id] }));
 
   const load = useCallback(() => {
     call<Look>('look.get').then((l) => l && setLook(l));
@@ -84,137 +83,148 @@ export function LookPanel({ showPresets = true }: { showPresets?: boolean }) {
   const lutName = (n: Named) => displayName({ name: n.name, nameEn: n.nameEn ?? undefined });
 
   return (
-    <div className="panel-body">
-      {showPresets && (
-        <CollapsibleSection title="Looks" open={open.presets} onToggle={() => tog('presets')}>
-          <LookPresets />
-        </CollapsibleSection>
-      )}
+    <div className="look-page">
+      <div className="look-page-bar">
+        <span className="hint" style={{ margin: 0 }}>
+          Changes show in Studio right away, are undoable (Ctrl+Z) and are saved with the scene.
+        </span>
+        <span style={{ flex: 1 }} />
+        <button className="btn" title="Back to Studio's default look (undoable)" onClick={() => call('look.resetDefault').then((r) => r !== undefined && load())}>
+          Reset to Studio default
+        </button>
+        <button className="btn solid" title="Save these settings as a look you can apply to other scenes" onClick={() => showTab('look', 'presets')}>
+          Save as a look…
+        </button>
+      </div>
 
-      <CollapsibleSection title="Color grade" open={open.grade} onToggle={() => tog('grade')}>
-        <div className="kv">
-          <label>LUT</label>
-          <select className="input" value={e.lut} onChange={(ev) => patch('effects', { lut: Number(ev.target.value) })}>
-            {look.luts.map((x) => (
-              <option key={x.id} value={x.id}>
-                {lutName(x)}
-              </option>
-            ))}
-          </select>
-          {look.twoLut && (
-            <>
-              <label title="Second LUT (KK_TwoLut) — Blend fades from LUT to LUT 2">LUT 2</label>
-              <select className="input" value={e.lut2} onChange={(ev) => patch('effects', { lut2: Number(ev.target.value) })}>
-                {look.luts.map((x) => (
+      <LookGroup title="Color" hint="The picture's overall color and glow">
+        <LookCard title="Color grade" desc="A LUT tints the whole picture">
+          <div className="kv">
+            <label>LUT</label>
+            <select className="input" value={e.lut} onChange={(ev) => patch('effects', { lut: Number(ev.target.value) })}>
+              {look.luts.map((x) => (
+                <option key={x.id} value={x.id}>
+                  {lutName(x)}
+                </option>
+              ))}
+            </select>
+            {look.twoLut && (
+              <>
+                <label title="Second LUT (KK_TwoLut) — Blend fades from LUT to LUT 2">LUT 2</label>
+                <select className="input" value={e.lut2} onChange={(ev) => patch('effects', { lut2: Number(ev.target.value) })}>
+                  {look.luts.map((x) => (
+                    <option key={x.id} value={x.id}>
+                      {lutName(x)}
+                    </option>
+                  ))}
+                </select>
+              </>
+            )}
+            <label>Blend</label>
+            <Slider value={e.lutBlend} min={0} max={1} step={0.01} onChange={(v) => patch('effects', { lutBlend: v })} />
+          </div>
+        </LookCard>
+        <LookCard title="Bloom" desc="Bright areas glow" on={e.bloom} onToggle={(v) => patch('effects', { bloom: v })}>
+          <div className="kv">
+            <label>Intensity</label>
+            <Slider value={e.bloomIntensity} min={0} max={5} step={0.01} onChange={(v) => patch('effects', { bloomIntensity: v })} />
+            <label>Threshold</label>
+            <Slider value={e.bloomThreshold} min={0.5} max={1} step={0.01} onChange={(v) => patch('effects', { bloomThreshold: v })} />
+            <label>Softness</label>
+            <Slider value={e.bloomBlur} min={0.1} max={10} step={0.05} onChange={(v) => patch('effects', { bloomBlur: v })} />
+          </div>
+        </LookCard>
+        <LookCard title="Vignette" desc="Darkened corners (Studio only has on/off)" on={e.vignette} onToggle={(v) => patch('effects', { vignette: v })} />
+      </LookGroup>
+
+      <LookGroup title="Depth & atmosphere" hint="Focus, contact shadows and the air between camera and scene">
+        <LookCard title="Depth of field" desc="Blur away from the focus point" on={e.dof} onToggle={(v) => patch('effects', { dof: v })}>
+          <div className="kv">
+            <label>Focal size</label>
+            <Slider value={e.dofFocal} min={0} max={2} step={0.01} onChange={(v) => patch('effects', { dofFocal: v })} />
+            <label>Aperture</label>
+            <Slider value={e.dofAperture} min={0} max={1} step={0.01} onChange={(v) => patch('effects', { dofAperture: v })} />
+          </div>
+        </LookCard>
+        <LookCard title="Ambient occlusion" desc="Soft shadows where things meet" on={e.ssao} onToggle={(v) => patch('effects', { ssao: v })}>
+          <div className="kv">
+            <label>Color</label>
+            <ColorInput value={e.ssaoColor} onChange={(c) => patch('effects', { ssaoColor: c })} />
+            <label>Radius</label>
+            <Slider value={e.ssaoRadius} min={0} max={1} step={0.005} onChange={(v) => patch('effects', { ssaoRadius: v })} />
+          </div>
+        </LookCard>
+        <LookCard title="Fog" desc="Haze that thickens with distance" on={e.fog} onToggle={(v) => patch('effects', { fog: v })}>
+          <div className="kv">
+            <label>Color</label>
+            <ColorInput value={e.fogColor} onChange={(c) => patch('effects', { fogColor: c })} />
+            <label>Height</label>
+            <Slider value={e.fogHeight} min={0} max={50} step={0.1} onChange={(v) => patch('effects', { fogHeight: v })} />
+            <label>Start</label>
+            <Slider value={e.fogStart} min={0} max={50} step={0.1} onChange={(v) => patch('effects', { fogStart: v })} />
+          </div>
+        </LookCard>
+        <LookCard title="Sun shafts" desc="Light rays from a sun caster set in Studio" on={e.sunShafts} onToggle={(v) => patch('effects', { sunShafts: v })}>
+          <div className="kv">
+            <label>Color</label>
+            <ColorInput value={e.sunColor} onChange={(c) => patch('effects', { sunColor: c })} />
+            <label>Threshold</label>
+            <ColorInput value={e.sunThreshold} onChange={(c) => patch('effects', { sunThreshold: c })} />
+          </div>
+        </LookCard>
+      </LookGroup>
+
+      <LookGroup title="Characters" hint="How every character is shaded">
+        <LookCard title="Toon shading" desc="Shadow ramp and outlines for all characters" wide>
+          <div className="look-two">
+            <div className="kv">
+              <label>Ramp</label>
+              <select className="input" value={t.ramp} onChange={(ev) => patch('toon', { ramp: Number(ev.target.value) })}>
+                {look.ramps.map((x) => (
                   <option key={x.id} value={x.id}>
                     {lutName(x)}
                   </option>
                 ))}
               </select>
-            </>
-          )}
-          <label>Blend</label>
-          <Slider value={e.lutBlend} min={0} max={1} step={0.01} onChange={(v) => patch('effects', { lutBlend: v })} />
-        </div>
-      </CollapsibleSection>
+              <label>Shadow color</label>
+              <ColorInput value={t.ambientShadow} onChange={(c) => patch('toon', { ambientShadow: c })} />
+              <label>Shadow depth</label>
+              <Slider value={t.ambientShadowG} min={0} max={1} step={0.01} onChange={(v) => patch('toon', { ambientShadowG: v })} />
+            </div>
+            <div className="kv">
+              <label>Outline dark</label>
+              <Slider value={t.lineColor} min={0} max={1} step={0.01} onChange={(v) => patch('toon', { lineColor: v })} />
+              <label>Outline width</label>
+              <Slider value={t.lineWidth} min={0} max={1} step={0.01} onChange={(v) => patch('toon', { lineWidth: v })} />
+              <label>Options</label>
+              <div className="look-chips">
+                <button className={`btn solid ${t.faceNormal ? 'on' : ''}`} onClick={() => patch('toon', { faceNormal: !t.faceNormal })} title="Smoother face shading">
+                  Face normals
+                </button>
+                <button className={`btn solid ${t.faceShadow ? 'on' : ''}`} onClick={() => patch('toon', { faceShadow: !t.faceShadow })} title="Shadows on the face">
+                  Face shadow
+                </button>
+                <button className={`btn solid ${e.shadow ? 'on' : ''}`} onClick={() => patch('effects', { shadow: !e.shadow })} title="Characters cast shadows on themselves">
+                  Self shadows
+                </button>
+              </div>
+            </div>
+          </div>
+        </LookCard>
+      </LookGroup>
 
-      <CollapsibleSection title="Bloom" open={open.bloom} onToggle={() => tog('bloom')} extra={<Switch on={e.bloom} onChange={(v) => patch('effects', { bloom: v })} />}>
-        <div className="kv" style={{ opacity: e.bloom ? 1 : 0.5 }}>
-          <label>Intensity</label>
-          <Slider value={e.bloomIntensity} min={0} max={5} step={0.01} onChange={(v) => patch('effects', { bloomIntensity: v })} />
-          <label>Threshold</label>
-          <Slider value={e.bloomThreshold} min={0.5} max={1} step={0.01} onChange={(v) => patch('effects', { bloomThreshold: v })} />
-          <label>Softness</label>
-          <Slider value={e.bloomBlur} min={0.1} max={10} step={0.05} onChange={(v) => patch('effects', { bloomBlur: v })} />
-        </div>
-      </CollapsibleSection>
-
-      <CollapsibleSection title="Depth of field" open={open.dof} onToggle={() => tog('dof')} extra={<Switch on={e.dof} onChange={(v) => patch('effects', { dof: v })} />}>
-        <div className="kv" style={{ opacity: e.dof ? 1 : 0.5 }}>
-          <label>Focal size</label>
-          <Slider value={e.dofFocal} min={0} max={2} step={0.01} onChange={(v) => patch('effects', { dofFocal: v })} />
-          <label>Aperture</label>
-          <Slider value={e.dofAperture} min={0} max={1} step={0.01} onChange={(v) => patch('effects', { dofAperture: v })} />
-        </div>
-      </CollapsibleSection>
-
-      <CollapsibleSection title="Ambient occlusion" open={open.ssao} onToggle={() => tog('ssao')} extra={<Switch on={e.ssao} onChange={(v) => patch('effects', { ssao: v })} />}>
-        <div className="kv" style={{ opacity: e.ssao ? 1 : 0.5 }}>
-          <label>Color</label>
-          <ColorInput value={e.ssaoColor} onChange={(c) => patch('effects', { ssaoColor: c })} />
-          <label>Radius</label>
-          <Slider value={e.ssaoRadius} min={0} max={1} step={0.005} onChange={(v) => patch('effects', { ssaoRadius: v })} />
-        </div>
-      </CollapsibleSection>
-
-      <CollapsibleSection title="Vignette" open={open.vignette} onToggle={() => tog('vignette')} extra={<Switch on={e.vignette} onChange={(v) => patch('effects', { vignette: v })} />}>
-        <div className="hint" style={{ marginTop: 0 }}>
-          Darkened corners. Studio exposes only on/off.
-        </div>
-      </CollapsibleSection>
-
-      <CollapsibleSection title="Fog" open={open.fog} onToggle={() => tog('fog')} extra={<Switch on={e.fog} onChange={(v) => patch('effects', { fog: v })} />}>
-        <div className="kv" style={{ opacity: e.fog ? 1 : 0.5 }}>
-          <label>Color</label>
-          <ColorInput value={e.fogColor} onChange={(c) => patch('effects', { fogColor: c })} />
-          <label>Height</label>
-          <Slider value={e.fogHeight} min={0} max={50} step={0.1} onChange={(v) => patch('effects', { fogHeight: v })} />
-          <label>Start</label>
-          <Slider value={e.fogStart} min={0} max={50} step={0.1} onChange={(v) => patch('effects', { fogStart: v })} />
-        </div>
-      </CollapsibleSection>
-
-      <CollapsibleSection title="Sun shafts" open={open.sun} onToggle={() => tog('sun')} extra={<Switch on={e.sunShafts} onChange={(v) => patch('effects', { sunShafts: v })} />}>
-        <div className="kv" style={{ opacity: e.sunShafts ? 1 : 0.5 }}>
-          <label>Color</label>
-          <ColorInput value={e.sunColor} onChange={(c) => patch('effects', { sunColor: c })} />
-          <label>Threshold</label>
-          <ColorInput value={e.sunThreshold} onChange={(c) => patch('effects', { sunThreshold: c })} />
-        </div>
-        <div className="hint">The light source is set in Studio (an item as sun caster).</div>
-      </CollapsibleSection>
-
-      <CollapsibleSection title="Toon shading (all characters)" open={open.toon} onToggle={() => tog('toon')}>
-        <div className="kv">
-          <label>Ramp</label>
-          <select className="input" value={t.ramp} onChange={(ev) => patch('toon', { ramp: Number(ev.target.value) })}>
-            {look.ramps.map((x) => (
-              <option key={x.id} value={x.id}>
-                {lutName(x)}
-              </option>
-            ))}
-          </select>
-          <label>Outline dark</label>
-          <Slider value={t.lineColor} min={0} max={1} step={0.01} onChange={(v) => patch('toon', { lineColor: v })} />
-          <label>Outline width</label>
-          <Slider value={t.lineWidth} min={0} max={1} step={0.01} onChange={(v) => patch('toon', { lineWidth: v })} />
-          <label>Shadow color</label>
-          <ColorInput value={t.ambientShadow} onChange={(c) => patch('toon', { ambientShadow: c })} />
-          <label>Shadow depth</label>
-          <Slider value={t.ambientShadowG} min={0} max={1} step={0.01} onChange={(v) => patch('toon', { ambientShadowG: v })} />
-        </div>
-        <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
-          <button className={`btn solid ${t.faceNormal ? 'on' : ''}`} style={{ flex: 1 }} onClick={() => patch('toon', { faceNormal: !t.faceNormal })}>
-            Face normals
-          </button>
-          <button className={`btn solid ${t.faceShadow ? 'on' : ''}`} style={{ flex: 1 }} onClick={() => patch('toon', { faceShadow: !t.faceShadow })}>
-            Face shadow
-          </button>
-          <button className={`btn solid ${e.shadow ? 'on' : ''}`} style={{ flex: 1 }} title="Self shadows" onClick={() => patch('effects', { shadow: !e.shadow })}>
-            Shadows
-          </button>
-        </div>
-      </CollapsibleSection>
-
-      <CollapsibleSection title="Lights" open={open.lights} onToggle={() => tog('lights')}>
-        <LightRows label="Character light" prefix="chara" lights={l} onPatch={(v) => patch('lights', v)} />
-        <div className="menu-sep" style={{ margin: '10px 0' }} />
-        <LightRows label="Map light" prefix="map" lights={l} onPatch={(v) => patch('lights', v)} />
-      </CollapsibleSection>
+      <LookGroup title="Lights" hint="Studio's two built-in lights (lights you add and rigs are under Lighting rigs)">
+        <LookCard title="Character light" desc="Lights the characters" extra={<ShadowToggle on={l.charaShadow} onChange={(v) => patch('lights', { charaShadow: v })} />}>
+          <LightRows prefix="chara" lights={l} onPatch={(v) => patch('lights', v)} />
+        </LookCard>
+        <LookCard title="Map light" desc="Lights the stage and items" extra={<ShadowToggle on={l.mapShadow} onChange={(v) => patch('lights', { mapShadow: v })} />}>
+          <LightRows prefix="map" lights={l} onPatch={(v) => patch('lights', v)} />
+        </LookCard>
+      </LookGroup>
 
       {look.materialEditor && (
-        <CollapsibleSection title="Materials (MaterialEditor)" open={open.materials} onToggle={() => tog('materials')}>
-          {open.materials && (
+        <LookGroup title="Materials" hint="Shader values of the selected characters or items, through MaterialEditor (saved like MaterialEditor edits)">
+          <LookCard title={selection.length ? 'Selected objects' : 'Nothing selected'} wide>
             <MaterialsSection
               onRule={(r) => {
                 const rs = useStore.getState().lookRules;
@@ -222,11 +232,50 @@ export function LookPanel({ showPresets = true }: { showPresets?: boolean }) {
                 toast(`“${r.prop}” will be saved with the next look`);
               }}
             />
-          )}
-        </CollapsibleSection>
+          </LookCard>
+        </LookGroup>
       )}
-
     </div>
+  );
+}
+
+function LookGroup({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
+  return (
+    <section className="look-group">
+      <div className="look-group-head">
+        <h3>{title}</h3>
+        {hint && <span>{hint}</span>}
+      </div>
+      {/* one column per card (they line up as a row), wrapping only when the window is narrow */}
+      <div className="look-cards" style={{ '--n': Math.max(1, Children.count(children)) } as React.CSSProperties}>
+        {children}
+      </div>
+    </section>
+  );
+}
+
+/** One effect: title, what it does, its switch; switched off it dims but stays editable. */
+function LookCard({ title, desc, on, onToggle, extra, wide, children }: { title: string; desc?: string; on?: boolean; onToggle?: (v: boolean) => void; extra?: React.ReactNode; wide?: boolean; children?: React.ReactNode }) {
+  return (
+    <div className={`look-card ${on === false ? 'off' : ''} ${wide ? 'wide' : ''}`}>
+      <div className="look-card-head">
+        <div>
+          <b>{title}</b>
+          {desc && <small>{desc}</small>}
+        </div>
+        {extra}
+        {onToggle && <Switch on={!!on} onChange={onToggle} />}
+      </div>
+      {children && <div className="look-card-body">{children}</div>}
+    </div>
+  );
+}
+
+function ShadowToggle({ on, onChange }: { on: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <button className={`btn small solid ${on ? 'on' : ''}`} onClick={() => onChange(!on)} title="Cast shadows">
+      Shadows
+    </button>
   );
 }
 
@@ -239,32 +288,29 @@ function Switch({ on, onChange }: { on: boolean; onChange: (v: boolean) => void 
 }
 
 function ColorInput({ value, onChange }: { value: number[]; onChange: (c: RGBA) => void }) {
-  return <input type="color" value={hex(value)} onChange={(ev) => onChange(fromHex(ev.target.value, value[3] ?? 1))} style={{ width: '100%', height: 24, background: 'none', border: 0, padding: 0 }} />;
+  return (
+    <label className="color-input" title={hex(value)}>
+      <span style={{ background: hex(value) }} />
+      <code>{hex(value)}</code>
+      <input type="color" value={hex(value)} onChange={(ev) => onChange(fromHex(ev.target.value, value[3] ?? 1))} />
+    </label>
+  );
 }
 
-function LightRows({ label, prefix, lights, onPatch }: { label: string; prefix: 'chara' | 'map'; lights: Look['lights']; onPatch: (v: Record<string, unknown>) => void }) {
+function LightRows({ prefix, lights, onPatch }: { prefix: 'chara' | 'map'; lights: Look['lights']; onPatch: (v: Record<string, unknown>) => void }) {
   const color = lights[`${prefix}Color`];
   const intensity = lights[`${prefix}Intensity`];
   const rot = lights[`${prefix}Rot`];
-  const shadow = lights[`${prefix}Shadow`];
   return (
-    <div>
-      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 6 }}>
-        <b style={{ flex: 1 }}>{label}</b>
-        <button className={`btn solid ${shadow ? 'on' : ''}`} style={{ height: 22, fontSize: 11 }} onClick={() => onPatch({ [`${prefix}Shadow`]: !shadow })}>
-          Shadows
-        </button>
-      </div>
-      <div className="kv">
-        <label>Color</label>
-        <ColorInput value={color} onChange={(c) => onPatch({ [`${prefix}Color`]: c })} />
-        <label>Intensity</label>
-        <Slider value={intensity} min={0} max={2} step={0.01} onChange={(v) => onPatch({ [`${prefix}Intensity`]: v })} />
-        <label>Pitch</label>
-        <Slider value={rot[0]} min={-90} max={90} step={1} onChange={(v) => onPatch({ [`${prefix}Rot`]: [v, rot[1]] })} />
-        <label>Yaw</label>
-        <Slider value={rot[1]} min={-180} max={180} step={1} onChange={(v) => onPatch({ [`${prefix}Rot`]: [rot[0], v] })} />
-      </div>
+    <div className="kv">
+      <label>Color</label>
+      <ColorInput value={color} onChange={(c) => onPatch({ [`${prefix}Color`]: c })} />
+      <label>Intensity</label>
+      <Slider value={intensity} min={0} max={2} step={0.01} onChange={(v) => onPatch({ [`${prefix}Intensity`]: v })} />
+      <label title="Up / down">Pitch</label>
+      <Slider value={rot[0]} min={-90} max={90} step={1} onChange={(v) => onPatch({ [`${prefix}Rot`]: [v, rot[1]] })} />
+      <label title="Around">Yaw</label>
+      <Slider value={rot[1]} min={-180} max={180} step={1} onChange={(v) => onPatch({ [`${prefix}Rot`]: [rot[0], v] })} />
     </div>
   );
 }
