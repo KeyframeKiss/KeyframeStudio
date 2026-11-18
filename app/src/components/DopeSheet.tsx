@@ -21,6 +21,7 @@ import {
   selectTracks,
   setTrackProps,
   studioSelect,
+  keyAllOfSelectedObjects,
   useStore,
   visibleTracks,
   type KeyId,
@@ -940,46 +941,33 @@ export function DopeSheet() {
       <SheetToolbar
         shown={shown}
         total={totalTracks}
-        nav={
+        viewExtra={
           <>
-            <ZoomGroup />
-            <Popover
-              align="right"
-              placement="down"
-              width={220}
-              trigger={(open, toggle) => (
-                <button className={`btn ${open ? 'on' : ''}`} onClick={toggle} title="View options">
-                  <Icon name="sliders" size={13} /> View
+            <div className="menu-label" style={{ padding: 0 }}>
+              Row height
+            </div>
+            <div className="seg">
+              {(['S', 'M', 'L'] as RowSize[]).map((s) => (
+                <button key={s} className={rowSizeState === s ? 'on' : ''} onClick={() => setRowSize(s)} style={{ flex: 1 }}>
+                  {s === 'S' ? 'Compact' : s === 'M' ? 'Normal' : 'Large'}
                 </button>
-              )}
-            >
-              <div style={{ display: 'grid', gap: 8, padding: 6 }}>
-                <div className="menu-label" style={{ padding: 0 }}>
-                  Row height
-                </div>
-                <div className="seg">
-                  {(['S', 'M', 'L'] as RowSize[]).map((s) => (
-                    <button key={s} className={rowSizeState === s ? 'on' : ''} onClick={() => setRowSize(s)} style={{ flex: 1 }}>
-                      {s === 'S' ? 'Compact' : s === 'M' ? 'Normal' : 'Large'}
-                    </button>
-                  ))}
-                </div>
-                <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                  <input
-                    type="checkbox"
-                    checked={follow}
-                    onChange={() => {
-                      followPlayhead = !followPlayhead;
-                      setFollow(followPlayhead);
-                    }}
-                  />
-                  Follow playhead while playing
-                </label>
-              </div>
-            </Popover>
+              ))}
+            </div>
+            <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <input
+                type="checkbox"
+                checked={follow}
+                onChange={() => {
+                  followPlayhead = !followPlayhead;
+                  setFollow(followPlayhead);
+                }}
+              />
+              Follow playhead while playing
+            </label>
           </>
         }
       />
+      <SelectionBar />
       {centerView === 'graph' && <GraphEditor />}
       <div className="sheet" style={centerView === 'graph' ? { display: 'none' } : undefined}>
         <div className="sheet-names" style={{ width: nameW }} onWheel={onNameWheel}>
@@ -1190,7 +1178,7 @@ function ZoomGroup() {
   );
 }
 
-function SheetToolbar({ shown, total, nav }: { shown: number; total: number; nav: React.ReactNode }) {
+function SheetToolbar({ shown, total, viewExtra }: { shown: number; total: number; viewExtra: React.ReactNode }) {
   const filter = useStore((s) => s.filter);
   const search = useStore((s) => s.search);
   const selCount = useStore((s) => s.selKeys.size);
@@ -1199,6 +1187,14 @@ function SheetToolbar({ shown, total, nav }: { shown: number; total: number; nav
   const setView = (v: 'dope' | 'graph') => {
     useStore.setState({ centerView: v });
     lsSet('studioex.view', v);
+  };
+  const setFilter = (f: 'selected' | 'all') => {
+    useStore.setState({ filter: f });
+    lsSet('studioex.filter', f);
+  };
+  const setGroup = (m: 'objects' | 'folders') => {
+    useStore.setState({ groupMode: m });
+    lsSet('studioex.groupMode', m);
   };
   return (
     <div className="sheet-toolbar">
@@ -1224,54 +1220,99 @@ function SheetToolbar({ shown, total, nav }: { shown: number; total: number; nav
           Graph
         </button>
       </div>
-      <div className="seg">
-        <button
-          className={filter === 'selected' ? 'on' : ''}
-          onClick={() => {
-            useStore.setState({ filter: 'selected' });
-            lsSet('studioex.filter', 'selected');
-          }}
-          title="Only show tracks of objects selected in Studio"
-        >
-          Selected
+      <input className="input" style={{ width: 150 }} placeholder="Search tracks…" value={search} onChange={(e) => useStore.setState({ search: e.target.value })} />
+      {filter === 'selected' && (
+        <button className="filter-chip" onClick={() => setFilter('all')} title="Showing only the tracks of objects selected in Studio — click to show all">
+          Selected objects <span>×</span>
         </button>
-        <button
-          className={filter === 'all' ? 'on' : ''}
-          onClick={() => {
-            useStore.setState({ filter: 'all' });
-            lsSet('studioex.filter', 'all');
-          }}
-          title="Show every animated object"
-        >
-          All
-        </button>
-      </div>
-      <div className="seg" title="Group tracks by object, or by Timeline's own folders">
-        {(['objects', 'folders'] as const).map((m) => (
-          <button
-            key={m}
-            className={groupMode === m ? 'on' : ''}
-            onClick={() => {
-              useStore.setState({ groupMode: m });
-              lsSet('studioex.groupMode', m);
-            }}
-          >
-            {m === 'objects' ? 'Objects' : 'Folders'}
-          </button>
-        ))}
-      </div>
-      <input
-        className="input"
-        style={{ width: 150 }}
-        placeholder="Search…"
-        value={search}
-        onChange={(e) => useStore.setState({ search: e.target.value })}
-      />
+      )}
       <span style={{ color: 'var(--text-3)' }}>
         {shown}/{total} tracks{selCount ? ` · ${selCount} key${selCount > 1 ? 's' : ''} selected` : ''}
       </span>
       <div className="spacer" />
-      {centerView === 'dope' ? nav : <ZoomGroup />}
+      <ZoomGroup />
+      <Popover
+        align="right"
+        placement="down"
+        width={250}
+        trigger={(open, toggle) => (
+          <button className={`btn ${open ? 'on' : ''}`} onClick={toggle} title="Which tracks, grouping, row height">
+            <Icon name="sliders" size={13} /> View
+          </button>
+        )}
+      >
+        <div style={{ display: 'grid', gap: 8, padding: 6 }}>
+          <div className="menu-label" style={{ padding: 0 }}>
+            Tracks of
+          </div>
+          <div className="seg">
+            <button className={filter === 'selected' ? 'on' : ''} style={{ flex: 1 }} onClick={() => setFilter('selected')} title="Only show tracks of objects selected in Studio">
+              Selected
+            </button>
+            <button className={filter === 'all' ? 'on' : ''} style={{ flex: 1 }} onClick={() => setFilter('all')} title="Show every animated object">
+              All objects
+            </button>
+          </div>
+          <div className="menu-label" style={{ padding: 0 }}>
+            Group by
+          </div>
+          <div className="seg" title="Group tracks by object, or by Timeline's own folders">
+            <button className={groupMode === 'objects' ? 'on' : ''} style={{ flex: 1 }} onClick={() => setGroup('objects')}>
+              Objects
+            </button>
+            <button className={groupMode === 'folders' ? 'on' : ''} style={{ flex: 1 }} onClick={() => setGroup('folders')}>
+              Folders
+            </button>
+          </div>
+          {centerView === 'dope' && viewExtra}
+        </div>
+      </Popover>
+    </div>
+  );
+}
+
+/** What's selected in Studio and what keying will hit, right above the tracks. */
+function SelectionBar() {
+  const sel = useStore((s) => s.studioSelection);
+  const nodes = useStore((s) => s.nodes);
+  const tracks = useStore((s) => s.tracks);
+  const selTracks = useStore((s) => s.selTracks.size);
+  const pending = useStore((s) => s.pending);
+  useStore((s) => s.showEnglish);
+  const node = sel.length ? nodes[sel[0]] : undefined;
+  const set = new Set(sel);
+  const own = tracks.filter((t) => set.has(t.oci)).length;
+  const keyHint = selTracks
+    ? `K keys the ${selTracks} selected track${selTracks > 1 ? 's' : ''}`
+    : pending
+      ? `K keys the ${pending} change${pending > 1 ? 's' : ''} made in Studio`
+      : 'K keys what you change in Studio';
+  return (
+    <div className="sel-bar">
+      {node ? (
+        <>
+          <TypeIcon type={node.type} sex={node.sex} />
+          <b>{displayName(node)}</b>
+          {sel.length > 1 && <span className="kbd">+{sel.length - 1}</span>}
+          <span className="sel-bar-sub">
+            {own ? `${own} track${own > 1 ? 's' : ''}` : 'no tracks yet'}
+          </span>
+        </>
+      ) : (
+        <span className="sel-bar-sub">Nothing selected in Studio</span>
+      )}
+      <span style={{ flex: 1 }} />
+      <span className="sel-bar-sub">{keyHint}</span>
+      {node && own > 0 && (
+        <button className="btn small" onClick={keyAllOfSelectedObjects} title="Key every track of the selected object at the playhead (Shift+K)">
+          <Icon name="key" size={11} /> Key {sel.length > 1 ? 'objects' : 'object'}
+        </button>
+      )}
+      {node && !own && (
+        <button className="btn small" onClick={() => window.dispatchEvent(new CustomEvent('kf:add-track'))} title="Pick a property of this object to animate">
+          <Icon name="plus" size={11} /> Add a track
+        </button>
+      )}
     </div>
   );
 }

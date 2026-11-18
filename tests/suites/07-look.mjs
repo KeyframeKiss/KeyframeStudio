@@ -44,6 +44,15 @@ export default async function (t) {
     const saved = await ok('look.savePreset', { name: 'StudioEX Test Look', groups: ['effects', 'toon'], materials: [] });
     const mine = saved.find((p) => p.name === 'StudioEX Test Look');
     check('save with thumbnail', mine?.thumb && mine.groups.join() === 'effects,toon');
+    // look.thumb: a look without a picture (like the starters) gets one from the current view, settings untouched
+    const json = path.join(looksDir, `${mine.file}.json`);
+    const settings = fs.readFileSync(json, 'utf8');
+    fs.rmSync(path.join(looksDir, `${mine.file}.jpg`), { force: true });
+    check('thumbnail removed', !(await ok('look.presets')).find((p) => p.file === mine.file).thumb);
+    const withThumb = (await ok('look.thumb', { file: mine.file })).find((p) => p.file === mine.file);
+    check('look.thumb captures a thumbnail', !!withThumb.thumb && fs.existsSync(path.join(looksDir, `${mine.file}.jpg`)));
+    check('look.thumb leaves the settings alone', fs.readFileSync(json, 'utf8') === settings);
+    check('look.thumb refuses unknown looks', !(await t.req('look.thumb', { file: 'no such look' })).ok);
     check('delete', !(await ok('look.deletePreset', { file: mine.file })).some((p) => p.name === 'StudioEX Test Look'));
     await ok('look.resetDefault');
     const d = await ok('look.get');

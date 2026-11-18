@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { parseTags, useLibMeta } from '../lib/libmeta';
 import { call, toast, useStore } from '../state/store';
+import { bridge } from '../bridge/client';
 import { PromptDialog, type PromptState } from './PromptDialog';
 import { StarIcon } from './StarIcon';
 import { Slider } from './CharacterPanel';
@@ -54,6 +55,14 @@ export function LookPresets({ wide }: { wide?: boolean }) {
       lookChanged();
       lib.markUsed(p.file);
       toast(`Applied “${p.name}”${strength < 1 ? ` at ${Math.round(strength * 100)}%` : ''} — Ctrl+Z to undo`);
+      // A look without a picture (the built-in starters) gets one the first time it's applied in full.
+      if (!p.thumb && strength >= 1 && groups.size === GROUPS.length)
+        window.setTimeout(() => {
+          bridge
+            .request<Preset[]>('look.thumb', { file: p.file })
+            .then((l) => l && setPresets(l))
+            .catch(() => {});
+        }, 900);
     }
   };
 
@@ -159,6 +168,10 @@ export function LookPresets({ wide }: { wide?: boolean }) {
                         ok: (v) => lib.setTags(p.file, parseTags(v)),
                       }),
                   },
+                  {
+                    label: p.thumb ? 'Retake thumbnail from the current view' : 'Take thumbnail from the current view',
+                    action: () => call<Preset[]>('look.thumb', { file: p.file }).then((l) => l && (setPresets(l), toast(`New thumbnail for “${p.name}”`))),
+                  },
                   { label: 'Overwrite with current look…', action: () => window.confirm(`Replace “${p.name}” (settings and thumbnail) with the current look? This can't be undone.`) && save(p.name) },
                   { sep: true },
                   { label: 'Delete…', danger: true, action: () => setConfirmDelete(p) },
@@ -178,7 +191,10 @@ export function LookPresets({ wide }: { wide?: boolean }) {
             >
               <StarIcon filled={!!lib.get(p.file).favorite} />
             </button>
-            {p.thumb ? <img src={p.thumb} alt="" /> : <div className="look-card-ph">{p.name.slice(0, 1)}</div>}
+            {p.thumb ? <img src={p.thumb} alt="" /> : <div className="look-card-ph" title="Apply it once (all parts, full strength) to capture a preview">
+                {p.name.slice(0, 1)}
+                <small>preview after first use</small>
+              </div>}
             <div className="look-card-name">
               {p.name}
               {wide && p.note && <div className="look-card-note">{p.note}</div>}
@@ -205,7 +221,7 @@ export function LookPresets({ wide }: { wide?: boolean }) {
           </a>
         </div>
       )}
-      <div className="hint">Saved looks remember a thumbnail of the current view. Right-click a look to overwrite it with the current settings (also refreshes its thumbnail).</div>
+      <div className="hint">Looks get a thumbnail of the current view when saved (starters: the first time you apply one in full). Right-click a look to retake its thumbnail or overwrite it with the current settings.</div>
 
       {menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />}
       {prompt && <PromptDialog p={prompt} onClose={() => setPrompt(null)} />}

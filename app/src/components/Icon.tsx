@@ -33,6 +33,7 @@ const paths: Record<string, string> = {
   // tools
   paths: 'M2 12c2-6 4-1 6-5s4-3 6-4M2 12h.01M8 7h.01M14 3h.01',
   ghost: 'M4 14V7a4 4 0 018 0v7l-1.5-1.2L9 14l-1-1.2L7 14l-1.5-1.2zM6.5 7.5h.01M9.5 7.5h.01',
+  funnel: 'M2.5 3h11L9.5 8v4.5l-3 1.5V8z',
   target: 'M8 13A5 5 0 108 3a5 5 0 000 10zM8 1v3M8 12v3M1 8h3M12 8h3',
   follow: 'M3 8h8M8 5l3 3-3 3M13 3v10',
   attach: 'M8 2v5M8 7l-4 4M8 7l4 4M4 11v2M12 11v2',

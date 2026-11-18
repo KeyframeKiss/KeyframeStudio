@@ -694,7 +694,7 @@ export function keyAllOfSelectedObjects() {
   const sel = new Set(get().studioSelection);
   const ids = get().tracks.filter((t) => sel.has(t.oci)).map((t) => t.id);
   if (!ids.length) {
-    toast('The selected object has no tracks yet — add one from the Tracks panel');
+    toast('The selected object has no tracks yet — add one with + Track above the dope sheet');
     return;
   }
   return keyTracks(ids);

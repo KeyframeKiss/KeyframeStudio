@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon, TypeIcon } from './Icon';
+import { Popover } from './Shell';
 import { ContextMenu, type MenuItem } from './ContextMenu';
 import { call, displayName, lsSet, refreshScene, setNodeVisible, setWorkspace, showPanel, studioSelect, toast, useStore } from '../state/store';
 import type { SceneNode } from '../bridge/types';
@@ -266,64 +267,102 @@ export function Outliner() {
   };
 
   const total = Object.values(nodes).filter((n) => n.type !== 'node').length;
+  const typeCounts = useMemo(() => {
+    const c: Partial<Record<TypeKey, number>> = {};
+    for (const n of Object.values(nodes)) {
+      const k = typeKey(n.type);
+      if (k) c[k] = (c[k] ?? 0) + 1;
+    }
+    return c;
+  }, [nodes]);
+  const activeFilters = types.size + (animatedOnly ? 1 : 0);
+  const clearFilters = () => {
+    setTypes(new Set());
+    setAnimatedOnly(false);
+  };
 
   return (
     <>
-      <div style={{ padding: '8px 8px 4px', display: 'grid', gap: 6 }}>
-        <div style={{ display: 'flex', gap: 4 }}>
-          <input className="input search" style={{ minWidth: 0 }} placeholder="Filter objects…" value={query} onChange={(e) => setQuery(e.target.value)} />
-          <button className="btn icon" title="Expand all" onClick={expandAll}>
-            <Icon name="chevronDown" size={13} />
-          </button>
-          <button className="btn icon" title="Collapse all" onClick={collapseAll}>
-            <Icon name="chevronRight" size={13} />
-          </button>
-          <button className="btn icon" title="Reveal selection" onClick={() => reveal(selection)} disabled={!selection.length}>
+      <div className="outliner-head">
+        <div className="outliner-search">
+          <input className="input search" placeholder="Filter objects…" value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => e.key === 'Escape' && setQuery('')} />
+          <Popover
+            align="right"
+            placement="down"
+            width={240}
+            trigger={(open, toggle) => (
+              <button className={`btn icon filter-btn ${open || activeFilters > 0 ? 'on' : ''}`} onClick={toggle} title="Filter by type, animated only, view options">
+                <Icon name="funnel" size={13} />
+                {activeFilters > 0 && <span className="filter-badge">{activeFilters}</span>}
+              </button>
+            )}
+          >
+            <div className="filter-menu">
+              <div className="menu-label">Show only</div>
+              {TYPE_FILTERS.map((f) => (
+                <label key={f.key} className="filter-row" title="Alt+click: only this type">
+                  <input type="checkbox" checked={types.has(f.key)} onChange={() => undefined} onClick={(e) => (e.preventDefault(), toggleType(f.key, e.altKey))} />
+                  <TypeIcon type={f.key} sex={1} />
+                  <span>{f.title}</span>
+                  <small>{typeCounts[f.key] ?? 0}</small>
+                </label>
+              ))}
+              <label className="filter-row">
+                <input type="checkbox" checked={animatedOnly} onChange={(e) => setAnimatedOnly(e.target.checked)} />
+                <span className="type-icon" style={{ color: 'var(--accent)' }}>◆</span>
+                <span>Animated</span>
+                <small>{animated.size}</small>
+              </label>
+              <div className="menu-sep" />
+              <div className="menu-label">View</div>
+              <label className="filter-row">
+                <input type="checkbox" checked={hideHidden} onChange={(e) => flip('studioex.outliner.hideHidden', e.target.checked, setHideHidden)} />
+                <span>Hide objects hidden in Studio</span>
+              </label>
+              <label className="filter-row" title="Character attach points (Group/Part nodes) with nothing attached">
+                <input type="checkbox" checked={showAttach} onChange={(e) => flip('studioex.outliner.attach', e.target.checked, setShowAttach)} />
+                <span>Show empty attach points</span>
+              </label>
+              <div className="menu-sep" />
+              <div className="filter-actions">
+                <button className="btn small" onClick={expandAll}>
+                  Expand all
+                </button>
+                <button className="btn small" onClick={collapseAll}>
+                  Collapse all
+                </button>
+                <span style={{ flex: 1 }} />
+                <button className="btn small" disabled={!activeFilters} onClick={clearFilters}>
+                  Clear
+                </button>
+              </div>
+            </div>
+          </Popover>
+          <button
+            className={`btn icon ${follow ? 'on' : ''}`}
+            title={follow ? 'Following the selection made in Studio (click to stop)' : 'Follow the selection made in Studio: expand and scroll to it'}
+            onClick={() => {
+              flip('studioex.outliner.follow', !follow, setFollow);
+              if (!follow && selection.length) reveal(selection);
+            }}
+          >
             <Icon name="target" size={13} />
           </button>
         </div>
-        <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap', alignItems: 'center' }}>
-          {TYPE_FILTERS.map((f) => (
-            <button
-              key={f.key}
-              className={`btn ${types.has(f.key) ? 'on' : ''}`}
-              style={{ height: 22, minWidth: 24, padding: '0 5px' }}
-              title={`${f.title} — click to filter, Alt+click to show only these`}
-              onClick={(e) => toggleType(f.key, e.altKey)}
-            >
-              <span className={`type-${f.key}`}>{f.label}</span>
-            </button>
-          ))}
-          <span style={{ width: 1, height: 16, background: 'var(--line)', margin: '0 2px' }} />
-          <button className={`btn ${animatedOnly ? 'on' : ''}`} style={{ height: 22, padding: '0 6px', fontSize: 11 }} title="Only objects that have animation tracks" onClick={() => setAnimatedOnly((v) => !v)}>
-            ◆ Anim
-          </button>
-          <span className="spacer" style={{ flex: 1 }} />
-          <button
-            className={`btn icon ${follow ? 'on' : ''}`}
-            style={{ height: 22, width: 22 }}
-            title="Follow selection: expand and scroll to what you select in Studio"
-            onClick={() => flip('studioex.outliner.follow', !follow, setFollow)}
-          >
-            <Icon name="follow" size={12} />
-          </button>
-          <button
-            className={`btn icon ${hideHidden ? 'on' : ''}`}
-            style={{ height: 22, width: 22 }}
-            title="Hide objects that are hidden in Studio"
-            onClick={() => flip('studioex.outliner.hideHidden', !hideHidden, setHideHidden)}
-          >
-            <Icon name="eyeOff" size={12} />
-          </button>
-          <button
-            className={`btn icon ${showAttach ? 'on' : ''}`}
-            style={{ height: 22, width: 22 }}
-            title="Show empty character attach points (Group/Part nodes)"
-            onClick={() => flip('studioex.outliner.attach', !showAttach, setShowAttach)}
-          >
-            <Icon name="attach" size={12} />
-          </button>
-        </div>
+        {(types.size > 0 || animatedOnly) && (
+          <div className="filter-chips">
+            {TYPE_FILTERS.filter((f) => types.has(f.key)).map((f) => (
+              <button key={f.key} className="filter-chip" onClick={() => toggleType(f.key, false)} title="Remove this filter">
+                <TypeIcon type={f.key} sex={1} /> {f.title} <span>×</span>
+              </button>
+            ))}
+            {animatedOnly && (
+              <button className="filter-chip" onClick={() => setAnimatedOnly(false)} title="Remove this filter">
+                ◆ Animated <span>×</span>
+              </button>
+            )}
+          </div>
+        )}
       </div>
       <div className="panel-body" ref={bodyRef} tabIndex={0} onKeyDown={onKeyDown} style={{ outline: 'none' }}>
         {rows.length === 0 ? (

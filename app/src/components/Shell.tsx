@@ -71,18 +71,12 @@ export function Header() {
         <span className={`status-dot ${status}`} />
         {status === 'open' ? 'Studio' : status === 'connecting' ? 'Connecting' : 'Offline'}
       </span>
-      {window.studioEx?.isElectron && (
-        <button className={`btn icon ${pinned ? 'on' : ''}`} title="Keep this window on top of Studio" onClick={() => window.studioEx!.setAlwaysOnTop(!pinned).then(setPinned)}>
+      {pinned && (
+        <button className="btn icon on" title="On top of Studio — click to stop" onClick={() => window.studioEx?.setAlwaysOnTop(false).then(setPinned)}>
           <Icon name="pin" />
         </button>
       )}
-      <LayoutMenu />
-      <button className={`btn icon ${workspace === 'settings' ? 'on' : ''}`} title="Settings: mod settings, translations, shortcuts, diagnostics (Ctrl+,)" onClick={() => (workspace === 'settings' ? setWorkspace(useStore.getState().lastWorkspace) : openLibrary('settings'))}>
-        <Icon name="settings" />
-      </button>
-      <button className="btn icon" title="Keyboard shortcuts (?)" onClick={() => useStore.setState({ helpOpen: true })}>
-        <Icon name="help" />
-      </button>
+      <AppMenu pinned={pinned} setPinned={setPinned} />
     </header>
   );
 }
@@ -97,7 +91,8 @@ export function Popover({
   openEvent,
 }: {
   trigger: (open: boolean, toggle: () => void) => ReactNode;
-  children: ReactNode;
+  /** content, or a function of `close` for menus whose items should close it */
+  children: ReactNode | ((close: () => void) => ReactNode);
   align?: 'left' | 'right';
   width?: number;
   placement?: 'up' | 'down';
@@ -173,7 +168,7 @@ export function Popover({
       {trigger(open, () => setOpen((o) => !o))}
       {open && (
         <div ref={menuRef} className="menu popover" style={pos ?? { visibility: 'hidden', left: 0, top: 0, width }}>
-          {children}
+          {typeof children === 'function' ? children(() => setOpen(false)) : children}
         </div>
       )}
     </div>
@@ -291,8 +286,8 @@ function TimelineMoreMenu() {
   );
 }
 
-/** Header menu: compact mode, show/hide side panels, saved layouts (panels, tabs, window position). */
-function LayoutMenu() {
+/** The one header menu: settings, help, window and layout. */
+function AppMenu({ pinned, setPinned }: { pinned: boolean; setPinned: (v: boolean) => void }) {
   const ws = useStore((s) => s.workspace);
   const compact = useCompact();
   const sz = usePanelSizes(ws);
@@ -303,49 +298,89 @@ function LayoutMenu() {
     <Popover
       align="right"
       placement="down"
-      width={250}
+      width={260}
       trigger={(open, toggle) => (
-        <button className={`btn icon ${open ? 'on' : ''}`} title="Layout: panel sizes, compact mode, saved layouts" onClick={() => { setList(savedLayouts()); toggle(); }}>
-          <Icon name="grid" />
+        <button
+          className={`btn icon ${open || ws === 'settings' ? 'on' : ''}`}
+          title="Menu: settings, shortcuts, keep on top, layout"
+          onClick={() => {
+            setList(savedLayouts());
+            toggle();
+          }}
+        >
+          <Icon name="settings" />
         </button>
       )}
     >
-      <div className="layout-menu">
-        <label>
-          <input type="checkbox" checked={compact} onChange={(e) => setCompact(e.target.checked)} /> Compact (smaller text and spacing)
-        </label>
-        {hasSides && (
-          <>
-            <label>
-              <input type="checkbox" checked={!sz.leftHidden} onChange={(e) => setPanelSizes(ws, { leftHidden: !e.target.checked })} /> Left panel
+      {(close) => (
+        <div className="layout-menu">
+          <button className="menu-item" onClick={() => (close(), openLibrary('settings'))}>
+            <Icon name="settings" size={13} /> Settings <span className="kbd">Ctrl ,</span>
+          </button>
+          <button className="menu-item" onClick={() => (close(), useStore.setState({ helpOpen: true }))}>
+            <Icon name="keyboard" size={13} /> Keyboard shortcuts <span className="kbd">?</span>
+          </button>
+          <button className="menu-item" onClick={() => (close(), openLibrary('about'))}>
+            <Icon name="pulse" size={13} /> About &amp; diagnostics
+          </button>
+          <div className="menu-sep" />
+          <div className="layout-menu-h">Window</div>
+          {window.studioEx?.isElectron && (
+            <label title="Keep this window on top of CharaStudio">
+              <input type="checkbox" checked={pinned} onChange={(e) => window.studioEx!.setAlwaysOnTop(e.target.checked).then(setPinned)} /> Keep on top of Studio
             </label>
-            <label>
-              <input type="checkbox" checked={!sz.rightHidden} onChange={(e) => setPanelSizes(ws, { rightHidden: !e.target.checked })} /> Right panel
-            </label>
-            <div className="hint" style={{ margin: '2px 0 6px' }}>Drag a panel's edge to resize it.</div>
-          </>
-        )}
-        <div className="layout-menu-h">Saved layouts</div>
-        {list.map((l) => (
-          <div key={l.name} className="layout-item">
-            <button className="btn small solid" style={{ flex: 1, justifyContent: 'flex-start' }} onClick={() => applyLayout(l)} title={l.bounds ? 'Panels, tabs, compact mode and window position' : 'Panels, tabs and compact mode'}>
-              {l.name}
-            </button>
-            <button className="btn small" title="Delete" onClick={() => { deleteLayout(l.name); setList(savedLayouts()); }}>
-              ✕
+          )}
+          <label>
+            <input type="checkbox" checked={compact} onChange={(e) => setCompact(e.target.checked)} /> Compact (smaller text and spacing)
+          </label>
+          {hasSides && (
+            <>
+              <label>
+                <input type="checkbox" checked={!sz.leftHidden} onChange={(e) => setPanelSizes(ws, { leftHidden: !e.target.checked })} /> Left panel
+              </label>
+              <label>
+                <input type="checkbox" checked={!sz.rightHidden} onChange={(e) => setPanelSizes(ws, { rightHidden: !e.target.checked })} /> Right panel
+              </label>
+              <div className="hint" style={{ margin: '2px 0 4px' }}>Drag a panel's edge to resize it.</div>
+            </>
+          )}
+          <div className="layout-menu-h">Saved layouts</div>
+          {list.map((l) => (
+            <div key={l.name} className="layout-item">
+              <button className="btn small solid" style={{ flex: 1, justifyContent: 'flex-start' }} onClick={() => applyLayout(l)} title={l.bounds ? 'Panels, tabs, compact mode and window position' : 'Panels, tabs and compact mode'}>
+                {l.name}
+              </button>
+              <button
+                className="btn small"
+                title="Delete"
+                onClick={() => {
+                  deleteLayout(l.name);
+                  setList(savedLayouts());
+                }}
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+          <div style={{ display: 'flex', gap: 4, marginTop: 4 }}>
+            <input className="input" style={{ flex: 1, minWidth: 0, height: 24 }} placeholder="Save current as…" value={name} onChange={(e) => setName(e.target.value)} />
+            <button
+              className="btn small primary"
+              disabled={!name.trim()}
+              onClick={async () => {
+                await saveLayout(name.trim());
+                setName('');
+                setList(savedLayouts());
+              }}
+            >
+              Save
             </button>
           </div>
-        ))}
-        <div style={{ display: 'flex', gap: 4, marginTop: 4 }}>
-          <input className="input" style={{ flex: 1, minWidth: 0, height: 24 }} placeholder="Save current as…" value={name} onChange={(e) => setName(e.target.value)} />
-          <button className="btn small primary" disabled={!name.trim()} onClick={async () => { await saveLayout(name.trim()); setName(''); setList(savedLayouts()); }}>
-            Save
+          <button className="btn small" style={{ marginTop: 6 }} onClick={resetLayout}>
+            Reset layout to default
           </button>
         </div>
-        <button className="btn small" style={{ marginTop: 6 }} onClick={resetLayout}>
-          Reset to default
-        </button>
-      </div>
+      )}
     </Popover>
   );
 }

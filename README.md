@@ -90,10 +90,10 @@ version that still matches stays on and is marked "untested".
 | **Look** (`Ctrl+3`) | Scene | Look presets | Look settings, lighting rigs |
 | **Shoot** (`Ctrl+4`) | Scene | Shots and camera over the dope sheet | Render, audio & lip-sync |
 | **Library** (`Ctrl+5`) | Scenes, characters, quick actions | | |
-| **Settings** (⚙, `Ctrl+,`) | Mod settings, translations, shortcuts, about & diagnostics | | |
+| **Settings** (⚙ menu, `Ctrl+,`) | Mod settings, translations, shortcuts, about & diagnostics | | |
 
 The right panel is one column of collapsible groups that follows the selection (each remembers if it's open).
-Side panels resize by dragging their edge; the ⊞ menu saves layouts.
+Side panels resize by dragging their edge. The ⚙ menu (top right) has Settings, shortcuts, keep-on-top, compact mode and saved layouts.
 
 ## Animation workflow
 

@@ -18,7 +18,7 @@ export interface Macro {
 }
 
 /** Reads and transient things that make no sense to replay. */
-const SKIP = /\.(get|list|status|state|presets|files|peaks|envelope|keyValues|models|changes|snapshot|anchors|pick|view|shapes|meta|fingerprint|queueStatus|rigs|sceneRigs|thumbsStatus|keyInfo|tick|log|info|preview|previewEnd|seek)$|^(hello|ping|diag\.|undo$|redo$|cards\.list|chara\.animations|scene\.select|motion\.sample|render\.(start|stop|queue))/;
+const SKIP = /\.(get|list|status|state|presets|files|peaks|envelope|keyValues|models|changes|snapshot|anchors|pick|view|shapes|meta|fingerprint|queueStatus|rigs|sceneRigs|thumb|thumbsStatus|keyInfo|tick|log|info|preview|previewEnd|seek)$|^(hello|ping|diag\.|undo$|redo$|cards\.list|chara\.animations|scene\.select|motion\.sample|render\.(start|stop|queue))/;
 
 let recording: MacroStep[] | null = null;
 const listeners = new Set<() => void>();

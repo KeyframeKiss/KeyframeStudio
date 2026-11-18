@@ -43,6 +43,17 @@ namespace StudioEX.Bridge.Api
             r.Add("look.savePreset", SavePreset);
             r.Add("look.applyPreset", ApplyPreset);
             r.Add("look.deletePreset", DeletePreset);
+            // Thumbnail of the current view for a look that has none (the built-in starters), taken right
+            // after it's applied. Only writes the .jpg next to an existing look; never touches its settings.
+            r.Add("look.thumb", a =>
+            {
+                string path = Path.Combine(Folder, SafeFile(a.GetString("file") ?? "") + ".json");
+                if (!File.Exists(path)) throw new BridgeException("Look not found");
+                var thumb = CameraApi.Snapshot(240);
+                if (thumb == null) throw new BridgeException("Couldn't capture the view");
+                File.WriteAllBytes(Path.ChangeExtension(path, ".jpg"), Convert.FromBase64String(thumb.Substring(thumb.IndexOf(',') + 1)));
+                return ListPresets();
+            });
             r.Add("look.resetDefault", a =>
             {
                 UndoStack.Push(new LookUndo(Snapshot(), "reset"));

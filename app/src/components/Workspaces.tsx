@@ -13,7 +13,7 @@ import { CameraPanel } from './CameraPanel';
 import { CharacterPanel } from './CharacterPanel';
 import { DopeSheet } from './DopeSheet';
 import { Icon } from './Icon';
-import { Inspector } from './Inspector';
+import { Inspector, useGettingStarted } from './Inspector';
 import { RenderPanel } from './RenderPanel';
 import { OutfitPanel } from './OutfitPanel';
 import { LightRigsPanel } from './LightRigsPanel';
@@ -91,6 +91,7 @@ function AnimateInspector() {
   const tracks = useStore((s) => s.selTracks.size);
   const first = useStore((s) => s.studioSelection[0]);
   const node = useStore((s) => (first != null ? s.nodes[first] : undefined));
+  const started = useGettingStarted();
   useStore((s) => s.showEnglish);
   return (
     <Stack>
@@ -99,7 +100,7 @@ function AnimateInspector() {
           <Inspector />
         </Group>
       ) : (
-        <Group ws="animate" id="tips" title="Quick start">
+        <Group ws="animate" id="tips" title={started.done ? 'Shortcuts' : 'Getting started'}>
           <Inspector />
         </Group>
       )}
@@ -292,6 +293,7 @@ const setShootTop = (v: number) => {
 export function ShootWorkspace() {
   const sizes = usePanelSizes('shoot');
   const top = useSyncExternalStore(subscribeShoot, () => shootTop);
+  const noShots = useStore((s) => s.shots.length === 0);
   const drag = (e: React.PointerEvent<HTMLDivElement>) => {
     const el = e.currentTarget;
     const box = el.parentElement!.getBoundingClientRect();
@@ -309,7 +311,7 @@ export function ShootWorkspace() {
       <Splitters ws="shoot" />
       <ScenePanel />
       <main className="ws-center" style={{ position: 'relative' }}>
-        <div className="shoot-top" style={{ flexBasis: `${top * 100}%` }}>
+        <div className={`shoot-top ${noShots ? 'no-shots' : ''}`} style={{ flexBasis: `${top * 100}%` }}>
           <section className="shoot-col">
             <ShotsPanel />
           </section>

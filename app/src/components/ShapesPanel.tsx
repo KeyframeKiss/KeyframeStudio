@@ -40,6 +40,7 @@ const pretty = (n: string) => {
   return out.length ? out[0] + (out.length > 1 ? ` · ${out.slice(1).join(' ')}` : '') : rest;
 };
 const groupOf = (n: string) => (n.includes('.') ? n.slice(0, n.indexOf('.')).replace(/_/g, ' ') : '');
+/** Shapes in their groups (eyes, mouth…), keeping the original order. */const byGroup = <T extends { name: string }>(list: T[]): [string, T[]][] => {  const m = new Map<string, T[]>();  for (const x of list) {    const g = groupOf(x.name);    m.set(g, [...(m.get(g) ?? []), x]);  }  return [...m.entries()];};
 const GROUP_NAMES: Record<string, string> = {
   'eye face': 'Eyes', 'kuti face': 'Mouth', 'kuti yaeba': 'Mouth (fangs)', 'kuti ha': 'Mouth (teeth)', 'kuti sita': 'Mouth (tongue)',
   mayuge: 'Brows', tooth: 'Teeth', 'eye line': 'Eyelines', 'eye siroL': 'Eye whites', 'eye siroR': 'Eye whites', 'eye naL': 'Eye highlights',
@@ -130,7 +131,6 @@ export function ShapesPanel({ id, onChanged }: { id: number; onChanged: () => vo
       <div className="face-cards">
         {view.map((set) => {
           const isOpen = open[set.key] || !!q || onlyChanged;
-          let lastGroup = '';
           return (
             <div key={set.key} className={`face-card ${set.changed ? 'edited' : ''}`}>
               <div {...pressable} className="face-card-head" style={{ cursor: 'pointer' }} onClick={() => setOpen((o) => ({ ...o, [set.key]: !o[set.key] }))}>
@@ -156,23 +156,23 @@ export function ShapesPanel({ id, onChanged }: { id: number; onChanged: () => vo
                 )}
               </div>
               {isOpen &&
-                set.shown.map((sh) => {
-                  const g = groupOf(sh.name);
-                  const head = g !== lastGroup ? ((lastGroup = g), g) : null;
-                  return (
-                    <div key={sh.i}>
-                      {head && <div className="shape-group">{GROUP_NAMES[head] ?? head}</div>}
-                      <div className={`shape-row face-axis ${sh.edited ? 'changed' : ''}`} title={sh.name}>
-                        <span className="shape-name">{pretty(sh.name)}</span>
-                        <input type="range" min={0} max={100} step={1} value={sh.weight} onChange={(e) => setWeight(set, sh, Number(e.target.value))} onDoubleClick={() => sh.edited && reset(set.key, sh.i)} />
-                        <span className="mono shape-val">{Math.round(sh.weight)}</span>
-                        <button className="btn icon" style={{ visibility: sh.edited ? 'visible' : 'hidden' }} title="Back to the expression's value" onClick={() => reset(set.key, sh.i)}>
-                          ↺
-                        </button>
-                      </div>
+                byGroup(set.shown).map(([g, list]) => (
+                  <div key={g}>
+                    {g && <div className="shape-group">{GROUP_NAMES[g] ?? g}</div>}
+                    <div className="shape-grid">
+                      {list.map((sh) => (
+                        <div key={sh.i} className={`shape-row face-axis ${sh.edited ? 'changed' : ''}`} title={sh.name}>
+                          <span className="shape-name">{pretty(sh.name)}</span>
+                          <input type="range" min={0} max={100} step={1} value={sh.weight} onChange={(e) => setWeight(set, sh, Number(e.target.value))} onDoubleClick={() => sh.edited && reset(set.key, sh.i)} />
+                          <span className="mono shape-val">{Math.round(sh.weight)}</span>
+                          <button className="btn icon" style={{ visibility: sh.edited ? 'visible' : 'hidden' }} title="Back to the expression's value" onClick={() => reset(set.key, sh.i)}>
+                            ↺
+                          </button>
+                        </div>
+                      ))}
                     </div>
-                  );
-                })}
+                  </div>
+                ))}
               {isOpen && !set.shown.length && <div className="face-hint">No shapes match.</div>}
             </div>
           );

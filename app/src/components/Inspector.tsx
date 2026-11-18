@@ -227,27 +227,45 @@ function TrackInspector({ id, count }: { id: number; count: number }) {
   );
 }
 
+/** First-steps checklist that ticks itself off; afterwards just the handy shortcuts. */
+export function useGettingStarted() {
+  const selected = useStore((s) => s.studioSelection.length > 0);
+  const hasTrack = useStore((s) => s.tracks.length > 0);
+  const hasKeys = useStore((s) => s.tracks.some((t) => t.keys.length > 1));
+  return { steps: [selected || hasTrack, hasTrack, hasKeys], done: hasTrack && hasKeys };
+}
+
 function Tips({ compact }: { compact?: boolean }) {
+  const { steps, done } = useGettingStarted();
+  const items = [
+    <>Pick an object in the <b>Scene</b> list (or click it in Studio)</>,
+    <>Click <b>+ Track</b> above the dope sheet and choose what to animate</>,
+    <>Move the playhead, change the pose in Studio, press <span className="kbd">K</span></>,
+  ];
   return (
     <div className="panel-body">
+      {!compact && !done && (
+        <div className="section">
+          <ol className="checklist">
+            {items.map((it, i) => (
+              <li key={i} className={steps[i] ? 'done' : steps.slice(0, i).every(Boolean) ? 'next' : ''}>
+                <span className="check">{steps[i] ? <Icon name="check" size={11} /> : i + 1}</span>
+                <span>{it}</span>
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
       <div className="section">
-        <div className="hint" style={{ marginTop: 0, fontSize: 12, lineHeight: 1.8 }}>
-          {!compact && (
-            <>
-              1. Pick an object in <b>Scene</b>.<br />
-              2. Click <b>+ Track</b> above the dope sheet and pick what to animate (it gets a key at the playhead).
-              <br />
-              3. Move the playhead, pose in Studio, press <span className="kbd">K</span>.<br />
-              <br />
-            </>
-          )}
-          <span className="kbd">Space</span> play · <span className="kbd">K</span> key selected tracks · <span className="kbd">Shift K</span> key whole object
-          <br />
-          Drag keys to retime · <span className="kbd">Alt</span> drag = no snapping
-          <br />
-          Double-click a row to insert a key · <span className="kbd">1</span>–<span className="kbd">5</span> easing presets
-          <br />
-          <span className="kbd">Ctrl</span>+wheel zoom · <span className="kbd">Shift</span>+wheel / middle-drag pan · <span className="kbd">?</span> all shortcuts
+        <div className="tips">
+          <span><span className="kbd">Space</span> play</span>
+          <span><span className="kbd">K</span> key selected tracks / changes</span>
+          <span><span className="kbd">Shift K</span> key the whole object</span>
+          <span>Drag keys to retime · <span className="kbd">Alt</span> no snapping</span>
+          <span>Double-click a row: insert a key</span>
+          <span><span className="kbd">1</span>–<span className="kbd">5</span> easing presets</span>
+          <span><span className="kbd">Ctrl</span>+wheel zoom · <span className="kbd">Shift</span>+wheel pan</span>
+          <span><span className="kbd">?</span> every shortcut</span>
         </div>
       </div>
     </div>
