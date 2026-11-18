@@ -122,7 +122,7 @@ export function ShotsPanel() {
                   </button>
                 </>
               ) : (
-                <button className="btn primary wide" disabled={!pick.size} onClick={render} title="Each ticked shot becomes its own video (settings from the Render tab)">
+                <button className="btn primary wide" disabled={!pick.size} onClick={render} title="Each ticked shot becomes its own video (settings from Render on the right)">
                   Render {pick.size ? `${pick.size} shot${pick.size > 1 ? 's' : ''}` : 'ticked shots'}
                 </button>
               )}

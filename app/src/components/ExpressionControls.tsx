@@ -172,7 +172,7 @@ function Range({ value, onChange }: { value: number; onChange: (v: number) => vo
   return (
     <div className="face-axis changed">
       <input type="range" min={0} max={1} step={0.01} value={value} onChange={(e) => onChange(Number(e.target.value))} />
-      <span className="mono" style={{ width: 34, textAlign: 'right', fontSize: 11 }}>
+      <span className="mono" style={{ minWidth: 38, flex: 'none', textAlign: 'right', fontSize: 11 }}>
         {value.toFixed(2)}
       </span>
     </div>

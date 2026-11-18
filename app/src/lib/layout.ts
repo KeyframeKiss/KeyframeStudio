@@ -18,7 +18,7 @@ export interface SavedLayout {
   bounds?: { x: number; y: number; width: number; height: number };
 }
 
-const DEFAULTS: Record<string, PanelSizes> = { animate: { left: 264, right: 316 }, pose: { left: 264, right: 316 }, look: { left: 264, right: 316 } };
+const DEFAULTS: Record<string, PanelSizes> = { animate: { left: 264, right: 330 }, pose: { left: 264, right: 340 }, look: { left: 264, right: 330 }, shoot: { left: 240, right: 330 } };
 const read = <T,>(k: string, d: T): T => {
   try {
     const v = localStorage.getItem(k);
@@ -69,8 +69,11 @@ export function setCompact(on: boolean) {
   emit();
 }
 
+/** Side-panel widths as CSS: in a narrow window they give way (at most 22% / 30% of it) so the center keeps room. */
+export const leftCss = (s: PanelSizes) => (s.leftHidden ? '0px' : `min(${s.left}px, 22vw)`);
+export const rightCss = (s: PanelSizes) => (s.rightHidden ? '0px' : `min(${s.right}px, 30vw)`);
 /** Grid columns for a 3-panel workspace. */
-export const columns = (s: PanelSizes) => `${s.leftHidden ? 0 : s.left}px minmax(0, 1fr) ${s.rightHidden ? 0 : s.right}px`;
+export const columns = (s: PanelSizes) => `${leftCss(s)} minmax(0, 1fr) ${rightCss(s)}`;
 
 // ---------------- named layouts ----------------
 

@@ -204,7 +204,7 @@ export function AudioPanel() {
         <button className="btn solid wide" disabled={!chars.length} onClick={blink} title="Adds natural blinks over the whole timeline on the Eyes Open track">
           Add blinks
         </button>
-        <div className="hint">Tip: turn off the character's automatic blinking (Character › Expression) so it doesn't fight the keys.</div>
+        <div className="hint">Tip: turn off the character's automatic blinking (Pose › Character › Expression & hands) so it doesn't fight the keys.</div>
       </div>
     </div>
   );

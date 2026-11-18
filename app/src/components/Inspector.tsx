@@ -231,12 +231,11 @@ function Tips({ compact }: { compact?: boolean }) {
   return (
     <div className="panel-body">
       <div className="section">
-        <h3>Quick start</h3>
         <div className="hint" style={{ marginTop: 0, fontSize: 12, lineHeight: 1.8 }}>
           {!compact && (
             <>
               1. Pick an object in <b>Scene</b>.<br />
-              2. In <b>Tracks</b>, click what to animate (it gets a key at the playhead).
+              2. Click <b>+ Track</b> above the dope sheet and pick what to animate (it gets a key at the playhead).
               <br />
               3. Move the playhead, pose in Studio, press <span className="kbd">K</span>.<br />
               <br />

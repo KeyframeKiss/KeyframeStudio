@@ -49,7 +49,8 @@ function mergePatch(base: unknown, patch: unknown): unknown {
   return patch;
 }
 
-export function ObjectPanel() {
+/** Transform, name, colors, light… of the selected object. `bare`: the name row is shown by the panel around it. */
+export function ObjectPanel({ bare }: { bare?: boolean } = {}) {
   const selection = useStore((s) => s.studioSelection);
   const nodes = useStore((s) => s.nodes);
   const revision = useStore((s) => s.revision);
@@ -121,11 +122,13 @@ export function ObjectPanel() {
 
   return (
     <div className="panel-body">
-      <div className="section" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <TypeIcon type={st.type} sex={node?.sex} />
-        <b style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displayName(node ?? { name: st.name })}</b>
-        {multi && <span className="kbd">+{ids.length - 1} more</span>}
-      </div>
+      {!bare && (
+        <div className="section" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <TypeIcon type={st.type} sex={node?.sex} />
+          <b style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displayName(node ?? { name: st.name })}</b>
+          {multi && <span className="kbd">+{ids.length - 1} more</span>}
+        </div>
+      )}
 
       {tr && (
         <div className="section">

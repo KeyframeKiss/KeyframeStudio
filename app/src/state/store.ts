@@ -85,29 +85,42 @@ export interface AppState {
   settingsOpen: boolean;
 
   workspace: Workspace;
+  /** the workspace before Settings was opened (the gear button goes back to it) */
+  lastWorkspace: Workspace;
   libraryPage: LibraryPage;
+  settingsPage: LibraryPage;
   paletteOpen: boolean;
   helpOpen: boolean;
   /** Experimental live preview window (roadmap Phase 3 spike). */
   previewOpen: boolean;
   /** Material tweaks queued to be saved with the next look preset. */
   lookRules: { shader: string; prop: string; type: 'float' | 'color'; value: number | number[]; parts?: string[] }[];
-  /** Running batch translation (Library > Translations), shown as progress in the status bar. */
+  /** Running batch translation (Settings › Translations), shown as progress in the status bar. */
   translateJob: { done: number; total: number; engine: string } | null;
 }
 
-export type Workspace = 'animate' | 'pose' | 'look' | 'library';
+export type Workspace = 'animate' | 'pose' | 'look' | 'shoot' | 'library' | 'settings';
+/** Library pages (content) and Settings pages (the app): both open through openLibrary(). */
 export type LibraryPage = 'scenes' | 'characters' | 'macros' | 'translate' | 'settings' | 'shortcuts' | 'about';
+const SETTINGS_PAGES: LibraryPage[] = ['settings', 'translate', 'shortcuts', 'about'];
+export const isSettingsPage = (p: LibraryPage) => SETTINGS_PAGES.includes(p);
+const WORKSPACES: Workspace[] = ['animate', 'pose', 'look', 'shoot', 'library', 'settings'];
 
 export function setWorkspace(w: Workspace) {
-  set({ workspace: w });
-  lsSet('studioex.workspace', w);
+  const cur = get().workspace;
+  set({ workspace: w, ...(w === 'settings' && cur !== 'settings' ? { lastWorkspace: cur } : {}) });
+  if (w !== 'settings') lsSet('studioex.workspace', w);
 }
 
-/** Library pages replace the old pop-up dialogs (scene browser, mod settings). */
+/** Open a Library page (scenes, characters, quick actions) or a Settings page (mod settings, translations…). */
 export function openLibrary(page: LibraryPage) {
-  set({ workspace: 'library', libraryPage: page });
-  lsSet('studioex.workspace', 'library');
+  if (isSettingsPage(page)) {
+    setWorkspace('settings');
+    set({ settingsPage: page });
+  } else {
+    setWorkspace('library');
+    set({ libraryPage: page });
+  }
 }
 
 export const useStore = create<AppState>(() => ({
@@ -145,8 +158,10 @@ export const useStore = create<AppState>(() => ({
   shots: [],
   groupMode: (lsGet('studioex.groupMode') as 'objects' | 'folders') || 'objects',
   settingsOpen: false,
-  workspace: (lsGet('studioex.workspace') as Workspace) || 'animate',
+  workspace: WORKSPACES.includes(lsGet('studioex.workspace') as Workspace) && lsGet('studioex.workspace') !== 'settings' ? (lsGet('studioex.workspace') as Workspace) : 'animate',
+  lastWorkspace: 'animate',
   libraryPage: 'scenes',
+  settingsPage: 'settings',
   paletteOpen: false,
   helpOpen: false,
   previewOpen: false,
@@ -255,15 +270,15 @@ export function editTranslation(text: string) {
   openLibrary('translate');
 }
 
-/** Switch workspace and bring a specific panel tab forward. */
-export function showPanel(workspace: Workspace, panel: string, tab: string) {
+/** Switch workspace and open (and scroll to) one of its side-panel groups. */
+export function showPanel(workspace: Workspace, group: string) {
   try {
-    localStorage.setItem(`studioex.tab.${panel}`, tab);
+    localStorage.setItem(`kf.group.${workspace}.${group}`, '1');
   } catch {
     /* ignore */
   }
   setWorkspace(workspace);
-  requestAnimationFrame(() => window.dispatchEvent(new CustomEvent('studioex:tab', { detail: { panel, tab } })));
+  requestAnimationFrame(() => window.dispatchEvent(new CustomEvent('kf:reveal-group', { detail: { ws: workspace, id: group } })));
 }
 
 const set = useStore.setState;

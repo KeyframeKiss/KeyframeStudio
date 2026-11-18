@@ -1,12 +1,12 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import { bridge } from '../bridge/client';
 import { call, displayName, selectedCharacters, toast, useStore, type LibraryPage } from '../state/store';
-import { AddTrackPanel } from './AddTrackPanel';
+import { Group, SelectionHeader, Stack } from './InspectorStack';
 import { AudioPanel } from './AudioPanel';
 import { ShotsPanel } from './ShotsPanel';
 import { CharacterLibrary } from './CharacterLibrary';
 import { QuickActionsPage } from './QuickActions';
-import { columns, setPanelSizes, usePanelSizes } from '../lib/layout';
+import { columns, leftCss, rightCss, setPanelSizes, usePanelSizes } from '../lib/layout';
 import { CleanupPanel } from './CleanupPanel';
 import { AnimationBrowser } from './AnimationBrowser';
 import { CameraPanel } from './CameraPanel';
@@ -29,56 +29,7 @@ import { TranslatePanel } from './TranslatePanel';
 import { FaceStudio } from './FaceStudio';
 import { ErrorBoundary } from './ErrorBoundary';
 import { SHORTCUTS } from './shortcuts';
-
 import { DiagnosticsPage } from './DiagnosticsPage';
-/** Panel with a compact tab strip; remembers its tab per workspace. */
-function TabbedPanel({ id, tabs, side }: { id: string; tabs: { id: string; label: string; icon?: string; render: () => ReactNode }[]; side: 'left' | 'right' }) {
-  const key = `studioex.tab.${id}`;
-  const [tab, setTab] = useState(() => {
-    try {
-      return localStorage.getItem(key) || tabs[0].id;
-    } catch {
-      return tabs[0].id;
-    }
-  });
-  const current = tabs.find((t) => t.id === tab) ?? tabs[0];
-  // Other parts of the app can bring a tab forward (e.g. "Add animation track…").
-  useEffect(() => {
-    const on = (e: Event) => {
-      const d = (e as CustomEvent<{ panel: string; tab: string }>).detail;
-      if (d.panel === id) setTab(d.tab);
-    };
-    window.addEventListener('studioex:tab', on);
-    return () => window.removeEventListener('studioex:tab', on);
-  }, [id]);
-  return (
-    <aside className={`panel ${side}`}>
-      {tabs.length > 1 && (
-        <div className="panel-tabs">
-          {tabs.map((t) => (
-            <button
-              key={t.id}
-              className={`panel-tab ${t.id === current.id ? 'active' : ''}`}
-              onClick={() => {
-                setTab(t.id);
-                try {
-                  localStorage.setItem(key, t.id);
-                } catch {
-                  /* ignore */
-                }
-              }}
-            >
-              {t.icon && <Icon name={t.icon} size={13} />}
-              {t.label}
-            </button>
-          ))}
-        </div>
-      )}
-      {tabs.length === 1 && <div className="panel-title">{current.label}</div>}
-      {current.render()}
-    </aside>
-  );
-}
 
 function Disconnected() {
   const status = useStore((s) => s.status);
@@ -104,25 +55,25 @@ function Disconnected() {
   );
 }
 
+/** The scene outliner: the left column of every 3-panel workspace. */
+function ScenePanel() {
+  return (
+    <aside className="panel left">
+      <div className="panel-title">Scene</div>
+      <Outliner />
+    </aside>
+  );
+}
+
 // ---------------------------------------------------------------------------
-// Animate: scene + tracks | timeline + transport | key inspector
+// Animate: scene | dope sheet / graph + transport | keys, cleanup, selected object
 // ---------------------------------------------------------------------------
 export function AnimateWorkspace() {
-  const sizes_animate = usePanelSizes('animate');
+  const sizes = usePanelSizes('animate');
   return (
-    <div className="ws ws-3" style={{ gridTemplateColumns: columns(sizes_animate) }}>
+    <div className="ws ws-3" style={{ gridTemplateColumns: columns(sizes) }}>
       <Splitters ws="animate" />
-      <TabbedPanel
-        id="animate.left"
-        side="left"
-        tabs={[
-          { id: 'scene', label: 'Scene', render: () => <Outliner /> },
-          { id: 'tracks', label: 'Add track', render: () => <AddTrackPanel /> },
-          { id: 'camera', label: 'Camera', render: () => <CameraPanel /> },
-          { id: 'audio', label: 'Audio', render: () => <AudioPanel /> },
-          { id: 'shots', label: 'Shots', render: () => <ShotsPanel /> },
-        ]}
-      />
+      <ScenePanel />
       <main className="ws-center">
         <div style={{ flex: 1, minHeight: 0, display: 'flex', position: 'relative' }}>
           <DopeSheet />
@@ -130,25 +81,55 @@ export function AnimateWorkspace() {
         </div>
         <TransportBar />
       </main>
-      <TabbedPanel
-        id="animate.right"
-        side="right"
-        tabs={[
-          { id: 'inspector', label: 'Inspector', render: () => <Inspector /> },
-          { id: 'object', label: 'Transform', render: () => <ObjectPanel /> },
-          { id: 'cleanup', label: 'Cleanup', render: () => <CleanupPanel /> },
-          { id: 'render', label: 'Render', render: () => <RenderPanel /> },
-        ]}
-      />
+      <AnimateInspector />
     </div>
   );
 }
 
+function AnimateInspector() {
+  const keys = useStore((s) => s.selKeys.size);
+  const tracks = useStore((s) => s.selTracks.size);
+  const first = useStore((s) => s.studioSelection[0]);
+  const node = useStore((s) => (first != null ? s.nodes[first] : undefined));
+  useStore((s) => s.showEnglish);
+  return (
+    <Stack>
+      {keys > 0 || tracks > 0 ? (
+        <Group ws="animate" id="keys" icon="key" title={keys ? `Keyframe${keys > 1 ? `s (${keys})` : ''}` : `Track${tracks > 1 ? `s (${tracks})` : ''}`}>
+          <Inspector />
+        </Group>
+      ) : (
+        <Group ws="animate" id="tips" title="Quick start">
+          <Inspector />
+        </Group>
+      )}
+      <Group ws="animate" id="cleanup" icon="sliders" title="Cleanup" defaultOpen={false}>
+        <CleanupPanel />
+      </Group>
+      {node && (
+        <Group
+          ws="animate"
+          id="object"
+          icon="target"
+          title={
+            <>
+              Object <span className="group-sub">{displayName(node)}</span>
+            </>
+          }
+          defaultOpen={false}
+        >
+          <ObjectPanel bare />
+        </Group>
+      )}
+    </Stack>
+  );
+}
+
 // ---------------------------------------------------------------------------
-// Pose: scene | pose library / animations | character + transform
+// Pose: scene | pose library / animations / face studio | selected character
 // ---------------------------------------------------------------------------
 export function PoseWorkspace() {
-  const sizes_pose = usePanelSizes('pose');
+  const sizes = usePanelSizes('pose');
   const [center, setCenter] = useState<'poses' | 'anims' | 'face'>(() => (localStorage.getItem('studioex.pose.center') as 'poses' | 'anims' | 'face') || 'poses');
   // The command palette can open a tab directly.
   useEffect(() => {
@@ -165,9 +146,9 @@ export function PoseWorkspace() {
     }
   };
   return (
-    <div className="ws ws-3" style={{ gridTemplateColumns: columns(sizes_pose) }}>
+    <div className="ws ws-3" style={{ gridTemplateColumns: columns(sizes) }}>
       <Splitters ws="pose" />
-      <TabbedPanel id="pose.left" side="left" tabs={[{ id: 'scene', label: 'Scene', render: () => <Outliner /> }]} />
+      <ScenePanel />
       <main className="ws-center">
         <div className="center-tabs">
           <button className={`ws-subtab ${center === 'poses' ? 'active' : ''}`} onClick={() => pick('poses')}>
@@ -187,16 +168,33 @@ export function PoseWorkspace() {
           <Disconnected />
         </div>
       </main>
-      <TabbedPanel
-        id="pose.right"
-        side="right"
-        tabs={[
-          { id: 'character', label: 'Character', render: () => <CharacterPanel /> },
-          { id: 'outfit', label: 'Outfit', render: () => <OutfitPanel /> },
-          { id: 'object', label: 'Transform', render: () => <ObjectPanel /> },
-        ]}
-      />
+      <PoseInspector />
     </div>
+  );
+}
+
+function PoseInspector() {
+  const any = useStore((s) => s.studioSelection.length > 0);
+  const isChar = useStore((s) => s.studioSelection.length > 0 && s.nodes[s.studioSelection[0]]?.type === 'Char');
+  return (
+    <Stack>
+      <SelectionHeader empty="Select a character in the Scene list or in Studio. With several selected, changes apply to all of them." />
+      {isChar && (
+        <Group ws="pose" id="character" icon="pose" title="Character">
+          <CharacterPanel bare />
+        </Group>
+      )}
+      {isChar && (
+        <Group ws="pose" id="outfits" icon="look" title="Saved outfits & accessories" defaultOpen={false}>
+          <OutfitPanel />
+        </Group>
+      )}
+      {any && (
+        <Group ws="pose" id={isChar ? 'object' : 'object-item'} icon="target" title="Transform" defaultOpen={!isChar}>
+          <ObjectPanel bare />
+        </Group>
+      )}
+    </Stack>
   );
 }
 
@@ -234,14 +232,14 @@ function AnimationLibrary() {
 }
 
 // ---------------------------------------------------------------------------
-// Look: scene (for material targets) | preset gallery | look controls
+// Look: scene (for material targets) | preset gallery | look controls + lighting rigs
 // ---------------------------------------------------------------------------
 export function LookWorkspace() {
-  const sizes_look = usePanelSizes('look');
+  const sizes = usePanelSizes('look');
   return (
-    <div className="ws ws-3" style={{ gridTemplateColumns: columns(sizes_look) }}>
+    <div className="ws ws-3" style={{ gridTemplateColumns: columns(sizes) }}>
       <Splitters ws="look" />
-      <TabbedPanel id="look.left" side="left" tabs={[{ id: 'scene', label: 'Scene', render: () => <Outliner /> }]} />
+      <ScenePanel />
       <main className="ws-center" style={{ position: 'relative' }}>
         <div className="page">
           <div className="page-inner" style={{ padding: 16, overflow: 'auto' }}>
@@ -251,50 +249,152 @@ export function LookWorkspace() {
         </div>
         <Disconnected />
       </main>
-      <TabbedPanel
-        id="look.right"
-        side="right"
-        tabs={[
-          { id: 'look', label: 'Look settings', render: () => <LookPanel showPresets={false} /> },
-          { id: 'rigs', label: 'Lighting', render: () => <LightRigsPanel /> },
-        ]}
-      />
+      <Stack>
+        <Group ws="look" id="look" icon="look" title="Look settings">
+          <LookPanel showPresets={false} />
+        </Group>
+        <Group ws="look" id="rigs" icon="bolt" title="Lighting rigs" defaultOpen={false}>
+          <LightRigsPanel />
+        </Group>
+      </Stack>
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Library: scenes, translations, mod settings, shortcuts
+// Shoot: scene | shots + camera over the timeline | render + audio
 // ---------------------------------------------------------------------------
-const PAGES: { id: LibraryPage; label: string; icon: string; hint: string }[] = [
+const SHOOT_KEY = 'kf.shoot.top';
+let shootTop = (() => {
+  try {
+    return Number(localStorage.getItem(SHOOT_KEY)) || 0.48;
+  } catch {
+    return 0.48;
+  }
+})();
+const shootSubs = new Set<() => void>();
+const subscribeShoot = (l: () => void) => {
+  shootSubs.add(l);
+  return () => {
+    shootSubs.delete(l);
+  };
+};
+const setShootTop = (v: number) => {
+  shootTop = Math.max(0.2, Math.min(0.8, v));
+  try {
+    localStorage.setItem(SHOOT_KEY, String(shootTop));
+  } catch {
+    /* storage unavailable */
+  }
+  shootSubs.forEach((l) => l());
+};
+
+export function ShootWorkspace() {
+  const sizes = usePanelSizes('shoot');
+  const top = useSyncExternalStore(subscribeShoot, () => shootTop);
+  const drag = (e: React.PointerEvent<HTMLDivElement>) => {
+    const el = e.currentTarget;
+    const box = el.parentElement!.getBoundingClientRect();
+    el.setPointerCapture(e.pointerId);
+    const move = (ev: PointerEvent) => setShootTop((ev.clientY - box.top) / box.height);
+    const up = () => {
+      el.removeEventListener('pointermove', move);
+      el.removeEventListener('pointerup', up);
+    };
+    el.addEventListener('pointermove', move);
+    el.addEventListener('pointerup', up);
+  };
+  return (
+    <div className="ws ws-3" style={{ gridTemplateColumns: columns(sizes) }}>
+      <Splitters ws="shoot" />
+      <ScenePanel />
+      <main className="ws-center" style={{ position: 'relative' }}>
+        <div className="shoot-top" style={{ flexBasis: `${top * 100}%` }}>
+          <section className="shoot-col">
+            <ShotsPanel />
+          </section>
+          <section className="shoot-col">
+            <CameraPanel />
+          </section>
+        </div>
+        <div className="shoot-split" onPointerDown={drag} onDoubleClick={() => setShootTop(0.48)} title="Drag to resize · double-click to reset" />
+        <div style={{ flex: 1, minHeight: 0, display: 'flex', position: 'relative' }}>
+          <DopeSheet />
+        </div>
+        <TransportBar />
+        <Disconnected />
+      </main>
+      <Stack>
+        <Group ws="shoot" id="render" icon="record" title="Render">
+          <RenderPanel />
+        </Group>
+        <Group ws="shoot" id="audio" icon="pulse" title="Audio & lip-sync">
+          <AudioPanel />
+        </Group>
+      </Stack>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Library (content) and Settings (the app): a page list on the left
+// ---------------------------------------------------------------------------
+interface PageDef {
+  id: LibraryPage;
+  label: string;
+  icon: string;
+  hint: string;
+}
+const LIBRARY_PAGES: PageDef[] = [
   { id: 'scenes', label: 'Scenes', icon: 'scenes', hint: 'Load, import, save scenes' },
   { id: 'characters', label: 'Characters', icon: 'pose', hint: 'Cards: add or swap characters' },
   { id: 'macros', label: 'Quick actions', icon: 'bolt', hint: 'Record and replay steps' },
-  { id: 'translate', label: 'Translations', icon: 'translate', hint: 'Fix Japanese → English names' },
+];
+const SETTINGS_PAGES: PageDef[] = [
   { id: 'settings', label: 'Mod settings', icon: 'settings', hint: 'Every plugin option' },
+  { id: 'translate', label: 'Translations', icon: 'translate', hint: 'Fix Japanese → English names' },
   { id: 'shortcuts', label: 'Shortcuts', icon: 'keyboard', hint: 'Keyboard & mouse' },
   { id: 'about', label: 'About & diagnostics', icon: 'pulse', hint: 'Versions, mods, bug reports' },
 ];
+
+function PageNav({ title, pages, page, onPick }: { title: string; pages: PageDef[]; page: LibraryPage; onPick: (p: LibraryPage) => void }) {
+  return (
+    <aside className="panel left lib-nav">
+      <div className="lib-nav-title">{title}</div>
+      {pages.map((p) => (
+        <button key={p.id} className={`lib-nav-item ${page === p.id ? 'active' : ''}`} onClick={() => onPick(p.id)}>
+          <Icon name={p.icon} size={16} />
+          <span>
+            <b>{p.label}</b>
+            <small>{p.hint}</small>
+          </span>
+        </button>
+      ))}
+    </aside>
+  );
+}
 
 export function LibraryWorkspace() {
   const page = useStore((s) => s.libraryPage);
   return (
     <div className="ws ws-lib">
-      <aside className="panel left lib-nav">
-        {PAGES.map((p) => (
-          <button key={p.id} className={`lib-nav-item ${page === p.id ? 'active' : ''}`} onClick={() => useStore.setState({ libraryPage: p.id })}>
-            <Icon name={p.icon} size={16} />
-            <span>
-              <b>{p.label}</b>
-              <small>{p.hint}</small>
-            </span>
-          </button>
-        ))}
-      </aside>
+      <PageNav title="Library" pages={LIBRARY_PAGES} page={page} onPick={(p) => useStore.setState({ libraryPage: p })} />
       <main className="ws-center" style={{ position: 'relative' }}>
         {page === 'scenes' && <SceneBrowser />}
         {page === 'characters' && <CharacterLibrary />}
         {page === 'macros' && <QuickActionsPage />}
+        {page !== 'macros' && <Disconnected />}
+      </main>
+    </div>
+  );
+}
+
+export function SettingsWorkspace() {
+  const page = useStore((s) => s.settingsPage);
+  return (
+    <div className="ws ws-lib">
+      <PageNav title="Settings" pages={SETTINGS_PAGES} page={page} onPick={(p) => useStore.setState({ settingsPage: p })} />
+      <main className="ws-center" style={{ position: 'relative' }}>
         {page === 'translate' && (
           <div className="page">
             <div className="page-inner narrow" style={{ padding: 16 }}>
@@ -320,7 +420,7 @@ export function LibraryWorkspace() {
             </div>
           </div>
         )}
-        {page !== 'shortcuts' && page !== 'translate' && page !== 'about' && page !== 'macros' && <Disconnected />}
+        {page === 'settings' && <Disconnected />}
       </main>
     </div>
   );
@@ -333,7 +433,8 @@ function Splitters({ ws }: { ws: string }) {
     const el = e.currentTarget;
     el.setPointerCapture(e.pointerId);
     const x0 = e.clientX,
-      w0 = side === 'left' ? sz.left : sz.right;
+      // start from the width actually shown (a narrow window caps it)
+      w0 = (el.parentElement?.querySelector(side === 'left' ? 'aside.left' : 'aside.right') as HTMLElement | null)?.offsetWidth ?? (side === 'left' ? sz.left : sz.right);
     if (side === 'left' ? sz.leftHidden : sz.rightHidden) setPanelSizes(ws, side === 'left' ? { leftHidden: false } : { rightHidden: false });
     const move = (ev: PointerEvent) => setPanelSizes(ws, side === 'left' ? { left: w0 + (ev.clientX - x0) } : { right: w0 - (ev.clientX - x0) });
     const up = () => {
@@ -347,14 +448,14 @@ function Splitters({ ws }: { ws: string }) {
     <>
       <div
         className={`ws-split ${sz.leftHidden ? 'hidden' : ''}`}
-        style={{ left: (sz.leftHidden ? 0 : sz.left) - 3 }}
+        style={{ left: `calc(${leftCss(sz)} - 3px)` }}
         onPointerDown={drag('left')}
         onDoubleClick={() => setPanelSizes(ws, { leftHidden: !sz.leftHidden })}
         title="Drag to resize · double-click to hide/show the panel"
       />
       <div
         className={`ws-split ${sz.rightHidden ? 'hidden' : ''}`}
-        style={{ right: (sz.rightHidden ? 0 : sz.right) - 3 }}
+        style={{ right: `calc(${rightCss(sz)} - 3px)` }}
         onPointerDown={drag('right')}
         onDoubleClick={() => setPanelSizes(ws, { rightHidden: !sz.rightHidden })}
         title="Drag to resize · double-click to hide/show the panel"

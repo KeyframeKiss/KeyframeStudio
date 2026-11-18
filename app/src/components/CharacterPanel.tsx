@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { bridge } from '../bridge/client';
-import { call, displayName, selectedCharacters, toast, useStore } from '../state/store';
+import { call, displayName, selectedCharacters, setWorkspace, toast, useStore } from '../state/store';
 import { Icon } from './Icon';
 import { AnimationBrowser } from './AnimationBrowser';
 import { AbmxSection } from './AbmxSection';
 
-import { pressable } from '../lib/pressable';
 type Named = { name: string; nameEn?: string };
 export interface CharaState {
   id: number;
@@ -43,7 +42,8 @@ export interface CharaState {
 
 const CLOTH_STATES = ['On', 'Shift', 'Shift 2', 'Off'];
 
-export function CharacterPanel() {
+/** The selected character's animation, posing, expression and clothes. `bare`: the name row is shown by the panel around it. */
+export function CharacterPanel({ bare }: { bare?: boolean } = {}) {
   const selection = useStore((s) => s.studioSelection);
   const nodes = useStore((s) => s.nodes);
   useStore((s) => s.showEnglish);
@@ -51,7 +51,14 @@ export function CharacterPanel() {
   const primary = chars[0];
   const [state, setState] = useState<CharaState | null>(null);
   const [browse, setBrowse] = useState(false);
-  const [open, setOpen] = useState<Record<string, boolean>>({ anim: true, face: true, outfit: true, acc: false, pose: true, abmx: false });
+  const [open, setOpen] = useState<Record<string, boolean>>(() => {
+    const d = { anim: true, face: false, outfit: true, pose: true, abmx: false };
+    try {
+      return { ...d, ...JSON.parse(localStorage.getItem('kf.charSections') ?? '{}') };
+    } catch {
+      return d;
+    }
+  });
 
   const retry = useRef(0);
   const want = useRef<number | undefined>(primary);
@@ -123,15 +130,26 @@ export function CharacterPanel() {
   }
 
   const f = state.face;
-  const tog = (id: string) => setOpen((o) => ({ ...o, [id]: !o[id] }));
+  const tog = (id: string) =>
+    setOpen((o) => {
+      const n = { ...o, [id]: !o[id] };
+      try {
+        localStorage.setItem('kf.charSections', JSON.stringify(n));
+      } catch {
+        /* storage unavailable */
+      }
+      return n;
+    });
 
   return (
     <div className="panel-body">
-      <div className="section" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <span className={`type-icon type-Char`}>{state.sex === 0 ? '♂' : '♀'}</span>
-        <b style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displayName(nodes[primary] ?? { name: state.name })}</b>
-        {chars.length > 1 && <span className="kbd">+{chars.length - 1} more</span>}
-      </div>
+      {!bare && (
+        <div className="section" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span className={`type-icon type-Char`}>{state.sex === 0 ? '♂' : '♀'}</span>
+          <b style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displayName(nodes[primary] ?? { name: state.name })}</b>
+          {chars.length > 1 && <span className="kbd">+{chars.length - 1} more</span>}
+        </div>
+      )}
 
       <CollapsibleSection open={!!open.anim} onToggle={() => tog('anim')} title="Animation">
         <div className="kv">
@@ -162,10 +180,18 @@ export function CharacterPanel() {
         {state.kinematics.ik && (
           <Chips label="IK parts" items={state.kinematics.ikParts} onToggle={(i, on) => apply({ ikPart: { index: i, on } })} />
         )}
-        <div className="hint">Pose library, mirror and copy-pose: Pose workspace (Ctrl+2).</div>
       </CollapsibleSection>
 
-      <CollapsibleSection open={!!open.face} onToggle={() => tog('face')} title="Expression">
+      <CollapsibleSection
+        open={!!open.face}
+        onToggle={() => tog('face')}
+        title="Expression & hands"
+        extra={
+          <button className="btn" style={{ height: 20, fontSize: 10 }} title="Every face part and shape: Face Studio" onClick={() => { setWorkspace('pose'); window.setTimeout(() => window.dispatchEvent(new CustomEvent('studioex:pose-tab', { detail: 'face' })), 0); }}>
+            Face Studio ›
+          </button>
+        }
+      >
         <div className="kv">
           <label>Eyebrows</label>
           <Stepper value={f.eyebrowPtn} count={f.eyebrowCount} onChange={(v) => apply({ eyebrowPtn: v }, (s) => ({ ...s, face: { ...s.face, eyebrowPtn: v } }))} />
@@ -201,7 +227,7 @@ export function CharacterPanel() {
       </CollapsibleSection>
 
       <CollapsibleSection open={!!open.outfit} onToggle={() => tog('outfit')}
-        title="Outfit"
+        title="Clothes"
         extra={
           <span style={{ display: 'flex', gap: 2 }}>
             <button className="btn" style={{ height: 20, fontSize: 10 }} onClick={() => apply({ clothesAll: 0 })}>
@@ -236,39 +262,6 @@ export function CharacterPanel() {
               </div>
             ))}
         </div>
-      </CollapsibleSection>
-
-      <CollapsibleSection open={!!open.acc} onToggle={() => tog('acc')}
-        title={`Accessories (${state.accessories.length})`}
-        extra={
-          <span style={{ display: 'flex', gap: 2 }}>
-            <button className="btn" style={{ height: 20, fontSize: 10 }} onClick={() => apply({ accessoriesAll: true })}>
-              Show all
-            </button>
-            <button className="btn" style={{ height: 20, fontSize: 10 }} onClick={() => apply({ accessoriesAll: false })}>
-              Hide all
-            </button>
-          </span>
-        }
-      >
-        {state.accessories.map((a) => (
-          <div {...pressable}
-            key={a.slot}
-            className={`tree-row ${a.visible ? '' : 'hidden'}`}
-            style={{ paddingLeft: 0 }}
-            onClick={() => apply({ accessory: { slot: a.slot, visible: !a.visible } }, (s) => ({ ...s, accessories: s.accessories.map((x) => (x.slot === a.slot ? { ...x, visible: !a.visible } : x)) }))}
-            title={`Slot ${a.slot + 1} · ${a.parent}\n${a.name}`}
-          >
-            <span className={`toggle eye ${a.visible ? '' : 'off'}`} style={{ opacity: 1 }}>
-              <Icon name={a.visible ? 'eye' : 'eyeOff'} size={13} />
-            </span>
-            <span className="sub" style={{ width: 22 }}>
-              {a.slot + 1}
-            </span>
-            <span className="name">{displayName(a) || '(unnamed)'}</span>
-          </div>
-        ))}
-        {!state.accessories.length && <div className="hint">No accessories in this outfit.</div>}
       </CollapsibleSection>
 
       {state.abmx && (
@@ -310,7 +303,7 @@ export function Slider({ value, min, max, step, onChange }: { value: number; min
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
       <input type="range" min={min} max={max} step={step} value={value} onChange={(e) => onChange(Number(e.target.value))} style={{ flex: 1, accentColor: 'var(--accent)' }} />
-      <span className="value" style={{ width: 34, textAlign: 'right', fontFamily: 'var(--mono)', fontSize: 11 }}>
+      <span className="value" style={{ minWidth: 38, flex: 'none', textAlign: 'right', fontFamily: 'var(--mono)', fontSize: 11 }}>
         {value.toFixed(2)}
       </span>
     </div>

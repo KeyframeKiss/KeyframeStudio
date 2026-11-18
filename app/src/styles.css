@@ -68,6 +68,7 @@ select {
 .shell {
   display: grid;
   grid-template-rows: 48px 1fr 26px;
+  grid-template-columns: minmax(0, 1fr); /* nothing (e.g. the header) may widen the window's layout */
   height: 100%;
 }
 .header {
@@ -2487,7 +2488,7 @@ html.compact .btn {
   transform: none;
 }
 
-/* Library › About & diagnostics */
+/* Settings › About & diagnostics */
 .diag-card {
   border: 1px solid var(--line);
   border-radius: 10px;
@@ -2686,7 +2687,7 @@ html.compact .btn {
   user-select: none;
 }
 
-/* Animate › Cleanup */
+/* Animate › Cleanup group */
 .cleanup .btn.wide {
   width: 100%;
   justify-content: center;
@@ -2750,7 +2751,7 @@ html.compact .btn {
   font-size: 10px;
 }
 
-/* Animate › Camera › Camera moves */
+/* Shoot › Camera › Camera moves */
 .cam-moves {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -2891,7 +2892,7 @@ html.compact .btn {
   color: var(--text-3);
 }
 
-/* Animate › Audio */
+/* Shoot › Audio */
 .audio-panel .btn.wide {
   width: 100%;
   justify-content: center;
@@ -2904,7 +2905,7 @@ html.compact .btn {
   min-width: 0;
 }
 
-/* Animate › Render */
+/* Shoot › Render */
 .render .btn.wide {
   width: 100%;
   justify-content: center;
@@ -2927,7 +2928,7 @@ html.compact .btn {
   transition: width 0.3s;
 }
 
-/* Animate › Shots */
+/* Shoot › Shots */
 .shots .btn.wide {
   width: 100%;
   justify-content: center;
@@ -3096,4 +3097,216 @@ html.compact .btn {
 .char-card-img[data-ph]::after {
   content: attr(data-ph);
   font-size: 28px;
+}
+
+/* ---------- Side-panel stacks: collapsible groups that follow the selection ---------- */
+.panel,
+.shoot-col {
+  container-type: inline-size;
+}
+.stack .panel-body {
+  flex: none;
+  overflow: visible;
+  min-height: auto;
+}
+.group-box {
+  border-bottom: 1px solid var(--line);
+}
+.group-head {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 10px;
+  background: var(--bg-2);
+  color: var(--text-1);
+  font-weight: 700;
+  font-size: 12px;
+  cursor: pointer;
+  user-select: none;
+  border-bottom: 1px solid var(--line-soft);
+}
+.group-head:hover {
+  color: var(--text-0);
+}
+.group-head:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+.group-box:not(.open) .group-head {
+  border-bottom: 0;
+}
+.group-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.group-sub {
+  font-weight: 500;
+  color: var(--text-3);
+  margin-left: 4px;
+}
+.group-extra {
+  display: flex;
+  gap: 4px;
+}
+.group-content > .panel-body > .section:last-child {
+  border-bottom: 0;
+}
+.sel-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+}
+.sel-header b {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------- Shoot workspace ---------- */
+.shoot-top {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr);
+  flex-grow: 0;
+  flex-shrink: 0;
+  min-height: 140px;
+  border-bottom: 1px solid var(--line);
+}
+.shoot-col {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  background: var(--bg-1);
+}
+.shoot-col + .shoot-col {
+  border-left: 1px solid var(--line);
+}
+.shoot-col > .panel-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.shoot-split {
+  flex: none;
+  height: 6px;
+  margin: -3px 0;
+  position: relative;
+  z-index: 5;
+  cursor: row-resize;
+}
+.shoot-split:hover,
+.shoot-split:active {
+  background: color-mix(in srgb, var(--accent-2) 45%, transparent);
+}
+
+/* ---------- Library / Settings page list ---------- */
+.lib-nav-title {
+  padding: 4px 10px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+/* ---------- + Track popover over the dope sheet ---------- */
+.add-track-pop {
+  height: min(560px, calc(100vh - 170px));
+  display: flex;
+  flex-direction: column;
+}
+.add-track-pop .panel-body {
+  flex: 1;
+  overflow: auto;
+  min-height: 0;
+}
+
+/* ---------- Narrow panels: nothing gets clipped ---------- */
+select.input {
+  min-width: 0;
+  text-overflow: ellipsis;
+}
+.kv > * {
+  min-width: 0;
+}
+@container (max-width: 290px) {
+  .kv {
+    grid-template-columns: 1fr;
+    gap: 2px 8px;
+  }
+  .kv > label {
+    margin-top: 6px;
+  }
+}
+
+/* Narrow windows: the header gives up text before anything gets cut off */
+.header {
+  min-width: 0;
+  overflow: hidden;
+}
+@media (max-width: 1320px) {
+  .palette-trigger > span:not(.kbd) {
+    display: none;
+  }
+}
+@media (max-width: 1080px) {
+  .ws-tab {
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+  .conn {
+    font-size: 0;
+    gap: 0;
+  }
+}
+
+/* Shoot: not enough room for shots and camera side by side, so they stack and scroll together */
+.ws-center {
+  container-type: inline-size;
+}
+@container (max-width: 700px) {
+  .shoot-top {
+    display: block;
+    overflow: auto;
+  }
+  .shoot-col + .shoot-col {
+    border-left: 0;
+    border-top: 1px solid var(--line);
+  }
+  .shoot-col > .panel-body {
+    flex: none;
+    overflow: visible;
+  }
+}
+
+/* Narrow center: toolbars scroll sideways instead of wrapping into rows the timeline needs */
+.sheet-toolbar,
+.transport {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+.sheet-toolbar > *,
+.transport > * {
+  flex-shrink: 0;
+}
+.kv .seg,
+.cleanup-row .seg {
+  flex-wrap: wrap;
+  max-width: 100%;
+  min-width: 0;
+}
+.kv .seg > button,
+.cleanup-row .seg > button {
+  white-space: nowrap;
 }

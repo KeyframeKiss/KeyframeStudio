@@ -62,7 +62,7 @@ window's own draw and refresh times. Commands that take over 50 ms are noted in 
 
 ## Diagnostics and compatibility
 
-**Library › About & diagnostics** shows versions and which features work with the installed mods, and
+**Settings (gear icon) › About & diagnostics** shows versions and which features work with the installed mods, and
 **Copy diagnostics** puts a bug-report text on the clipboard. The report has versions, installed plugins,
 feature status and the recent bridge and app logs, with the Windows user name hidden. The app log is in
 `%APPDATA%\studio-ex\logs\studioex.log`.
@@ -81,10 +81,24 @@ version that still matches stays on and is marked "untested".
 | Look: second colour LUT | KK_TwoLut | — |
 | English names | XUnity AutoTranslator | — |
 
+## Workspaces
+
+| Workspace | Left | Center | Right |
+| --- | --- | --- | --- |
+| **Animate** (`Ctrl+1`) | Scene | Dope sheet / graph, transport | Keyframe or track inspector, Cleanup, selected object |
+| **Pose** (`Ctrl+2`) | Scene | Pose library / Animations / Face Studio | Selected character: animation, FK/IK, expression, clothes, saved outfits, transform |
+| **Look** (`Ctrl+3`) | Scene | Look presets | Look settings, lighting rigs |
+| **Shoot** (`Ctrl+4`) | Scene | Shots and camera over the dope sheet | Render, audio & lip-sync |
+| **Library** (`Ctrl+5`) | Scenes, characters, quick actions | | |
+| **Settings** (⚙, `Ctrl+,`) | Mod settings, translations, shortcuts, about & diagnostics | | |
+
+The right panel is one column of collapsible groups that follows the selection (each remembers if it's open).
+Side panels resize by dragging their edge; the ⊞ menu saves layouts.
+
 ## Animation workflow
 
-1. Select an object (Scene tab, or click it in Studio).
-2. **Tracks** tab → click a property (e.g. a bone, position, expression). It's added with a key at the playhead.
+1. Select an object (Scene list, or click it in Studio).
+2. **+ Track** above the dope sheet → click a property (e.g. a bone, position, expression). It's added with a key at the playhead.
 3. Move the playhead, pose in Studio, press **K** (selected tracks) or **Shift+K** (whole object).
 4. Drag keys to retime, box-select, **1–5** for easing presets, or shape the curve in the Inspector.
 5. **Ctrl+Z** undoes any edit made from Keyframe Studio.
@@ -104,17 +118,17 @@ Commands live in `plugin/StudioBridge/src/Api/*.cs`; wire types in `app/src/brid
 | **Dope sheet** | Tracks grouped per object with summary keys, drag/box select, frame snapping, copy/paste/duplicate, easing hotkeys, context menus, undo/redo |
 | **Graph editor** (`Tab`) | Real value curves over time. Rotations shown as X/Y/Z degrees (Unity order, unwrapped). Drag keys ↕ to change values, ↔ to retime; double-click a curve to insert a key; normalize mode to overlay different units |
 | **Curve editor** | Per-key easing with tangent handles, multi-point curves and presets matching Timeline's |
-| **Character** tab | Animation browser (33k+ clips incl. mods, searchable), speed/options, FK/IK + parts, eyebrows/eyes/mouth, eye & neck look, blush/tears, hands, outfit + per-slot clothing state, accessories (MoreAccessories slots), ABMX bone sliders. Multi-select applies to all selected characters |
-| **Poses** tab | Studio-compatible pose library (`.dat` and PNG poses, folders, thumbnails), save, apply, **mirror** (`M`), copy pose between characters |
+| **Character** (Pose) | Animation browser (33k+ clips incl. mods, searchable), speed/options, FK/IK + parts, eyebrows/eyes/mouth, eye & neck look, blush/tears, hands, outfit + per-slot clothing state, accessories (MoreAccessories slots), ABMX bone sliders. Multi-select applies to all selected characters |
+| **Pose library** (Pose) | Studio-compatible pose library (`.dat` and PNG poses, folders, thumbnails), save, apply, **mirror** (`M`), copy pose between characters |
 | **Scene browser** (`Ctrl+O`) | Thumbnail grid of `UserData/studio/scene`, folders, search, load, import (merge), save, new |
 | **Folders** | Timeline's own folders in the dope sheet (Objects/Folders switch): create from selected tracks (`Ctrl+G`), rename, move tracks in/out, ungroup, collapse (saved in the scene) |
 | **Key changes / Auto-key** | Keyframe Studio notices what you changed in Studio since the last seek (any track type, plus bones/objects without tracks) — `K` with nothing selected or **Key changes** keys exactly that; **Auto** (`R`) keys it automatically when you release the mouse. Self-animating things (spinning items, physics bones) are detected and ignored |
 | **Undo everywhere** | One history for timeline, character panel, ABMX, transform, light and item edits; a slider drag is one undo step |
-| **Object** tab | Transform for any object (multi-select edits only the axis you touch), item colors/alpha/glow/FK/anim speed, light color/intensity/range/spot/shadows, folder & camera names, view-through-camera |
-| **Camera** tab | Viewport snapshot, Studio's 10 saved views with thumbnails, FOV, **Key camera** / **Cut here** (hard cut), shot list with thumbnails, scene cameras |
-| **Look** tab | Every render setting in one place: color grade (LUT + KK_TwoLut second LUT + blend), bloom, depth of field, SSAO, vignette, fog, sun shafts, shadows, global toon shading (ramp, outline darkness/width, shadow color/depth, face options), character & map light. **Look presets** (UserData/StudioEX/looks, JSON + thumbnail): six starters, save your own, apply all or only some groups, at any strength (blend), undoable. **Materials**: bulk-edit any shader property across the selected characters/items through KK_MaterialEditor (saved like MaterialEditor edits) and include those tweaks in presets |
+| **Transform / Object** | Transform for any object (multi-select edits only the axis you touch), item colors/alpha/glow/FK/anim speed, light color/intensity/range/spot/shadows, folder & camera names, view-through-camera |
+| **Camera** (Shoot) | Viewport snapshot, Studio's 10 saved views with thumbnails, FOV, **Key camera** / **Cut here** (hard cut), shot list with thumbnails, scene cameras |
+| **Look** | Every render setting in one place: color grade (LUT + KK_TwoLut second LUT + blend), bloom, depth of field, SSAO, vignette, fog, sun shafts, shadows, global toon shading (ramp, outline darkness/width, shadow color/depth, face options), character & map light. **Look presets** (UserData/StudioEX/looks, JSON + thumbnail): six starters, save your own, apply all or only some groups, at any strength (blend), undoable. **Materials**: bulk-edit any shader property across the selected characters/items through KK_MaterialEditor (saved like MaterialEditor edits) and include those tweaks in presets |
 | **Mod settings** (`Ctrl+,` / ⚙) | Every BepInEx plugin setting (100+ plugins) searchable in one window, typed editors, changed-only filter, reset to default |
-| **Translations** (Library) | Every Japanese string Keyframe Studio has shown, tagged Yours / Machine / Game. **Auto-translate** new names in the background with Google (free, no setup), DeepL (free API key) or a local AI (Ollama / LM Studio, any OpenAI-compatible server). Machine results go to `zy_StudioEX_Machine.txt`, your edits to `zz_StudioEX_Overrides.txt` (always win); both are pushed into AutoTranslator so the in-game UI improves too. "Improve all" re-translates Game/Machine rows with a better engine |
+| **Translations** (Settings) | Every Japanese string Keyframe Studio has shown, tagged Yours / Machine / Game. **Auto-translate** new names in the background with Google (free, no setup), DeepL (free API key) or a local AI (Ollama / LM Studio, any OpenAI-compatible server). Machine results go to `zy_StudioEX_Machine.txt`, your edits to `zz_StudioEX_Overrides.txt` (always win); both are pushed into AutoTranslator so the in-game UI improves too. "Improve all" re-translates Game/Machine rows with a better engine |
 
 ## Roadmap
 

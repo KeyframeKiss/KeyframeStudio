@@ -5,7 +5,7 @@ import { PreviewPanel } from './components/PreviewPanel';
 import { RecordingBadge } from './components/QuickActions';
 import { Header } from './components/Shell';
 import { SHORTCUTS } from './components/shortcuts';
-import { AnimateWorkspace, LibraryWorkspace, LookWorkspace, PoseWorkspace } from './components/Workspaces';
+import { AnimateWorkspace, LibraryWorkspace, LookWorkspace, PoseWorkspace, SettingsWorkspace, ShootWorkspace } from './components/Workspaces';
 import { PRESETS, toFlat } from './lib/curve';
 import { isInteractive } from './lib/pressable';
 import { startAutoTranslate } from './lib/translate';
@@ -38,7 +38,7 @@ import {
 } from './state/store';
 import { bridge } from './bridge/client';
 
-const WS_KEYS: Record<string, Workspace> = { '1': 'animate', '2': 'pose', '3': 'look', '4': 'library' };
+const WS_KEYS: Record<string, Workspace> = { '1': 'animate', '2': 'pose', '3': 'look', '4': 'shoot', '5': 'library' };
 
 export function App() {
   const status = useStore((s) => s.status);
@@ -98,7 +98,7 @@ export function App() {
       else if (ctrl && (k === 'y' || (k === 'z' && e.shiftKey))) redo();
       else if (ctrl && k === 'o') openLibrary('scenes');
       else if (ctrl && k === ',') openLibrary('settings');
-      else if (st.workspace === 'library') handled = false; // timeline keys only outside the Library
+      else if (st.workspace === 'library' || st.workspace === 'settings') handled = false; // timeline keys only where there's a timeline
       else if (k === ' ') togglePlay();
       else if (ctrl && k === 'c') copySelected();
       else if (ctrl && k === 'v') pasteAtPlayhead();
@@ -154,7 +154,9 @@ export function App() {
         {workspace === 'animate' && <AnimateWorkspace />}
         {workspace === 'pose' && <PoseWorkspace />}
         {workspace === 'look' && <LookWorkspace />}
+        {workspace === 'shoot' && <ShootWorkspace />}
         {workspace === 'library' && <LibraryWorkspace />}
+        {workspace === 'settings' && <SettingsWorkspace />}
       </ErrorBoundary>
 
       <footer className="statusbar">
@@ -173,7 +175,7 @@ export function App() {
             <RecordingBadge />
             {hello && !hello.translator && <span>AutoTranslator not detected</span>}
             {translateJob && (
-              <span className="sb-job" title="Translating Japanese names — Library › Translations">
+              <span className="sb-job" title="Translating Japanese names — Settings › Translations">
                 Translating {translateJob.done}/{translateJob.total} · {translateJob.engine}
                 <span className="sb-progress">
                   <span style={{ width: `${(100 * translateJob.done) / Math.max(1, translateJob.total)}%` }} />

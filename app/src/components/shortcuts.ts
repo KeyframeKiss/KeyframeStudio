@@ -1,6 +1,6 @@
 export const SHORTCUTS: [string, string][] = [
   ['Ctrl K', 'Search every action (command palette)'],
-  ['Ctrl 1 – 4', 'Animate · Pose · Look · Library'],
+  ['Ctrl 1 – 5', 'Animate · Pose · Look · Shoot · Library'],
   ['Space', 'Play / pause'],
   ['← / →', 'Previous / next frame'],
   ['Shift ← / →', 'Previous / next key'],
@@ -23,7 +23,7 @@ export const SHORTCUTS: [string, string][] = [
   ['M', 'Mirror pose of selected character(s)'],
   ['F2', 'Rename object (outliner)'],
   ['Ctrl O', 'Scenes'],
-  ['Ctrl ,', 'Mod settings'],
+  ['Ctrl ,', 'Settings'],
   ['Drag key', 'Retime (snaps to frames; Alt = free)'],
   ['Graph: drag key ↕', 'Change value (Shift = 0.1 steps)'],
   ['Double-click row/curve', 'Insert key there'],

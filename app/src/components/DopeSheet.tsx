@@ -30,6 +30,7 @@ import { ContextMenu, type MenuItem } from './ContextMenu';
 import { GraphEditor } from './GraphEditor';
 import { TimeScrollbar, VScrollbar } from './Scrollbars';
 import { Popover } from './Shell';
+import { AddTrackPanel } from './AddTrackPanel';
 
 const HSCROLL_H = 14;
 import { createFolder, editTranslation, moveToFolder, renameFolder, setFolderExpanded, toast, ungroupFolder } from '../state/store';
@@ -1161,7 +1162,7 @@ function EmptySheet({ hasTracks }: { hasTracks: boolean }) {
       ) : (
         <>
           <strong>No animation yet</strong>
-          Select an object in the Scene list, open the <b>Tracks</b> tab and click a property to animate it.
+          Select an object in the Scene list, then click <b>+ Track</b> above and pick a property to animate.
         </>
       )}
     </div>
@@ -1201,6 +1202,20 @@ function SheetToolbar({ shown, total, nav }: { shown: number; total: number; nav
   };
   return (
     <div className="sheet-toolbar">
+      <Popover
+        placement="down"
+        width={320}
+        openEvent="kf:add-track"
+        trigger={(open, toggle) => (
+          <button className={`btn ${open ? 'on' : 'solid'}`} onClick={toggle} title="Add an animation track for the selected object (or scene-wide)">
+            <Icon name="plus" size={13} /> Track
+          </button>
+        )}
+      >
+        <div className="add-track-pop">
+          <AddTrackPanel />
+        </div>
+      </Popover>
       <div className="seg" title="Tab switches views">
         <button className={centerView === 'dope' ? 'on' : ''} onClick={() => setView('dope')}>
           Dope Sheet

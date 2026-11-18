@@ -27,7 +27,8 @@ const WORKSPACES: { id: Workspace; label: string; icon: string; hint: string }[]
   { id: 'animate', label: 'Animate', icon: 'animate', hint: 'Timeline, keys and curves (Ctrl+1)' },
   { id: 'pose', label: 'Pose', icon: 'pose', hint: 'Characters, poses and animations (Ctrl+2)' },
   { id: 'look', label: 'Look', icon: 'look', hint: 'Lighting, effects, shaders and look presets (Ctrl+3)' },
-  { id: 'library', label: 'Library', icon: 'library', hint: 'Scenes, translations, mod settings (Ctrl+4)' },
+  { id: 'shoot', label: 'Shoot', icon: 'camera', hint: 'Camera, shots, audio and rendering (Ctrl+4)' },
+  { id: 'library', label: 'Library', icon: 'library', hint: 'Scenes, characters, quick actions (Ctrl+5)' },
 ];
 
 export function Header() {
@@ -76,7 +77,7 @@ export function Header() {
         </button>
       )}
       <LayoutMenu />
-      <button className="btn icon" title="Mod settings (Ctrl+,)" onClick={() => openLibrary('settings')}>
+      <button className={`btn icon ${workspace === 'settings' ? 'on' : ''}`} title="Settings: mod settings, translations, shortcuts, diagnostics (Ctrl+,)" onClick={() => (workspace === 'settings' ? setWorkspace(useStore.getState().lastWorkspace) : openLibrary('settings'))}>
         <Icon name="settings" />
       </button>
       <button className="btn icon" title="Keyboard shortcuts (?)" onClick={() => useStore.setState({ helpOpen: true })}>
@@ -93,12 +94,15 @@ export function Popover({
   align = 'left',
   width = 260,
   placement = 'up',
+  openEvent,
 }: {
   trigger: (open: boolean, toggle: () => void) => ReactNode;
   children: ReactNode;
   align?: 'left' | 'right';
   width?: number;
   placement?: 'up' | 'down';
+  /** a window event that opens it (e.g. from a context menu elsewhere) */
+  openEvent?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState<CSSProperties | null>(null);
@@ -129,6 +133,13 @@ export function Popover({
       ...(up ? { bottom: vh - r.top + 6 } : { top: r.bottom + 6 }),
     });
   };
+
+  useEffect(() => {
+    if (!openEvent) return;
+    const on = () => setOpen(true);
+    window.addEventListener(openEvent, on);
+    return () => window.removeEventListener(openEvent, on);
+  }, [openEvent]);
 
   useLayoutEffect(() => {
     if (!open) return setPos(null);
@@ -287,7 +298,7 @@ function LayoutMenu() {
   const sz = usePanelSizes(ws);
   const [list, setList] = useState(savedLayouts);
   const [name, setName] = useState('');
-  const hasSides = ws !== 'library';
+  const hasSides = ws !== 'library' && ws !== 'settings';
   return (
     <Popover
       align="right"

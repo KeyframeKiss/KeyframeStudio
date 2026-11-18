@@ -206,6 +206,16 @@ export function OutfitPanel() {
       <div className="section">
         <h3>
           Accessories <span className="spacer" />
+          {!solo && st.accessories.length > 0 && (
+            <>
+              <button className="btn small" onClick={() => set({ accessoriesAll: true })} title="Show every accessory">
+                All on
+              </button>
+              <button className="btn small" onClick={() => set({ accessoriesAll: false })} title="Hide every accessory">
+                All off
+              </button>
+            </>
+          )}
           {solo && (
             <button className="btn small on" onClick={soloOff} title="Show the accessories that were visible before">
               End solo

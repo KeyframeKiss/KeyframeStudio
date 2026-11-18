@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon, TypeIcon } from './Icon';
 import { ContextMenu, type MenuItem } from './ContextMenu';
-import { call, displayName, lsSet, refreshScene, setNodeVisible, showPanel, studioSelect, toast, useStore } from '../state/store';
+import { call, displayName, lsSet, refreshScene, setNodeVisible, setWorkspace, showPanel, studioSelect, toast, useStore } from '../state/store';
 import type { SceneNode } from '../bridge/types';
 
 import { pressable } from '../lib/pressable';
@@ -238,8 +238,14 @@ export function Outliner() {
         lsSet('studioex.filter', 'selected');
       },
     });
-    if (n.type === 'Char') items.push({ label: 'Open Character panel', action: () => showPanel('pose', 'pose.right', 'character') });
-    items.push({ label: 'Add animation track…', action: () => showPanel('animate', 'animate.left', 'tracks') });
+    if (n.type === 'Char') items.push({ label: 'Open Character panel', action: () => showPanel('pose', 'character') });
+    items.push({
+      label: 'Add animation track…',
+      action: () => {
+        if (useStore.getState().workspace !== 'animate' && useStore.getState().workspace !== 'shoot') setWorkspace('animate');
+        window.setTimeout(() => window.dispatchEvent(new CustomEvent('kf:add-track')), 50);
+      },
+    });
     items.push({ sep: true });
     items.push({ label: 'Copy name', action: () => navigator.clipboard?.writeText(displayName(n)) });
     setMenu({ x: e.clientX, y: e.clientY, items });

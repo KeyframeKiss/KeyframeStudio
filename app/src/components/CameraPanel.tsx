@@ -79,12 +79,12 @@ export function CameraPanel() {
 
       <div className="section">
         <h3>Saved views (Studio's 1–10)</h3>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(96px, 1fr))', gap: 6 }}>
           {st.slots.map((s) => (
             <div key={s.index} style={{ position: 'relative', borderRadius: 6, overflow: 'hidden', background: 'var(--bg-2)', border: '1px solid var(--line)' }}>
               <button
                 className="btn"
-                style={{ width: '100%', height: 64, padding: 0, borderRadius: 0, display: 'block', opacity: s.used ? 1 : 0.5 }}
+                style={{ width: '100%', height: 54, padding: 0, borderRadius: 0, display: 'block', opacity: s.used ? 1 : 0.5 }}
                 title={s.used ? `Go to view ${s.index + 1}` : `View ${s.index + 1} is empty`}
                 onClick={() => s.used && call('camera.loadSlot', { index: s.index })}
               >
