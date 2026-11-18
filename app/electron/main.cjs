@@ -1,5 +1,5 @@
 // Electron shell for Keyframe Studio. The UI is a plain web app; this just gives it its own window.
-const { app, BrowserWindow, ipcMain, shell, protocol, nativeImage } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, protocol, nativeImage, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
@@ -142,6 +142,11 @@ function createWindow() {
 
   ipcMain.handle('window:setAlwaysOnTop', (_e, on) => { win.setAlwaysOnTop(!!on); saveState(win); return win.isAlwaysOnTop(); });
   ipcMain.handle('window:getAlwaysOnTop', () => win.isAlwaysOnTop());
+  // the renderer only gets the path the user picked (Studio reads and copies the file itself)
+  ipcMain.handle('dialog:openAudio', async () => {
+    const r = await dialog.showOpenDialog(win, { title: 'Choose a WAV file', filters: [{ name: 'WAV audio', extensions: ['wav'] }], properties: ['openFile'] });
+    return r.canceled ? null : r.filePaths[0] ?? null;
+  });
 }
 
 app.whenReady().then(() => {

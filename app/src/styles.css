@@ -2832,3 +2832,16 @@ select {
 .outfit-acc.hidden .name {
   color: var(--text-3);
 }
+
+/* Animate › Audio */
+.audio-panel .btn.wide {
+  width: 100%;
+  justify-content: center;
+  margin-top: 4px;
+}
+.audio-panel .cleanup-row > span:first-child {
+  width: 72px;
+}
+.audio-panel select.input {
+  min-width: 0;
+}

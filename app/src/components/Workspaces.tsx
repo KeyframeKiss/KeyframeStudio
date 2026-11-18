@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { bridge } from '../bridge/client';
 import { call, displayName, selectedCharacters, toast, useStore, type LibraryPage } from '../state/store';
 import { AddTrackPanel } from './AddTrackPanel';
+import { AudioPanel } from './AudioPanel';
 import { CleanupPanel } from './CleanupPanel';
 import { AnimationBrowser } from './AnimationBrowser';
 import { CameraPanel } from './CameraPanel';
@@ -111,6 +112,7 @@ export function AnimateWorkspace() {
           { id: 'scene', label: 'Scene', render: () => <Outliner /> },
           { id: 'tracks', label: 'Add track', render: () => <AddTrackPanel /> },
           { id: 'camera', label: 'Camera', render: () => <CameraPanel /> },
+          { id: 'audio', label: 'Audio', render: () => <AudioPanel /> },
         ]}
       />
       <main className="ws-center">

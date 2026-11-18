@@ -304,6 +304,14 @@ Lip-sync needs audio that plays in sync with Timeline inside Studio. Treat that 
 - Mouth shapes, expressions, gaze, and blink tracks over time.
 - Reusable facial performance clips.
 
+**Status (2026-11-17): done except reusable clips** (Animate › Audio).
+- **Audio track:** a WAV plays in sync with Timeline (play, pause, seek, loop, drift corrected), with a start offset, volume and mute. It's saved with the scene through KKAPI scene data. The installed audio mods (KKVMDPlay with Timeline VMD Sync) handle only VMD audio, and Studio's outside sound can't seek, so the plugin plays the clip itself through Studio's WAV loader.
+- **Waveform:** shown in the dope sheet's time ruler.
+- **Lip-sync:** Mouth Open keys from the loudness, with sensitivity, noise threshold, smoothing, widest opening and keys per second. It replaces earlier lip-sync where the audio plays. Not phoneme-accurate.
+- **Face:** "Key face at playhead" (eyes, eyelids, brows, mouth, neck) and natural blinks over the whole timeline.
+- **Tests:** the math is unit-tested; suite 17 covers the plugin side.
+- **Not done:** reusable facial performance clips, and vowel mouth shapes.
+
 ### 6.3 Motion Cleanup Tools
 Reuses the bone sampling already used for motion paths.
 

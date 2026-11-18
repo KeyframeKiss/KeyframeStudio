@@ -43,6 +43,7 @@ declare global {
         tail(n: number): Promise<string[]>;
         openFolder(): Promise<string>;
       };
+      openAudio?(): Promise<string | null>;
       appInfo?(): Promise<{ version: string; electron: string; chrome: string; node: string; os: string; logFile: string; home: string }>;
     };
   }

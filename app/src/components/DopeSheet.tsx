@@ -166,6 +166,12 @@ export function DopeSheet() {
   const view = useRef<View>({ t0: 0, pps: 80 });
   const inter = useRef<Interaction>({ mode: 'none' });
   const dirty = useRef(true);
+  // redraw when the audio track or its waveform changes
+  const audioPeaks = useStore((s) => s.audioPeaks);
+  const audioInfo = useStore((s) => s.audio);
+  useEffect(() => {
+    dirty.current = true;
+  }, [audioPeaks, audioInfo]);
   const fitted = useRef(false);
   const lastAnchor = useRef<number | null>(null);
 
@@ -501,6 +507,24 @@ export function DopeSheet() {
       // ruler
       ctx.fillStyle = colors.bg1;
       ctx.fillRect(0, 0, w, RULER_H);
+      // the audio track's waveform, behind the tick labels (aligned with the keys)
+      const au = st.audio,
+        wave = st.audioPeaks;
+      if (au && wave && wave.peaks.length) {
+        ctx.fillStyle = 'rgba(90,169,255,0.32)';
+        const ps = wave.perSecond,
+          pk = wave.peaks,
+          hMax = RULER_H - 3;
+        for (let x = Math.max(PAD, Math.floor(xOf(au.offset))); x < Math.min(w, xOf(au.offset + au.duration)); x++) {
+          const i0 = Math.max(0, Math.floor((tOf(x) - au.offset) * ps)),
+            i1 = Math.min(pk.length - 1, Math.floor((tOf(x + 1) - au.offset) * ps));
+          let p = 0;
+          for (let i = i0; i <= i1; i++) if (pk[i] > p) p = pk[i];
+          if (p <= 0.004) continue;
+          const bh = Math.max(1, p * hMax);
+          ctx.fillRect(x, RULER_H - 1 - bh, 1, bh);
+        }
+      }
       ctx.fillStyle = colors.line;
       ctx.fillRect(0, RULER_H - 1, w, 1);
       ctx.font = '10px Segoe UI, system-ui, sans-serif';

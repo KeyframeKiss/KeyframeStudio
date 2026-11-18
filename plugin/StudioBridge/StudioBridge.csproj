@@ -31,6 +31,7 @@
     <Reference Include="KKABMX"><HintPath>$(GameDir)\BepInEx\plugins\KKABMX.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="KK_MaterialEditor"><HintPath>$(GameDir)\BepInEx\plugins\KK_Plugins\KK_MaterialEditor.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="KKAPI"><HintPath>$(GameDir)\BepInEx\plugins\KKAPI.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="ExtensibleSaveFormat"><HintPath>$(GameDir)\BepInEx\plugins\KK_BepisPlugins\ExtensibleSaveFormat.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="XUnity.AutoTranslator.Plugin.Core"><HintPath>$(GameDir)\BepInEx\plugins\XUnity.AutoTranslator\XUnity.AutoTranslator.Plugin.Core.dll</HintPath><Private>false</Private></Reference>
   </ItemGroup>
 

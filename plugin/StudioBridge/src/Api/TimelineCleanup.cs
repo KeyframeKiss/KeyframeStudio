@@ -21,6 +21,7 @@ namespace StudioEX.Bridge.Api
             r.Add("timeline.setKeyValues", SetKeyValues);
             r.Add("timeline.scaleKeys", ScaleKeys);
             r.Add("timeline.makeLoop", MakeLoop);
+            r.Add("timeline.writeKeys", WriteKeys);
         }
 
         /// <summary>args: {edits:[{track, t, value:{attr: number}}], label?} — one undo step for all of them.</summary>
@@ -70,6 +71,42 @@ namespace StudioEX.Bridge.Api
             }
             if (current != null && current.TryGetValue("_xml", out var inner)) el.InnerXml = inner as string ?? "";
             return el;
+        }
+
+        /// <summary>
+        /// args: {track, keys:[{t, value:{attr: number}}], clear?: [t0, t1], curve?: "linear"|"smooth"|"step"}
+        /// Creates (or overwrites) keys with the given values — the track's current value with those attributes
+        /// replaced, so it works for any value type. `clear` first removes the track's keys in that range
+        /// (inclusive), e.g. to regenerate lip-sync. One undo step.
+        /// </summary>
+        private static object WriteKeys(Dictionary<string, object> a)
+        {
+            var ip = Track(a["track"]);
+            var keys = a.GetList("keys").OfType<Dictionary<string, object>>().ToList();
+            if (keys.Count == 0) return 0;
+            History.Push(History.Capture(new[] { ip }), a.GetString("label") ?? "Write keys");
+            var clear = a.GetList("clear");
+            if (clear.Count == 2)
+            {
+                float c0 = Convert.ToSingle(clear[0]) - 1e-4f, c1 = Convert.ToSingle(clear[1]) + 1e-4f;
+                foreach (var k in ip.keyframes.Keys.Where(k => k >= c0 && k <= c1).ToList()) ip.keyframes.Remove(k);
+            }
+            string mode = a.GetString("curve") ?? "linear";
+            Func<AnimationCurve> curve = () => mode == "step"
+                ? new AnimationCurve(new UnityEngine.Keyframe(0f, 0f, 0f, 0f), new UnityEngine.Keyframe(1f, 1f, float.PositiveInfinity, 0f))
+                : mode == "smooth" ? AnimationCurve.EaseInOut(0f, 0f, 1f, 1f) : AnimationCurve.Linear(0f, 0f, 1f, 1f);
+            var baseValue = ip.GetValue();
+            int n = 0;
+            foreach (var k in keys)
+            {
+                float t = Mathf.Clamp(k.GetFloat("t"), 0f, TL.duration);
+                var value = ip.ReadValueFromXml(PatchedValueXml(ip, baseValue, k.GetObject("value") ?? new Dictionary<string, object>()));
+                if (FindKey(ip, t, out var exact)) { ip.keyframes[exact].value = value; ip.keyframes[exact].curve = curve(); }
+                else ip.keyframes[t] = new TLKeyframe(value, ip, curve());
+                n++;
+            }
+            AfterEdit();
+            return n;
         }
 
         /// <summary>

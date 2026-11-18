@@ -13,6 +13,15 @@ export const parseKeyId = (id: KeyId): KeyRef => {
   return { track: Number(id.slice(0, i)), t: Number(id.slice(i + 1)) };
 };
 
+export interface AudioInfo {
+  file: string | null;
+  offset: number;
+  volume: number;
+  muted: boolean;
+  duration: number;
+  loaded: boolean;
+}
+
 export interface Toast {
   id: number;
   kind: 'error' | 'info';
@@ -55,6 +64,9 @@ export interface AppState {
   autoKeyNew: boolean;
   /** Changes in Studio since the last seek/key that aren't keyed yet. */
   pending: number;
+  /** The scene's audio track (dialogue/music synced to Timeline) and its waveform, if any. */
+  audio: AudioInfo | null;
+  audioPeaks: { perSecond: number; peaks: number[] } | null;
   /** Key edits were made but Studio held them back to protect the unkeyed changes (the pose doesn't show them yet). */
   poseStale: boolean;
   groupMode: 'objects' | 'folders';
@@ -116,6 +128,8 @@ export const useStore = create<AppState>(() => ({
   autoKeyNew: lsGet('studioex.autoKeyNew') !== '0',
   pending: 0,
   poseStale: false,
+  audio: null,
+  audioPeaks: null,
   groupMode: (lsGet('studioex.groupMode') as 'objects' | 'folders') || 'objects',
   settingsOpen: false,
   workspace: (lsGet('studioex.workspace') as Workspace) || 'animate',
@@ -129,6 +143,19 @@ export const useStore = create<AppState>(() => ({
 // ---------------------------------------------------------------------------
 // Key what changed / auto-key
 // ---------------------------------------------------------------------------
+/** Re-read the audio track (and its waveform when the file changed). */
+export async function refreshAudio() {
+  const a = await bridge.request<AudioInfo>('audio.get').catch(() => null);
+  if (!a) return set({ audio: null, audioPeaks: null });
+  const before = get().audio;
+  set({ audio: a.loaded ? a : null });
+  if (!a.loaded) return set({ audioPeaks: null });
+  if (before?.file !== a.file || !get().audioPeaks) {
+    const p = await bridge.request<{ perSecond: number; peaks: number[] }>('audio.peaks', { perSecond: 100 }).catch(() => null);
+    set({ audioPeaks: p ? { perSecond: p.perSecond, peaks: p.peaks } : null });
+  }
+}
+
 /** Throw away the unkeyed changes in Studio: the pose goes back to the keys (and shows held-back key edits). */
 export async function resetPose() {
   const r = await call<boolean>('timeline.resetPose');
@@ -399,6 +426,7 @@ export function initBridge() {
       // ...and unkeyed changes / held-back edits (only their changes are pushed as events). Quiet: while Studio
       // is still starting Timeline isn't loaded yet; the timeline refresh below retries and these follow it.
       if (hello?.timeline) syncTimelineFlags();
+      if (hello?.commands.includes('audio.get')) refreshAudio();
       refreshScene();
       if (hello?.timeline) refreshTimeline();
       else if (hello) toast(hello.features?.find((f) => f.id === 'timeline')?.reason ?? 'Timeline plugin not found in this Studio install', 'error');
@@ -421,6 +449,7 @@ export function initBridge() {
   bridge.on('scene.changed', scheduleSceneRefresh);
   bridge.on('scene.reset', () => {
     set({ selKeys: new Set(), selTracks: new Set(), clipboard: null });
+    window.setTimeout(refreshAudio, 1500); // a loaded scene may bring its own audio
     window.dispatchEvent(new CustomEvent('studioex:scene-reset'));
     scheduleSceneRefresh();
     scheduleTimelineRefresh();

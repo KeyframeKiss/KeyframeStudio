@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld('studioEx', {
     openFolder: () => ipcRenderer.invoke('log:openFolder'),
   },
   appInfo: () => ipcRenderer.invoke('app:info'),
+  openAudio: () => ipcRenderer.invoke('dialog:openAudio'),
   translate: {
     batch: (engine, items, settings) => ipcRenderer.invoke('translate:batch', engine, items, settings),
     models: (settings) => ipcRenderer.invoke('translate:models', settings),
