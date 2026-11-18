@@ -4517,3 +4517,380 @@ html.frameless .tooltip {
   align-items: center;
   white-space: nowrap;
 }
+
+/* ---------- Look › Materials (MaterialEditor) ---------- */
+.me {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(220px, 300px) minmax(0, 1fr);
+}
+.me-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 40px;
+  color: var(--text-2);
+  text-align: center;
+}
+.me-muted {
+  color: var(--text-2);
+  font-size: 11.5px;
+}
+.me-tree {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-right: 1px solid var(--line);
+  background: var(--bg-1);
+}
+.me-tree-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 10px 6px 12px;
+}
+.me-tree-head b {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+}
+.me-search,
+.me-filter {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 10px 8px;
+  padding: 0 8px;
+  height: 28px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--bg-2);
+  color: var(--text-2);
+}
+.me-search:focus-within,
+.me-filter:focus-within {
+  border-color: var(--accent);
+}
+.me-search input,
+.me-filter input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text-0);
+}
+.me-tree-list {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 0 6px 12px;
+}
+.me-part-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 6px 6px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--text-0);
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+.me-part-head:hover {
+  background: var(--bg-2);
+}
+.me-part-head span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.me-part-head small,
+.me-section h3 small {
+  color: var(--text-3);
+  font-weight: 500;
+  font-size: 11px;
+}
+.me-renderer {
+  margin: 0 0 4px 18px;
+  padding-left: 8px;
+  border-left: 1px solid var(--line);
+}
+.me-renderer-name {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 4px 1px;
+  color: var(--text-2);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.me-renderer.hidden .me-renderer-name,
+.me-renderer.hidden .me-mat {
+  opacity: 0.55;
+}
+.me-mat {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--text-1);
+  text-align: left;
+  cursor: pointer;
+}
+.me-mat span,
+.me-mat small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.me-mat small {
+  color: var(--text-3);
+  font-size: 10.5px;
+}
+.me-mat:hover {
+  background: var(--bg-2);
+}
+.me-mat.on {
+  background: var(--accent-soft);
+  color: var(--text-0);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+.me-main {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+}
+.me-view {
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 14px 18px 28px;
+}
+.me-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.me-title {
+  flex: 1;
+  min-width: 0;
+}
+.me-title h2 {
+  margin: 0 0 2px;
+  font-size: 16px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.me-badge {
+  margin-left: 8px;
+  padding: 1px 7px;
+  border-radius: 10px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-style: normal;
+  font-size: 10.5px;
+  font-weight: 600;
+}
+.me-head-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.me-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.me-cards .look-card-body {
+  padding: 2px 12px 10px;
+}
+.me-filter {
+  margin: 0 0 6px;
+  max-width: 360px;
+}
+.me-section {
+  margin-top: 14px;
+}
+.me-section h3 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 2px 6px;
+  font-size: 13px;
+}
+.me-section-body {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--bg-1);
+  padding: 4px 12px;
+}
+.me-row {
+  display: grid;
+  grid-template-columns: minmax(110px, 170px) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 32px;
+}
+.me-section-body > .me-row + .me-row {
+  border-top: 1px solid var(--line-soft);
+}
+.me-row > label {
+  color: var(--text-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.me-row.edited > label {
+  color: var(--text-0);
+}
+.me-row.edited > label::after {
+  content: ' •';
+  color: var(--accent);
+}
+.me-grow {
+  min-width: 0;
+  width: 100%;
+}
+.me-color {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.me-color .color-input {
+  flex: none;
+}
+.me-alpha {
+  flex: 1;
+  min-width: 80px;
+}
+.me-float {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.me-float input[type='range'] {
+  flex: 1;
+  min-width: 0;
+  accent-color: var(--accent);
+}
+.me-num {
+  width: 76px;
+  flex: none;
+  height: 24px;
+  padding: 0 6px;
+}
+.me-tools {
+  display: flex;
+  gap: 2px;
+}
+.me-tools .btn.icon,
+.me-vec .btn.icon,
+.me-tex-btns .btn.icon {
+  width: 24px;
+  height: 24px;
+}
+.me-invisible {
+  visibility: hidden;
+}
+.me-tool-gap {
+  width: 24px;
+}
+.me-textures {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 10px;
+  padding: 8px 0;
+}
+.me-tex {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg-2);
+  padding: 8px;
+}
+.me-tex.edited {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+}
+.me-tex-top {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+.me-tex-thumb {
+  flex: none;
+  width: 72px;
+  height: 72px;
+  border-radius: 6px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: repeating-conic-gradient(var(--bg-3) 0 25%, var(--bg-1) 0 50%) 0 0 / 12px 12px;
+  color: var(--text-3);
+  font-size: 11px;
+}
+.me-tex-thumb img {
+  max-width: 100%;
+  max-height: 100%;
+  image-rendering: auto;
+}
+.me-tex-info {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.me-tex-info b {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.me-tex-btns {
+  display: flex;
+  gap: 4px;
+  margin-top: auto;
+}
+.me-vec {
+  display: grid;
+  grid-template-columns: 52px 1fr 1fr auto auto;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+}
+.me-vec > label {
+  color: var(--text-2);
+}
+.me-vec .me-num {
+  width: 100%;
+}
+@media (max-width: 760px) {
+  .me {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(160px, 38%) minmax(0, 1fr);
+  }
+  .me-tree {
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+}

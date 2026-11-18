@@ -171,6 +171,10 @@ function createWindow() {
     const r = await dialog.showOpenDialog(win, { title: 'Choose a WAV file', filters: [{ name: 'WAV audio', extensions: ['wav'] }], properties: ['openFile'] });
     return r.canceled ? null : r.filePaths[0] ?? null;
   });
+  ipcMain.handle('dialog:openImage', async () => {
+    const r = await dialog.showOpenDialog(win, { title: 'Choose an image', filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg'] }], properties: ['openFile'] });
+    return r.canceled ? null : r.filePaths[0] ?? null;
+  });
 }
 
 app.whenReady().then(() => {

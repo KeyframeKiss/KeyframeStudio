@@ -743,12 +743,14 @@ export async function undo() {
   const r = await call<string | false>('undo');
   if (r === false) toast('Nothing to undo');
   else if (r) toast(`Undid: ${r}`);
+  window.dispatchEvent(new Event('kf:history'));
   await Promise.all([refreshTimeline(), refreshScene()]);
 }
 export async function redo() {
   const r = await call<string | false>('redo');
   if (r === false) toast('Nothing to redo');
   else if (r) toast(`Redid: ${r}`);
+  window.dispatchEvent(new Event('kf:history'));
   await Promise.all([refreshTimeline(), refreshScene()]);
 }
 

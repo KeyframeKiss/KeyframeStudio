@@ -1,0 +1,679 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { bridge } from '../bridge/client';
+import { call, displayName, refreshTimeline, toast, useStore } from '../state/store';
+import { Slider } from './CharacterPanel';
+import { ColorInput, Switch } from './LookPanel';
+import { Help } from './Help';
+import { Icon } from './Icon';
+
+// ---------------------------------------------------------------------------
+// Look › Materials: MaterialEditor for the selected character or item. Parts → renderers → materials on the left,
+// one material's values on the right. Every edit goes through KK_MaterialEditor, so it's saved with the scene.
+// ---------------------------------------------------------------------------
+
+type RGBA = [number, number, number, number];
+type Vec2 = [number, number];
+
+interface TreeMat {
+  name: string;
+  shader: string;
+}
+interface TreeRenderer {
+  name: string;
+  enabled: boolean;
+  materials: TreeMat[];
+}
+interface TreePart {
+  key: string;
+  label: string;
+  renderers: TreeRenderer[];
+}
+interface Tree {
+  name: string;
+  kind: 'Char' | 'Item';
+  clipboard: string | null;
+  parts: TreePart[];
+}
+
+interface FloatProp {
+  name: string;
+  value: number;
+  edited: boolean;
+  min?: number;
+  max?: number;
+}
+interface ColorProp {
+  name: string;
+  value: RGBA;
+  edited: boolean;
+}
+interface TexProp {
+  name: string;
+  has: boolean;
+  size: string;
+  thumb: string | null;
+  offset: Vec2;
+  scale: Vec2;
+  edited: boolean;
+  offsetEdited: boolean;
+  scaleEdited: boolean;
+}
+interface KeywordProp {
+  name: string;
+  on: boolean;
+  edited: boolean;
+}
+interface Mat {
+  material: string;
+  shader: string;
+  shaderEdited: boolean;
+  renderQueue: number;
+  renderQueueEdited: boolean;
+  floats: FloatProp[];
+  colors: ColorProp[];
+  textures: TexProp[];
+  keywords: KeywordProp[];
+  renderer: { enabled: boolean; shadowCasting: string; receiveShadows: boolean; enabledEdited: boolean; shadowCastingEdited: boolean; receiveShadowsEdited: boolean };
+  clipboard: string | null;
+}
+
+interface Sel {
+  part: string;
+  renderer: string;
+  material: string;
+}
+
+type Kind = 'float' | 'color' | 'keyword' | 'offset' | 'scale' | 'shader' | 'queue' | 'enabled' | 'shadowCasting' | 'receiveShadows' | 'texture';
+
+const SHADOW_MODES = ['Off', 'On', 'TwoSided', 'ShadowsOnly'];
+const SHADOW_LABELS: Record<string, string> = { Off: 'Off', On: 'On', TwoSided: 'Two-sided', ShadowsOnly: 'Shadow only' };
+
+/** Words out of MaterialEditor's property names: "ShadowColor" → "Shadow color", "rimpower" stays. */
+function nice(p: string) {
+  const s = p.replace(/^_+/, '').replace(/([a-z])([A-Z])/g, '$1 $2').replace(/_/g, ' ');
+  return s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
+}
+
+/** The character / item the page edits: the first one selected in Studio. */
+function useTarget() {
+  const selection = useStore((s) => s.studioSelection);
+  const nodes = useStore((s) => s.nodes);
+  const id = selection.find((i) => nodes[i] && (nodes[i].type === 'Char' || nodes[i].type === 'Item'));
+  return id === undefined ? null : { id, name: displayName(nodes[id]), others: selection.filter((i) => i !== id && nodes[i] && (nodes[i].type === 'Char' || nodes[i].type === 'Item')).length };
+}
+
+export function MaterialEditorPage() {
+  const target = useTarget();
+  const [tree, setTree] = useState<Tree | null>(null);
+  const [err, setErr] = useState('');
+  const [sel, setSel] = useState<Sel | null>(null);
+  const [query, setQuery] = useState('');
+  const [open, setOpen] = useState<Record<string, boolean>>({});
+  const id = target?.id;
+
+  const loadTree = useCallback(() => {
+    if (id === undefined) return;
+    bridge
+      .request<Tree>('me.tree', { id })
+      .then((t) => {
+        setErr('');
+        setTree(t);
+        // keep the selection if it's still there; otherwise the first material
+        setSel((cur) => {
+          const has = cur && t.parts.some((p) => p.key === cur.part && p.renderers.some((r) => r.name === cur.renderer && r.materials.some((m) => m.name === cur.material)));
+          if (has) return cur;
+          const p = t.parts[0];
+          const r = p?.renderers[0];
+          const m = r?.materials[0];
+          return p && r && m ? { part: p.key, renderer: r.name, material: m.name } : null;
+        });
+      })
+      .catch((e) => {
+        setTree(null);
+        setErr((e as Error).message);
+      });
+  }, [id]);
+
+  useEffect(() => {
+    setTree(null);
+    setSel(null);
+    setOpen({});
+    loadTree();
+  }, [id, loadTree]);
+
+  if (!target) return <Empty text="Select a character or an item in the scene to edit its materials." />;
+  if (err) return <Empty text={err} />;
+  if (!tree) return <Empty text="Reading materials…" />;
+
+  const q = query.trim().toLowerCase();
+  const matches = (s: string) => !q || s.toLowerCase().includes(q);
+
+  return (
+    <div className="me">
+      <aside className="me-tree">
+        <div className="me-tree-head">
+          <b title={tree.name}>{tree.name}</b>
+          {target.others > 0 && <span className="me-muted" title="Materials are edited one object at a time — the first one selected">+{target.others} more selected</span>}
+          <button className="btn icon" title="Read the materials again" onClick={loadTree}>
+            <Icon name="redo" size={14} />
+          </button>
+        </div>
+        <div className="me-search">
+          <Icon name="search" size={13} />
+          <input placeholder="Find a part, renderer, material or shader" value={query} onChange={(e) => setQuery(e.target.value)} />
+        </div>
+        <div className="me-tree-list">
+          {tree.parts.map((p) => {
+            const rs = p.renderers.filter((r) => matches(p.label) || matches(r.name) || r.materials.some((m) => matches(m.name) || matches(m.shader)));
+            if (!rs.length) return null;
+            const isOpen = q ? true : (open[p.key] ?? (p.key === sel?.part || tree.parts.length <= 3));
+            const count = p.renderers.reduce((n, r) => n + r.materials.length, 0);
+            return (
+              <div key={p.key} className="me-part">
+                <button className="me-part-head" onClick={() => setOpen((o) => ({ ...o, [p.key]: !isOpen }))}>
+                  <Icon name={isOpen ? 'chevronDown' : 'chevronRight'} size={12} />
+                  <span>{p.label}</span>
+                  <small>{count}</small>
+                </button>
+                {isOpen &&
+                  rs.map((r) => (
+                    <div key={r.name} className={`me-renderer ${r.enabled ? '' : 'hidden'}`}>
+                      <div className="me-renderer-name" title={`Renderer ${r.name}${r.enabled ? '' : ' (hidden)'}`}>
+                        {!r.enabled && <Icon name="eyeOff" size={11} />}
+                        {r.name}
+                      </div>
+                      {r.materials
+                        .filter((m) => matches(p.label) || matches(r.name) || matches(m.name) || matches(m.shader))
+                        .map((m) => {
+                          const on = sel?.part === p.key && sel.renderer === r.name && sel.material === m.name;
+                          return (
+                            <button key={m.name} className={`me-mat ${on ? 'on' : ''}`} onClick={() => setSel({ part: p.key, renderer: r.name, material: m.name })} title={`${m.name}\n${m.shader}`}>
+                              <span>{m.name}</span>
+                              <small>{m.shader.replace(/^.*\//, '')}</small>
+                            </button>
+                          );
+                        })}
+                    </div>
+                  ))}
+              </div>
+            );
+          })}
+          {tree.parts.length === 0 && <div className="me-muted" style={{ padding: 12 }}>Nothing with materials here.</div>}
+        </div>
+      </aside>
+      <section className="me-main">
+        {sel && id !== undefined ? <MaterialView key={`${id}|${sel.part}|${sel.renderer}|${sel.material}`} id={id} sel={sel} onTreeChange={loadTree} /> : <Empty text="Pick a material on the left." />}
+      </section>
+    </div>
+  );
+}
+
+function Empty({ text }: { text: string }) {
+  return (
+    <div className="me-empty">
+      <Icon name="look" size={22} />
+      <span>{text}</span>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// One material
+// ---------------------------------------------------------------------------
+
+function MaterialView({ id, sel, onTreeChange }: { id: number; sel: Sel; onTreeChange: () => void }) {
+  const [mat, setMat] = useState<Mat | null>(null);
+  const [err, setErr] = useState('');
+  const [filter, setFilter] = useState('');
+  const [shaders, setShaders] = useState<string[]>([]);
+  const target = useMemo(() => ({ id, ...sel }), [id, sel]);
+
+  // live edits: one request per frame per value; replies are ignored while a drag is still sending
+  const pending = useRef(new Map<string, { kind: Kind; prop: string; value: unknown }>());
+  const inflight = useRef(0);
+  const frame = useRef(0);
+
+  const load = useCallback(() => {
+    bridge
+      .request<Mat>('me.material', target)
+      .then((m) => {
+        setErr('');
+        setMat(m);
+      })
+      .catch((e) => setErr((e as Error).message));
+  }, [target]);
+  useEffect(load, [load]);
+  // undo / redo and Studio-side changes: read again
+  useEffect(() => {
+    const h = () => load();
+    window.addEventListener('kf:history', h);
+    window.addEventListener('focus', h);
+    return () => {
+      window.removeEventListener('kf:history', h);
+      window.removeEventListener('focus', h);
+    };
+  }, [load]);
+  useEffect(() => {
+    call<string[]>('me.shaders').then((s) => s && setShaders(s));
+  }, []);
+
+  const send = (cmd: string, args: Record<string, unknown>, after?: () => void) => {
+    inflight.current++;
+    return bridge
+      .request<Mat | boolean>(cmd, { ...target, ...args })
+      .then((m) => {
+        inflight.current--;
+        if (m && typeof m === 'object' && inflight.current === 0 && pending.current.size === 0) setMat(m);
+        after?.();
+        return m;
+      })
+      .catch((e) => {
+        inflight.current--;
+        toast((e as Error).message, 'error');
+        load();
+      });
+  };
+
+  const set = (kind: Kind, prop: string, value: unknown, patch: (m: Mat) => Mat) => {
+    setMat((m) => m && patch(m));
+    pending.current.set(`${kind}|${prop}`, { kind, prop, value });
+    if (frame.current) return;
+    frame.current = requestAnimationFrame(() => {
+      frame.current = 0;
+      const batch = [...pending.current.values()];
+      pending.current.clear();
+      for (const b of batch) send('me.set', b, kind === 'enabled' ? onTreeChange : undefined);
+    });
+  };
+  useEffect(() => () => cancelAnimationFrame(frame.current), []);
+
+  const reset = (kind: Kind, prop = '') => send('me.reset', { kind, prop }, kind === 'shader' || kind === 'enabled' ? onTreeChange : undefined);
+
+  const animate = async (kind: Kind, prop = '') => {
+    try {
+      await bridge.request('me.animate', { ...target, kind, prop });
+      await refreshTimeline();
+      toast(`Track added and keyed at the playhead: ${nice(prop || kind)} on ${sel.material}`);
+    } catch (e) {
+      toast((e as Error).message, 'error');
+    }
+  };
+
+  if (err) return <Empty text={err} />;
+  if (!mat) return <Empty text="Reading the material…" />;
+
+  const f = filter.trim().toLowerCase();
+  const show = (p: string) => !f || p.toLowerCase().includes(f) || nice(p).toLowerCase().includes(f);
+  const colors = mat.colors.filter((c) => show(c.name));
+  const floats = mat.floats.filter((c) => show(c.name));
+  const textures = mat.textures.filter((c) => show(c.name));
+  const keywords = mat.keywords.filter((c) => show(c.name));
+  const edits = [mat.shaderEdited, mat.renderQueueEdited, ...mat.colors.map((c) => c.edited), ...mat.floats.map((c) => c.edited), ...mat.keywords.map((c) => c.edited), ...mat.textures.map((c) => c.edited || c.offsetEdited || c.scaleEdited)].filter(Boolean).length;
+  const r = mat.renderer;
+
+  const copy = async () => {
+    const name = await call<string>('me.copy', target);
+    if (name) {
+      setMat((m) => m && { ...m, clipboard: name });
+      toast(`Copied ${name}'s edits — paste them onto other materials`);
+    }
+  };
+
+  return (
+    <div className="me-view">
+      <header className="me-head">
+        <div className="me-title">
+          <h2 title={mat.material}>{mat.material}</h2>
+          <span className="me-muted">
+            {sel.renderer}
+            {edits > 0 && <em className="me-badge">{edits} edited</em>}
+          </span>
+        </div>
+        <div className="me-head-actions">
+          <button className="btn" onClick={copy} title="Copy this material's edits (MaterialEditor's clipboard)">
+            Copy edits
+          </button>
+          <button className="btn" disabled={!mat.clipboard} onClick={() => send('me.paste', {}, onTreeChange)} title={mat.clipboard ? `Paste the edits copied from ${mat.clipboard}` : 'Copy a material’s edits first'}>
+            Paste{mat.clipboard ? ` from ${mat.clipboard}` : ''}
+          </button>
+        </div>
+      </header>
+
+      <div className="me-cards">
+        <div className="look-card">
+          <div className="look-card-head">
+            <div>
+              <b>
+                Shader
+                <Help text="Swapping the shader keeps the values both shaders share. Render queue decides drawing order: transparent things draw after opaque ones (2000 = opaque, 2450 = cut-out, 3000+ = transparent)." />
+              </b>
+            </div>
+          </div>
+          <div className="look-card-body">
+            <div className="me-row">
+              <label>Shader</label>
+              <ShaderPicker value={mat.shader} shaders={shaders} onPick={(s) => send('me.set', { kind: 'shader', prop: '', value: s }, onTreeChange)} />
+              <RowTools edited={mat.shaderEdited} onReset={() => reset('shader')} onAnimate={() => animate('shader')} />
+            </div>
+            <div className="me-row">
+              <label>Render queue</label>
+              <NumberBox value={mat.renderQueue} step={1} min={0} max={5000} onChange={(v) => set('queue', '', Math.round(v), (m) => ({ ...m, renderQueue: Math.round(v), renderQueueEdited: true }))} />
+              <RowTools edited={mat.renderQueueEdited} onReset={() => reset('queue')} onAnimate={() => animate('queue')} />
+            </div>
+          </div>
+        </div>
+
+        <div className="look-card">
+          <div className="look-card-head">
+            <div>
+              <b>
+                Renderer
+                <Help text={`Switches for the renderer “${sel.renderer}” — they apply to every material on it.`} />
+              </b>
+            </div>
+          </div>
+          <div className="look-card-body">
+            <div className="me-row">
+              <label>Visible</label>
+              <span className="me-grow">
+                <Switch on={r.enabled} onChange={(v) => set('enabled', '', v, (m) => ({ ...m, renderer: { ...m.renderer, enabled: v, enabledEdited: true } }))} />
+              </span>
+              <RowTools edited={r.enabledEdited} onReset={() => reset('enabled')} onAnimate={() => animate('enabled')} />
+            </div>
+            <div className="me-row">
+              <label>Casts shadows</label>
+              <select className="input me-grow" value={r.shadowCasting} onChange={(e) => set('shadowCasting', '', e.target.value, (m) => ({ ...m, renderer: { ...m.renderer, shadowCasting: e.target.value, shadowCastingEdited: true } }))}>
+                {SHADOW_MODES.map((s) => (
+                  <option key={s} value={s}>
+                    {SHADOW_LABELS[s]}
+                  </option>
+                ))}
+              </select>
+              <RowTools edited={r.shadowCastingEdited} onReset={() => reset('shadowCasting')} onAnimate={() => animate('shadowCasting')} />
+            </div>
+            <div className="me-row">
+              <label>Receives shadows</label>
+              <span className="me-grow">
+                <Switch on={r.receiveShadows} onChange={(v) => set('receiveShadows', '', v, (m) => ({ ...m, renderer: { ...m.renderer, receiveShadows: v, receiveShadowsEdited: true } }))} />
+              </span>
+              <RowTools edited={r.receiveShadowsEdited} onReset={() => reset('receiveShadows')} onAnimate={() => animate('receiveShadows')} />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="me-filter">
+        <Icon name="search" size={13} />
+        <input placeholder={`Find a value (${mat.colors.length + mat.floats.length + mat.textures.length + mat.keywords.length})`} value={filter} onChange={(e) => setFilter(e.target.value)} />
+        {f && (
+          <button className="btn icon" title="Clear" onClick={() => setFilter('')}>
+            ×
+          </button>
+        )}
+      </div>
+
+      {colors.length > 0 && (
+        <Section title="Colors" count={colors.length}>
+          {colors.map((c) => (
+            <div key={c.name} className={`me-row ${c.edited ? 'edited' : ''}`}>
+              <label title={c.name}>{nice(c.name)}</label>
+              <span className="me-grow me-color">
+                <ColorInput value={c.value} onChange={(v) => set('color', c.name, v, (m) => ({ ...m, colors: m.colors.map((x) => (x.name === c.name ? { ...x, value: v, edited: true } : x)) }))} />
+                <span className="me-alpha" title="Alpha (opacity)">
+                  <Slider
+                    value={c.value[3] ?? 1}
+                    min={0}
+                    max={Math.max(1, Math.ceil(c.value[3] ?? 1))}
+                    step={0.01}
+                    onChange={(a) => {
+                      const v: RGBA = [c.value[0], c.value[1], c.value[2], a];
+                      set('color', c.name, v, (m) => ({ ...m, colors: m.colors.map((x) => (x.name === c.name ? { ...x, value: v, edited: true } : x)) }));
+                    }}
+                  />
+                </span>
+              </span>
+              <RowTools edited={c.edited} onReset={() => reset('color', c.name)} onAnimate={() => animate('color', c.name)} />
+            </div>
+          ))}
+        </Section>
+      )}
+
+      {floats.length > 0 && (
+        <Section title="Values" count={floats.length}>
+          {floats.map((p) => (
+            <FloatRow key={p.name} p={p} onChange={(v) => set('float', p.name, v, (m) => ({ ...m, floats: m.floats.map((x) => (x.name === p.name ? { ...x, value: v, edited: true } : x)) }))} onReset={() => reset('float', p.name)} onAnimate={() => animate('float', p.name)} />
+          ))}
+        </Section>
+      )}
+
+      {textures.length > 0 && (
+        <Section title="Textures" count={textures.length} hint="Replace a texture with a PNG or JPG — it's stored in the scene. Export saves the current one as a PNG (MaterialEditor's export folder). Tiling repeats it; offset slides it.">
+          <div className="me-textures">
+            {textures.map((t) => (
+              <TextureTile
+                key={t.name}
+                t={t}
+                onReplace={async () => {
+                  const path = await window.studioEx?.openImage?.();
+                  if (path) send('me.texture', { prop: t.name, path });
+                }}
+                onExport={async () => {
+                  try {
+                    const r = await bridge.request<{ path: string; folder: string }>('me.textureExport', { ...target, prop: t.name });
+                    toast(`Exported ${r.path.replace(/^.*[\\/]/, '')}`);
+                    window.studioEx?.openFolder?.(r.folder);
+                  } catch (e) {
+                    toast((e as Error).message, 'error');
+                  }
+                }}
+                onReset={() => reset('texture', t.name)}
+                onVec={(kind, v) => set(kind, t.name, v, (m) => ({ ...m, textures: m.textures.map((x) => (x.name === t.name ? { ...x, [kind]: v, [`${kind}Edited`]: true } : x)) }))}
+                onResetVec={(kind) => reset(kind, t.name)}
+                onAnimate={(kind) => animate(kind, t.name)}
+              />
+            ))}
+          </div>
+        </Section>
+      )}
+
+      {keywords.length > 0 && (
+        <Section title="Keywords" count={keywords.length} hint="Shader features switched on or off.">
+          {keywords.map((k) => (
+            <div key={k.name} className={`me-row ${k.edited ? 'edited' : ''}`}>
+              <label title={k.name}>{nice(k.name)}</label>
+              <span className="me-grow">
+                <Switch on={k.on} onChange={(v) => set('keyword', k.name, v, (m) => ({ ...m, keywords: m.keywords.map((x) => (x.name === k.name ? { ...x, on: v, edited: true } : x)) }))} />
+              </span>
+              <RowTools edited={k.edited} onReset={() => reset('keyword', k.name)} />
+            </div>
+          ))}
+        </Section>
+      )}
+
+      {f && !colors.length && !floats.length && !textures.length && !keywords.length && <div className="me-muted" style={{ padding: '12px 4px' }}>No value matches “{filter}”.</div>}
+      {!f && !mat.colors.length && !mat.floats.length && !mat.textures.length && !mat.keywords.length && (
+        <div className="me-muted" style={{ padding: '12px 4px' }}>
+          MaterialEditor doesn't list any values for {mat.shader}.
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Section({ title, count, hint, children }: { title: string; count: number; hint?: string; children: React.ReactNode }) {
+  return (
+    <section className="me-section">
+      <h3>
+        {title} <small>{count}</small>
+        {hint && <Help text={hint} />}
+      </h3>
+      <div className="me-section-body">{children}</div>
+    </section>
+  );
+}
+
+/** ↺ (only when edited) and ◆ (add as a Timeline track). Space is kept so rows line up. */
+function RowTools({ edited, onReset, onAnimate }: { edited: boolean; onReset: () => void; onAnimate?: () => void }) {
+  const hasTimeline = useStore((s) => !!s.tl);
+  return (
+    <span className="me-tools">
+      <button className={`btn icon ${edited ? '' : 'me-invisible'}`} title="Back to the original value" onClick={onReset} tabIndex={edited ? 0 : -1}>
+        <Icon name="undo" size={13} />
+      </button>
+      {onAnimate && hasTimeline ? (
+        <button className="btn icon" title="Animate: add a Timeline track for this value, keyed at the playhead" onClick={onAnimate}>
+          <Icon name="key" size={13} />
+        </button>
+      ) : (
+        <span className="me-tool-gap" />
+      )}
+    </span>
+  );
+}
+
+// slider range for values MaterialEditor gives no range for: fixed per name once seen, so it doesn't grow under the cursor
+const ranges = new Map<string, [number, number]>();
+function rangeFor(p: FloatProp): [number, number] {
+  if (p.min !== undefined && p.max !== undefined && p.max > p.min) return [p.min, p.max];
+  let r = ranges.get(p.name);
+  if (!r) {
+    const m = Math.max(1, Math.ceil(Math.abs(p.value) * 2));
+    r = [p.value < 0 ? -m : 0, m];
+    ranges.set(p.name, r);
+  }
+  return [Math.min(r[0], p.value), Math.max(r[1], p.value)];
+}
+
+function FloatRow({ p, onChange, onReset, onAnimate }: { p: FloatProp; onChange: (v: number) => void; onReset: () => void; onAnimate: () => void }) {
+  const [lo, hi] = rangeFor(p);
+  const step = hi - lo > 20 ? 1 : hi - lo > 2 ? 0.01 : 0.001;
+  return (
+    <div className={`me-row ${p.edited ? 'edited' : ''}`}>
+      <label title={p.name}>{nice(p.name)}</label>
+      <span className="me-grow me-float">
+        <input type="range" min={lo} max={hi} step={step} value={p.value} onChange={(e) => onChange(Number(e.target.value))} />
+        <NumberBox value={p.value} step={step} onChange={onChange} />
+      </span>
+      <RowTools edited={p.edited} onReset={onReset} onAnimate={onAnimate} />
+    </div>
+  );
+}
+
+/** A number field that only commits on Enter / blur (typing "0." shouldn't send 0). */
+function NumberBox({ value, step, min, max, onChange }: { value: number; step: number; min?: number; max?: number; onChange: (v: number) => void }) {
+  const fmt = (v: number) => (Number.isInteger(v) ? String(v) : String(Number(v.toFixed(4))));
+  const [text, setText] = useState(fmt(value));
+  const focused = useRef(false);
+  useEffect(() => {
+    if (!focused.current) setText(fmt(value));
+  }, [value]);
+  const commit = () => {
+    const v = Number(text);
+    if (Number.isFinite(v)) onChange(Math.min(max ?? Infinity, Math.max(min ?? -Infinity, v)));
+    else setText(fmt(value));
+  };
+  return (
+    <input
+      className="input mono me-num"
+      type="number"
+      step={step}
+      value={text}
+      onFocus={() => (focused.current = true)}
+      onBlur={() => {
+        focused.current = false;
+        commit();
+      }}
+      onChange={(e) => setText(e.target.value)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+        if (e.key === 'Escape') {
+          setText(fmt(value));
+          (e.target as HTMLInputElement).blur();
+        }
+      }}
+    />
+  );
+}
+
+function ShaderPicker({ value, shaders, onPick }: { value: string; shaders: string[]; onPick: (s: string) => void }) {
+  const list = shaders.includes(value) ? shaders : [value, ...shaders];
+  return (
+    <select className="input me-grow" value={value} onChange={(e) => onPick(e.target.value)} title={value}>
+      {list.map((s) => (
+        <option key={s} value={s} disabled={!shaders.includes(s)}>
+          {s}
+          {!shaders.includes(s) ? ' (built in)' : ''}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+function TextureTile({
+  t,
+  onReplace,
+  onExport,
+  onReset,
+  onVec,
+  onResetVec,
+  onAnimate,
+}: {
+  t: TexProp;
+  onReplace: () => void;
+  onExport: () => void;
+  onReset: () => void;
+  onVec: (kind: 'offset' | 'scale', v: Vec2) => void;
+  onResetVec: (kind: 'offset' | 'scale') => void;
+  onAnimate: (kind: 'offset' | 'scale' | 'texture') => void;
+}) {
+  const hasTimeline = useStore((s) => !!s.tl);
+  return (
+    <div className={`me-tex ${t.edited || t.offsetEdited || t.scaleEdited ? 'edited' : ''}`}>
+      <div className="me-tex-top">
+        <div className="me-tex-thumb" title={t.has ? `${t.name} · ${t.size}` : 'No texture'}>
+          {t.thumb ? <img src={t.thumb} alt="" /> : <span>none</span>}
+        </div>
+        <div className="me-tex-info">
+          <b title={t.name}>{nice(t.name)}</b>
+          <span className="me-muted">{t.has ? t.size : 'empty'}</span>
+          <div className="me-tex-btns">
+            {window.studioEx?.openImage && (
+              <button className="btn" onClick={onReplace} title="Use a PNG or JPG image instead">
+                Replace…
+              </button>
+            )}
+            <button className="btn" disabled={!t.has} onClick={onExport} title="Save this texture as a PNG">
+              Export
+            </button>
+            {t.edited && (
+              <button className="btn icon" onClick={onReset} title="Back to the original texture">
+                <Icon name="undo" size={13} />
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+      {(['scale', 'offset'] as const).map((kind) => {
+        const v = t[kind];
+        const edited = kind === 'scale' ? t.scaleEdited : t.offsetEdited;
+        return (
+          <div key={kind} className="me-vec">
+            <label>{kind === 'scale' ? 'Tiling' : 'Offset'}</label>
+            <NumberBox value={v[0]} step={0.01} onChange={(x) => onVec(kind, [x, v[1]])} />
+            <NumberBox value={v[1]} step={0.01} onChange={(y) => onVec(kind, [v[0], y])} />
+            <button className={`btn icon ${edited ? '' : 'me-invisible'}`} title="Back to the original" onClick={() => onResetVec(kind)} tabIndex={edited ? 0 : -1}>
+              <Icon name="undo" size={13} />
+            </button>
+            {hasTimeline ? (
+              <button className="btn icon" title="Animate: add a Timeline track, keyed at the playhead" onClick={() => onAnimate(kind)}>
+                <Icon name="key" size={13} />
+              </button>
+            ) : (
+              <span className="me-tool-gap" />
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}

@@ -15,6 +15,7 @@ contextBridge.exposeInMainWorld('studioEx', {
   },
   appInfo: () => ipcRenderer.invoke('app:info'),
   openAudio: () => ipcRenderer.invoke('dialog:openAudio'),
+  openImage: () => ipcRenderer.invoke('dialog:openImage'),
   openFolder: (p) => ipcRenderer.invoke('shell:openFolder', p),
   translate: {
     batch: (engine, items, settings) => ipcRenderer.invoke('translate:batch', engine, items, settings),

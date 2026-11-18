@@ -21,6 +21,7 @@ import { RenderPanel } from './RenderPanel';
 import { OutfitPanel } from './OutfitPanel';
 import { LightRigsPanel } from './LightRigsPanel';
 import { LookPanel } from './LookPanel';
+import { MaterialEditorPage } from './MaterialEditor';
 import { LookPresets } from './LookPresets';
 import { ModSettings } from './ModSettings';
 import { ObjectPanel } from './ObjectPanel';
@@ -331,6 +332,7 @@ function AnimationLibrary() {
 const LOOK_TABS: SubTab[] = [
   { id: 'presets', label: 'Presets', icon: 'look', hint: 'Saved looks: apply all or some parts, at any strength' },
   { id: 'settings', label: 'Settings', icon: 'sliders', hint: 'Color grade, bloom, depth of field, fog, toon shading, lights, materials' },
+  { id: 'materials', label: 'Materials', icon: 'grid', hint: 'MaterialEditor for the selected character or item: every material, its values, textures and shader' },
   { id: 'lighting', label: 'Lighting rigs', icon: 'bolt', hint: 'Light setups placed around a character' },
 ];
 
@@ -357,6 +359,7 @@ export function LookWorkspace() {
                 <LookPanel />
               </div>
             )}
+            {tab === 'materials' && <MaterialEditorPage />}
             {tab === 'lighting' && (
               <SubPage max={640}>
                 <LightRigsPanel />

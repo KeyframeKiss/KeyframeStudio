@@ -89,6 +89,11 @@ namespace StudioEX.Bridge.Api
         /// <summary>The object has an enabled Timeline track with at least two keys (something to trace).</summary>
         public static bool Animated(ObjectCtrlInfo oci) => Available && AnimatedImpl(oci);
         [MethodImpl(MethodImplOptions.NoInlining)] private static bool AnimatedImpl(ObjectCtrlInfo oci) => TimelineImpl.Animated(oci);
+        /// <summary>Add (or find) a track of another plugin's model on an object, keyed at keyAt; returns the track id.</summary>
+        public static object AddModelTrack(string modelId, string ownerContains, ObjectCtrlInfo oci, float keyAt) =>
+            Available ? AddModelTrackImpl(modelId, ownerContains, oci, keyAt) : throw new BridgeException("Timeline is not installed");
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static object AddModelTrackImpl(string modelId, string ownerContains, ObjectCtrlInfo oci, float keyAt) => TimelineImpl.AddModelTrack(modelId, ownerContains, oci, keyAt);
         public static List<float> KeyTimes(HashSet<ObjectCtrlInfo> ocis) => Available ? KeyTimesImpl(ocis) : new List<float>();
         [MethodImpl(MethodImplOptions.NoInlining)] private static List<float> KeyTimesImpl(HashSet<ObjectCtrlInfo> ocis) => TimelineImpl.KeyTimes(ocis);
 
@@ -651,6 +656,13 @@ namespace StudioEX.Bridge.Api
                 list.Add(d);
             }
             return list;
+        }
+
+        public static object AddModelTrack(string modelId, string ownerContains, ObjectCtrlInfo oci, float keyAt)
+        {
+            var model = Models.FirstOrDefault(m => m.id == modelId && m.owner != null && m.owner.IndexOf(ownerContains, StringComparison.OrdinalIgnoreCase) >= 0)
+                ?? throw new BridgeException("Timeline has no " + ownerContains + " track type " + modelId);
+            return AddTrack(new Dictionary<string, object> { { "owner", model.owner }, { "model", model.id }, { "oci", oci.objectInfo.dicKey }, { "keyAt", keyAt } });
         }
 
         private static object AddTrack(Dictionary<string, object> a)

@@ -65,6 +65,7 @@ namespace StudioEX.Bridge
             ConfigApi.Register(_router);
             LookApi.Register(_router);
             MaterialLookApi.Register(_router);
+            MaterialEditorApi.Register(_router);
             SceneApi.Register(_router);
             TimelineApi.Register(_router);
             CharaApi.Register(_router);

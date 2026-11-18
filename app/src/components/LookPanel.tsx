@@ -222,8 +222,16 @@ export function LookPanel() {
       </LookGroup>
 
       {look.materialEditor && (
-        <LookGroup title="Materials" hint="Shader values of the selected characters or items, through MaterialEditor (saved like MaterialEditor edits)">
-          <LookCard title={selection.length ? 'Selected objects' : 'Nothing selected'} wide>
+        <LookGroup title="Materials by shader" hint="One value across every material of the same shader on the selected characters or items, through MaterialEditor (saved like MaterialEditor edits). To edit a single material — textures, shader, renderer switches — use the Materials tab.">
+          <LookCard
+            title={selection.length ? 'Selected objects' : 'Nothing selected'}
+            wide
+            extra={
+              <button className="btn" onClick={() => showTab('look', 'materials')} title="Edit one material at a time: every value, textures, shader, render queue">
+                One material…
+              </button>
+            }
+          >
             <MaterialsSection
               onRule={(r) => {
                 const rs = useStore.getState().lookRules;
@@ -282,7 +290,7 @@ function ShadowToggle({ on, onChange }: { on: boolean; onChange: (v: boolean) =>
   );
 }
 
-function Switch({ on, onChange }: { on: boolean; onChange: (v: boolean) => void }) {
+export function Switch({ on, onChange }: { on: boolean; onChange: (v: boolean) => void }) {
   return (
     <button className={`switch ${on ? 'on' : ''}`} onClick={() => onChange(!on)} title={on ? 'On' : 'Off'}>
       <span />
@@ -290,7 +298,7 @@ function Switch({ on, onChange }: { on: boolean; onChange: (v: boolean) => void 
   );
 }
 
-function ColorInput({ value, onChange }: { value: number[]; onChange: (c: RGBA) => void }) {
+export function ColorInput({ value, onChange }: { value: number[]; onChange: (c: RGBA) => void }) {
   return (
     <label className="color-input" title={hex(value)}>
       <span style={{ background: hex(value) }} />
