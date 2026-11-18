@@ -5,6 +5,7 @@ import { Slider } from './CharacterPanel';
 import { ColorInput, Switch } from './LookPanel';
 import { Help } from './Help';
 import { Icon } from './Icon';
+import { BODY_GROUPS, type BodyGroup, materialName, partName, rendererName } from '../lib/kkNames';
 
 // ---------------------------------------------------------------------------
 // Look › Materials: MaterialEditor for the selected character or item. Parts → renderers → materials on the left,
@@ -77,6 +78,49 @@ interface Mat {
   clipboard: string | null;
 }
 
+/** The tree as shown: renderers with the same name merged (MaterialEditor addresses them by name anyway), empty ones
+ * dropped, plain-English names added, and the body sorted into Eyes / Face / Mouth / Body / Hidden. */
+interface ViewMat extends TreeMat {
+  nice: string | null;
+}
+interface ViewRenderer {
+  name: string;
+  nice: string | null;
+  group?: BodyGroup;
+  enabled: boolean;
+  materials: ViewMat[];
+}
+interface ViewPart {
+  key: string;
+  label: string;
+  renderers: ViewRenderer[];
+}
+
+function tidy(t: Tree): ViewPart[] {
+  return t.parts
+    .map((p) => {
+      const byName = new Map<string, ViewRenderer>();
+      for (const r of p.renderers) {
+        let v = byName.get(r.name);
+        if (!v) {
+          const f = rendererName(r.name, p.key);
+          v = { name: r.name, nice: f.label, group: p.key.startsWith('Character') ? f.group : undefined, enabled: r.enabled, materials: [] };
+          byName.set(r.name, v);
+        } else v.enabled = v.enabled || r.enabled;
+        for (const m of r.materials) if (!v.materials.some((x) => x.name === m.name)) v.materials.push({ ...m, nice: materialName(m.name) });
+      }
+      let renderers = [...byName.values()].filter((r) => r.materials.length > 0);
+      if (p.key.startsWith('Character')) renderers = renderers.map((r, i) => ({ r, i })).sort((a, b) => BODY_GROUPS.indexOf(a.r.group ?? 'Body') - BODY_GROUPS.indexOf(b.r.group ?? 'Body') || a.i - b.i).map((x) => x.r);
+      return { key: p.key, label: partName(p.label, p.key, renderers.map((r) => r.name)), renderers };
+    })
+    .filter((p) => p.renderers.length > 0);
+}
+
+/** What a material is called in the editor's heading: its own plain name, else its renderer's, else the raw name. */
+export function materialTitle(sel: { part: string; renderer: string; material: string }) {
+  return materialName(sel.material) ?? rendererName(sel.renderer, sel.part).label ?? sel.material;
+}
+
 interface Sel {
   part: string;
   renderer: string;
@@ -122,7 +166,7 @@ export function MaterialEditorPage() {
         setSel((cur) => {
           const has = cur && t.parts.some((p) => p.key === cur.part && p.renderers.some((r) => r.name === cur.renderer && r.materials.some((m) => m.name === cur.material)));
           if (has) return cur;
-          const p = t.parts[0];
+          const p = tidy(t)[0];
           const r = p?.renderers[0];
           const m = r?.materials[0];
           return p && r && m ? { part: p.key, renderer: r.name, material: m.name } : null;
@@ -145,8 +189,9 @@ export function MaterialEditorPage() {
   if (err) return <Empty text={err} />;
   if (!tree) return <Empty text="Reading materials…" />;
 
+  const parts = tidy(tree);
   const q = query.trim().toLowerCase();
-  const matches = (s: string) => !q || s.toLowerCase().includes(q);
+  const matches = (...xs: (string | null | undefined)[]) => !q || xs.some((s) => !!s && s.toLowerCase().includes(q));
 
   return (
     <div className="me">
@@ -160,45 +205,69 @@ export function MaterialEditorPage() {
         </div>
         <div className="me-search">
           <Icon name="search" size={13} />
-          <input placeholder="Find a part, renderer, material or shader" value={query} onChange={(e) => setQuery(e.target.value)} />
+          <input placeholder="Find: eyes, hair, cf_m_body, a shader…" value={query} onChange={(e) => setQuery(e.target.value)} />
         </div>
         <div className="me-tree-list">
-          {tree.parts.map((p) => {
-            const rs = p.renderers.filter((r) => matches(p.label) || matches(r.name) || r.materials.some((m) => matches(m.name) || matches(m.shader)));
+          {parts.map((p) => {
+            const partHit = matches(p.label);
+            const rs = p.renderers.filter((r) => partHit || matches(r.name, r.nice, r.group) || r.materials.some((m) => matches(m.name, m.nice, m.shader)));
             if (!rs.length) return null;
-            const isOpen = q ? true : (open[p.key] ?? (p.key === sel?.part || tree.parts.length <= 3));
+            const isOpen = q ? true : (open[p.key] ?? (p.key === sel?.part || parts.length <= 3));
             const count = p.renderers.reduce((n, r) => n + r.materials.length, 0);
             return (
               <div key={p.key} className="me-part">
-                <button className="me-part-head" onClick={() => setOpen((o) => ({ ...o, [p.key]: !isOpen }))}>
+                <button className="me-part-head" onClick={() => setOpen((o) => ({ ...o, [p.key]: !isOpen }))} title={p.label}>
                   <Icon name={isOpen ? 'chevronDown' : 'chevronRight'} size={12} />
                   <span>{p.label}</span>
                   <small>{count}</small>
                 </button>
                 {isOpen &&
-                  rs.map((r) => (
-                    <div key={r.name} className={`me-renderer ${r.enabled ? '' : 'hidden'}`}>
-                      <div className="me-renderer-name" title={`Renderer ${r.name}${r.enabled ? '' : ' (hidden)'}`}>
-                        {!r.enabled && <Icon name="eyeOff" size={11} />}
-                        {r.name}
+                  rs.map((r, i) => {
+                    const rHit = partHit || matches(r.name, r.nice, r.group);
+                    return (
+                      <div key={r.name}>
+                        {r.group && r.group !== rs[i - 1]?.group && (
+                          <div className="me-group">
+                            {r.group}
+                            {r.group === 'Hidden' && <Help text="Parts the game normally doesn't show: the see-through silhouette used in H scenes and the invisible mesh that casts the body's shadow." />}
+                          </div>
+                        )}
+                        <div className={`me-renderer ${r.enabled ? '' : 'hidden'}`}>
+                          <div className="me-renderer-name" title={`Renderer ${r.name}${r.enabled ? '' : ' (hidden)'}`}>
+                            {!r.enabled && <Icon name="eyeOff" size={11} />}
+                            {r.nice ? (
+                              <>
+                                <b>{r.nice}</b>
+                                <code>{r.name}</code>
+                              </>
+                            ) : (
+                              <code className="raw">{r.name}</code>
+                            )}
+                          </div>
+                          {r.materials
+                            .filter((m) => rHit || matches(m.name, m.nice, m.shader))
+                            .map((m) => {
+                              const on = sel?.part === p.key && sel.renderer === r.name && sel.material === m.name;
+                              // the plain name only when it says more than the renderer's already does
+                              const nice = m.nice && !r.nice?.startsWith(m.nice) ? m.nice : null;
+                              return (
+                                <button key={m.name} className={`me-mat ${on ? 'on' : ''}`} onClick={() => setSel({ part: p.key, renderer: r.name, material: m.name })} title={[m.nice, m.name, m.shader].filter(Boolean).join('\n')}>
+                                  <span>{nice ?? m.name}</span>
+                                  <small>
+                                    {nice ? `${m.name} · ` : ''}
+                                    {m.shader.replace(/^.*\//, '')}
+                                  </small>
+                                </button>
+                              );
+                            })}
+                        </div>
                       </div>
-                      {r.materials
-                        .filter((m) => matches(p.label) || matches(r.name) || matches(m.name) || matches(m.shader))
-                        .map((m) => {
-                          const on = sel?.part === p.key && sel.renderer === r.name && sel.material === m.name;
-                          return (
-                            <button key={m.name} className={`me-mat ${on ? 'on' : ''}`} onClick={() => setSel({ part: p.key, renderer: r.name, material: m.name })} title={`${m.name}\n${m.shader}`}>
-                              <span>{m.name}</span>
-                              <small>{m.shader.replace(/^.*\//, '')}</small>
-                            </button>
-                          );
-                        })}
-                    </div>
-                  ))}
+                    );
+                  })}
               </div>
             );
           })}
-          {tree.parts.length === 0 && <div className="me-muted" style={{ padding: 12 }}>Nothing with materials here.</div>}
+          {parts.length === 0 && <div className="me-muted" style={{ padding: 12 }}>Nothing with materials here.</div>}
         </div>
       </aside>
       <section className="me-main">
@@ -323,9 +392,9 @@ function MaterialView({ id, sel, onTreeChange }: { id: number; sel: Sel; onTreeC
     <div className="me-view">
       <header className="me-head">
         <div className="me-title">
-          <h2 title={mat.material}>{mat.material}</h2>
+          <h2 title={mat.material}>{materialTitle(sel)}</h2>
           <span className="me-muted">
-            {sel.renderer}
+            <code>{mat.material}</code> on <code>{sel.renderer}</code>
             {edits > 0 && <em className="me-badge">{edits} edited</em>}
           </span>
         </div>
