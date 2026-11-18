@@ -70,6 +70,7 @@ namespace StudioEX.Bridge.Api
         private void PollChanges()
         {
             if (_lastPlaying) return;
+            if (PoseApi.Previewing) return; // a hover preview is not a change (and must never be auto-keyed)
             // While key edits are held back (pose stale), keep the baseline: re-taking it would drop the user's
             // unkeyed changes from the count, and the next edit would then overwrite them.
             bool stale = TimelineApi.PoseStale();

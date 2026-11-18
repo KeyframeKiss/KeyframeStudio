@@ -15,6 +15,7 @@ namespace StudioEX.Bridge
             Try(TimelineApi.PruneDeadTracks); // Timeline keeps old tracks when the next scene has no Timeline data
             Try(CameraApi.ClearThumbs);
             Try(FaceApi.ClearCache);
+            Try(PoseApi.ForgetPreview); // the previewed characters are gone with the old scene
             Try(() => ViewportTools.Instance?.ClearAll());
             Try(() => StudioBridgePlugin.Instance?.Broadcast("scene.reset", null));
         }

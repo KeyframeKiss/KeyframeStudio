@@ -1046,6 +1046,7 @@ select {
   animation: pulse 0.9s infinite alternate;
 }
 .look-card {
+  position: relative; /* favorite star */
   border-radius: 7px;
   overflow: hidden;
   background: var(--bg-2);
@@ -2510,4 +2511,104 @@ select {
 .diag-pill.muted {
   background: var(--bg-3);
   color: var(--text-3);
+}
+
+/* favorites on cards and rows (scenes, looks, animations) */
+.star-host:hover .face-star,
+.star-host:focus-visible .face-star {
+  opacity: 1;
+}
+.row-star {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  border: 0;
+  padding: 0;
+  background: none;
+  color: var(--text-3);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+}
+.anim-row:hover .row-star,
+.row-star.on {
+  opacity: 1;
+}
+.row-star.on {
+  color: #ffc94a;
+}
+.row-star:hover {
+  color: var(--text-0);
+}
+.anim-sep {
+  height: 1px;
+  margin: 4px 8px;
+  background: var(--line-soft);
+}
+
+/* Pose library: comparison */
+.pose-card.comparing {
+  box-shadow: 0 0 0 2px var(--accent-2) inset;
+}
+.pose-compare-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 14px;
+  font-size: 12px;
+  color: var(--text-1);
+  background: color-mix(in srgb, var(--accent-2) 12%, transparent);
+  border-bottom: 1px solid var(--line-soft);
+}
+.dialog.pose-compare {
+  width: min(860px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.pose-compare-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.pose-compare-head h2 {
+  margin: 0;
+}
+.pose-compare-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  min-height: 0;
+}
+.pose-compare-col {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.pose-compare-img {
+  aspect-ratio: 1;
+  border-radius: 10px;
+  background: var(--bg-0);
+  border: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  color: var(--text-3);
+  font-size: 12px;
+  text-align: center;
+  padding: 0;
+}
+.pose-compare-img img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.pose-compare-col small {
+  color: var(--text-3);
+  min-height: 1em;
 }

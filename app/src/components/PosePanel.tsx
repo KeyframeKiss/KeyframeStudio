@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { bridge } from '../bridge/client';
 import { call, displayName, selectedCharacters, toast, useStore } from '../state/store';
 import { ContextMenu, type MenuItem } from './ContextMenu';
@@ -58,6 +58,9 @@ export function PosePanel({ wide }: { wide?: boolean }) {
   const [menu, setMenu] = useState<{ x: number; y: number; items: MenuItem[] } | null>(null);
   const [prompt, setPrompt] = useState<PromptState | null>(null);
   const [job, setJob] = useState<{ running: boolean; done: number; total: number } | null>(null);
+  const [hoverPreview, setHoverPreview] = useState(() => lsGet('studioex.pose.hoverPreview', '1') === '1');
+  const [compare, setCompare] = useState<string[]>([]); // pose paths picked for side-by-side
+  const [comparing, setComparing] = useState(false);
 
   const load = useCallback(() => {
     call<PoseFile[]>('pose.list').then((p) => p && setPoses(p));
@@ -116,7 +119,44 @@ export function PosePanel({ wide }: { wide?: boolean }) {
     return true;
   };
 
+  // ---------------- hover preview: the pose shows on the character while the pointer rests on it ----------------
+  const pv = useRef<{ timer: number; end: number; path: string | null }>({ timer: 0, end: 0, path: null });
+  const endPreview = useCallback(() => {
+    const s = pv.current;
+    window.clearTimeout(s.timer);
+    window.clearTimeout(s.end);
+    if (s.path) bridge.request('pose.previewEnd').catch(() => {});
+    s.path = null;
+  }, []);
+  useEffect(() => endPreview, [endPreview]); // leaving the panel ends it
+  const hoverIn = (p: PoseFile) => {
+    if (!wide || !hoverPreview || !chars.length || status !== 'open') return;
+    const s = pv.current;
+    window.clearTimeout(s.timer);
+    window.clearTimeout(s.end);
+    s.timer = window.setTimeout(() => {
+      s.path = p.path;
+      bridge.request('pose.preview', { ids: chars, path: p.path }).catch(() => (s.path = null));
+    }, 350);
+  };
+  const hoverOut = () => {
+    const s = pv.current;
+    window.clearTimeout(s.timer);
+    if (s.path) s.end = window.setTimeout(endPreview, 150); // moving to the next card keeps the preview going
+  };
+
+  const toggleCompare = (p: PoseFile) => {
+    const next = compare.includes(p.path) ? compare.filter((x) => x !== p.path) : [...compare.slice(-1), p.path];
+    setCompare(next);
+    if (next.length === 2) setComparing(true);
+  };
+
   const apply = (p: PoseFile) => {
+    // a hover preview of this pose becomes the real thing (one undo step back to the pose before it)
+    const s = pv.current;
+    window.clearTimeout(s.timer);
+    window.clearTimeout(s.end);
+    s.path = null;
     if (!need()) return;
     call('pose.load', { ids: chars, path: p.path }).then((r) => r && setPoses((ps) => ps.map((x) => (x.path === p.path ? { ...x, lastUsed: Date.now() } : x))));
   };
@@ -151,6 +191,7 @@ export function PosePanel({ wide }: { wide?: boolean }) {
       items: [
         { header: true, label: displayName(p) },
         { label: 'Apply to selected', action: () => apply(p) },
+        { label: compare.includes(p.path) ? 'Remove from comparison' : compare.length ? 'Compare with the other pose' : 'Compare… (pick a second pose)', action: () => toggleCompare(p) },
         { label: p.favorite ? 'Remove from favorites' : 'Add to favorites', action: () => setMeta(p, { favorite: !p.favorite }) },
         {
           label: 'Edit tags…',
@@ -231,6 +272,19 @@ export function PosePanel({ wide }: { wide?: boolean }) {
               <option value="name">Name</option>
             </select>
           )}
+          {wide && (
+            <button
+              className={`btn ${hoverPreview ? 'on' : ''}`}
+              title="Preview on hover: rest the pointer on a pose to see it on the selected character; click to keep it, move away to go back"
+              onClick={() => {
+                lsSet('studioex.pose.hoverPreview', hoverPreview ? '0' : '1');
+                if (hoverPreview) endPreview();
+                setHoverPreview(!hoverPreview);
+              }}
+            >
+              <Icon name="eye" size={13} /> Preview
+            </button>
+          )}
           <button className={`btn ${favOnly ? 'on' : ''}`} title="Favorites only" onClick={() => setFavOnly(!favOnly)}>
             <StarIcon filled={favOnly} size={13} />
           </button>
@@ -286,16 +340,26 @@ export function PosePanel({ wide }: { wide?: boolean }) {
         )}
       </div>
 
-      <div className={wide ? `panel-body pose-grid${showImages ? '' : ' compact'}` : 'panel-body'}>
+      {wide && compare.length === 1 && (
+        <div className="pose-compare-bar">
+          Comparing “{displayName(poses.find((p) => p.path === compare[0]) ?? { name: '…' })}” — Ctrl+click a second pose.
+          <button className="btn small" onClick={() => setCompare([])}>
+            Cancel
+          </button>
+        </div>
+      )}
+      <div className={wide ? `panel-body pose-grid${showImages ? '' : ' compact'}` : 'panel-body'} onPointerLeave={hoverOut}>
         {list.map((p) => {
           const img = imgOf(p);
           return (
             <div {...pressable}
               key={p.path}
-              className={wide ? 'pose-card' : 'model-row'}
-              onClick={() => apply(p)}
+              className={wide ? `pose-card${compare.includes(p.path) ? ' comparing' : ''}` : 'model-row'}
+              onClick={(e) => (wide && (e.ctrlKey || e.metaKey) ? toggleCompare(p) : apply(p))}
+              onPointerEnter={() => hoverIn(p)}
+              onPointerLeave={hoverOut}
               onContextMenu={(e) => openMenu(e, p)}
-              title={`${p.name}${p.nameEn ? `\n${p.nameEn}` : ''}${p.tags?.length ? `\nTags: ${p.tags.join(', ')}` : ''}\n${new Date(p.modified).toLocaleString()}\nClick to apply · right-click for more`}
+              title={`${p.name}${p.nameEn ? `\n${p.nameEn}` : ''}${p.tags?.length ? `\nTags: ${p.tags.join(', ')}` : ''}\n${new Date(p.modified).toLocaleString()}\nClick to apply · Ctrl+click to compare · right-click for more`}
             >
               {wide && (
                 <button
@@ -336,6 +400,65 @@ export function PosePanel({ wide }: { wide?: boolean }) {
       </div>
       {menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />}
       {prompt && <PromptDialog p={prompt} onClose={() => setPrompt(null)} />}
+      {comparing && compare.length === 2 && (
+        <ComparePoses
+          poses={compare.map((path) => poses.find((p) => p.path === path)).filter((p): p is PoseFile => !!p)}
+          onApply={(p) => {
+            apply(p);
+            setComparing(false);
+            setCompare([]);
+          }}
+          onSwap={() => setCompare([compare[1], compare[0]])}
+          onClose={() => {
+            setComparing(false);
+            setCompare([]);
+          }}
+        />
+      )}
     </>
+  );
+}
+
+/** Two poses side by side, large, to choose between them. */
+function ComparePoses({ poses, onApply, onSwap, onClose }: { poses: PoseFile[]; onApply: (p: PoseFile) => void; onSwap: () => void; onClose: () => void }) {
+  useEffect(() => {
+    const k = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    window.addEventListener('keydown', k);
+    return () => window.removeEventListener('keydown', k);
+  }, [onClose]);
+  return (
+    <div className="overlay" onClick={onClose}>
+      <div className="dialog pose-compare" onClick={(e) => e.stopPropagation()}>
+        <div className="pose-compare-head">
+          <h2>Compare poses</h2>
+          <span style={{ flex: 1 }} />
+          <button className="btn" onClick={onSwap} title="Swap left and right">
+            ⇄ Swap
+          </button>
+          <button className="btn" onClick={onClose}>
+            Close
+          </button>
+        </div>
+        <div className="pose-compare-grid">
+          {poses.map((p) => {
+            const img = imgOf(p);
+            return (
+              <div key={p.path} className="pose-compare-col">
+                <div className="pose-compare-img">
+                  {img ? <img src={`sximg://thumb/?p=${encodeURIComponent(img)}`} alt="" /> : <span>No thumbnail yet — right-click the pose › Make thumbnail</span>}
+                </div>
+                <strong>{displayName(p)}</strong>
+                <small>
+                  {[p.folder, p.sex === 0 ? 'male' : p.sex === 1 ? 'female' : null, p.tags?.join(', ')].filter(Boolean).join(' · ') || ' '}
+                </small>
+                <button className="btn primary" onClick={() => onApply(p)}>
+                  Apply this pose
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
   );
 }

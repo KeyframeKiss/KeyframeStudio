@@ -43,6 +43,7 @@ namespace StudioEX.Bridge
             gameObject.AddComponent<FaceBaker>();
             gameObject.AddComponent<PoseThumbs>();
             PoseThumbs.Register(_router);
+            LibraryMeta.Register(_router);
             gameObject.AddComponent<PreviewStream>(); // experimental live preview (roadmap Phase 3 spike)
             PreviewStream.Register(_router);
             CoreApi.Register(_router);
@@ -88,6 +89,8 @@ namespace StudioEX.Bridge
                 while (_logQueue.Count > 0) Logger.LogInfo(_logQueue.Dequeue());
 
             ViewportTools.Watchdog();
+            // the app went away mid-preview: put the characters back in their own poses
+            if (PoseApi.Previewing && ClientCount == 0) PoseApi.EndPreview();
             // Handle a bounded number of requests per frame to keep Studio responsive. While ghosts are
             // baking the playhead is temporarily elsewhere: hold requests for those few frames.
             for (int n = 0; n < 64 && !ViewportTools.Busy; n++)

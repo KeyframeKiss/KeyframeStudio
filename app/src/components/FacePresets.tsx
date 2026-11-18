@@ -18,6 +18,8 @@ interface SavedFace {
   file: string;
   name: string;
   bones: string[];
+  /** saved faces: how many shape (blendshape) edits it carries */
+  shapes?: number;
   tags: string[];
   favorite: boolean;
   from: string;
@@ -40,6 +42,7 @@ function normalize(list: unknown): SavedFace[] {
       file: f.file!,
       name: typeof f.name === 'string' ? f.name : f.file!,
       bones: Array.isArray(f.bones) ? f.bones : [],
+      shapes: Number(f.shapes) || 0,
       tags: Array.isArray(f.tags) ? f.tags.filter((t) => typeof t === 'string') : [],
       favorite: !!f.favorite,
       from: typeof f.from === 'string' ? f.from : '',
@@ -72,8 +75,13 @@ function scopeFor(features: string[]) {
   return [...new Set(names.flatMap((n) => [n, twinOf(n)]))];
 }
 
-const featuresOf = (f: SavedFace) =>
-  FACE_FEATURES.filter((ft) => ft.bones.some((b) => f.bones.includes(b.name) || f.bones.includes(twinOf(b.name)))).map((ft) => ft.label);
+const featuresOf = (f: SavedFace) => [
+  ...FACE_FEATURES.filter((ft) => ft.bones.some((b) => f.bones.includes(b.name) || f.bones.includes(twinOf(b.name)))).map((ft) => ft.label),
+  ...(f.shapes ? [`Shapes (${f.shapes})`] : []),
+];
+
+/** Parts a saved face can apply: the face features plus "shapes" (blendshape edits). */
+const ALL_PARTS = [...FACE_FEATURES.map((f) => f.id), 'shapes'];
 
 /** The same library UI serves saved faces (KKPE bone offsets) and saved expressions (expression values). */
 export type PresetKind = 'face' | 'expression';
@@ -109,13 +117,15 @@ export function FacePresets({ ids, onApplied, kind = 'face' }: { ids: number[]; 
   const [parts, setParts] = useState<string[]>(() => {
     try {
       const v = JSON.parse(lsGet('studioex.face.parts', 'null'));
-      return Array.isArray(v) ? v : FACE_FEATURES.map((f) => f.id);
+      if (!Array.isArray(v)) return ALL_PARTS;
+      // saved before shapes existed with every part on: include shapes too
+      return FACE_FEATURES.every((f) => v.includes(f.id)) && !v.includes('shapes') ? [...v, 'shapes'] : v;
     } catch {
-      return FACE_FEATURES.map((f) => f.id);
+      return ALL_PARTS;
     }
   });
   const [clear, setClear] = useState(() => lsGet('studioex.face.clear', '1') === '1');
-  const allParts = parts.length === FACE_FEATURES.length;
+  const allParts = ALL_PARTS.every((p) => parts.includes(p));
 
   const load = useCallback(() => {
     if (status !== 'open') return;
@@ -148,7 +158,7 @@ export function FacePresets({ ids, onApplied, kind = 'face' }: { ids: number[]; 
   const apply = async (f: SavedFace) => {
     if (!ids.length) return toast('Select a character first');
     try {
-      if (kind === 'face') await bridge.request('face.applyPreset', { ids, file: f.file, bones: scopeFor(parts), strength, clear });
+      if (kind === 'face') await bridge.request('face.applyPreset', { ids, file: f.file, bones: scopeFor(parts), shapes: parts.includes('shapes'), strength, clear });
       else {
         await bridge.request('chara.set', { ids, ...(f.values ?? {}) });
         bridge.request('expr.updatePreset', { file: f.file, used: true }).catch(() => {});
@@ -165,7 +175,11 @@ export function FacePresets({ ids, onApplied, kind = 'face' }: { ids: number[]; 
   const original = async () => {
     if (!ids.length) return;
     try {
-      if (kind === 'face') for (const id of ids) await bridge.request('face.reset', { id, bones: scopeFor(parts), mirror: false });
+      if (kind === 'face')
+        for (const id of ids) {
+          await bridge.request('face.reset', { id, bones: scopeFor(parts), mirror: false });
+          if (parts.includes('shapes')) await bridge.request('face.resetShapes', { id }).catch(() => {});
+        }
       else await bridge.request('chara.set', { ids, ...NEUTRAL_EXPRESSION });
       setActive('');
       onApplied();
@@ -388,7 +402,7 @@ function FaceCard({ f, active, big, selected, onClick, onMenu, onStar }: { f: Sa
       role="button"
       tabIndex={0}
       className={`face-preset ${big ? 'big' : ''} ${active ? 'active' : ''} ${selected ? 'selected' : ''}`}
-      title={`${f.name}${f.tags.length ? `\nTags: ${f.tags.join(', ')}` : ''}${f.bones.length ? `\nChanges: ${featuresOf(f).join(', ')}` : ''}${f.from ? `\nSaved from: ${f.from}` : ''}\nClick to apply · right-click for more`}
+      title={`${f.name}${f.tags.length ? `\nTags: ${f.tags.join(', ')}` : ''}${f.bones.length || f.shapes ? `\nChanges: ${featuresOf(f).join(', ')}` : ''}${f.from ? `\nSaved from: ${f.from}` : ''}\nClick to apply · right-click for more`}
       onClick={onClick}
       onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), onClick())}
       onContextMenu={onMenu}
@@ -461,8 +475,13 @@ function ApplyOptions(p: { parts: string[]; setParts: (v: string[]) => void; str
         Parts to apply
       </div>
       <div className="face-apply-parts">
-        {FACE_FEATURES.map((f) => (
-          <button key={f.id} className={`face-feature ${p.parts.includes(f.id) ? 'on' : ''}`} onClick={() => p.setParts(p.parts.includes(f.id) ? p.parts.filter((x) => x !== f.id) : [...p.parts, f.id])}>
+        {[...FACE_FEATURES.map((f) => ({ id: f.id, label: f.label })), { id: 'shapes', label: 'Shapes' }].map((f) => (
+          <button
+            key={f.id}
+            className={`face-feature ${p.parts.includes(f.id) ? 'on' : ''}`}
+            title={f.id === 'shapes' ? 'Shape (blendshape) edits saved with the face' : undefined}
+            onClick={() => p.setParts(p.parts.includes(f.id) ? p.parts.filter((x) => x !== f.id) : [...p.parts, f.id])}
+          >
             {f.label}
           </button>
         ))}

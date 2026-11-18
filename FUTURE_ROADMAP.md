@@ -88,6 +88,12 @@ The goal is not to replace working systems. It is to make existing tools easier 
 - Improved filtering and search.
 - Side-by-side pose comparison.
 
+**Status (2026-11-17): Phase 1 done.**
+- Favorites, recently used and tags for scenes, animation clips and looks (poses and faces already had them). They are stored in UserData/StudioEX/library-meta.json, so the game's files are never touched.
+- **Pose library:** resting the pointer on a pose previews it on the selected character, and moving away puts the character back. Clicking keeps the pose. Loading, copying and mirroring a pose are undoable. Ctrl+click two poses to compare them side by side.
+- Saved faces also keep shape (blendshape) edits. "Shapes" is a part you can choose when applying.
+- Not done: custom collections beyond tags.
+
 **Deliverable:** Faster browsing and expression work using systems that already exist.
 
 ---

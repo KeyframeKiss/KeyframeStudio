@@ -23,6 +23,9 @@ namespace StudioEX.Bridge.Api
             r.Add("pose.copy", Copy);
             r.Add("pose.mirror", Mirror);
             r.Add("pose.setMeta", SetMeta);
+            r.Add("pose.preview", Preview);
+            r.Add("pose.previewEnd", a => { EndPreview(); return true; });
+            r.Add("pose.fingerprint", a => Fingerprint(CharaApi.Chara(a.GetInt("id"))));
         }
 
         // ---------------- favorites / tags / last used ----------------
@@ -144,6 +147,94 @@ namespace StudioEX.Bridge.Api
             return list;
         }
 
+        // ---------------- undo + hover preview ----------------
+        // A pose change is undone by re-applying a full pose snapshot (PauseCtrl.FileInfo: FK/IK, hands, look,
+        // animation) taken before it. A hover preview applies the pose temporarily and keeps the original:
+        // ending the preview puts it back, clicking (pose.load) keeps the pose and records the original for undo.
+
+        private static readonly Dictionary<OCIChar, PauseCtrl.FileInfo> PreviewOrig = new Dictionary<OCIChar, PauseCtrl.FileInfo>();
+
+        /// <summary>A hover preview is showing (change detection and auto-key wait until it ends).</summary>
+        public static bool Previewing => PreviewOrig.Count > 0;
+
+        private static bool Alive(OCIChar c) => c != null && c.charInfo != null && Singleton<Studio.Studio>.Instance.dicObjectCtrl.ContainsValue(c);
+
+        private sealed class PoseUndo : IUndoEntry
+        {
+            private readonly List<KeyValuePair<OCIChar, PauseCtrl.FileInfo>> _before;
+            public PoseUndo(List<KeyValuePair<OCIChar, PauseCtrl.FileInfo>> before, string label) { _before = before; Label = label; }
+            public string Label { get; }
+            public bool Absorbs(IUndoEntry newer) => false;
+
+            public IUndoEntry Restore()
+            {
+                var live = _before.Where(kv => Alive(kv.Key)).ToList();
+                var now = Capture(live.Select(kv => kv.Key));
+                foreach (var kv in live) kv.Value.Apply(kv.Key);
+                return new PoseUndo(now, Label);
+            }
+        }
+
+        /// <summary>Pose snapshots of these characters as they are "really" (a preview's original, not the preview).</summary>
+        private static List<KeyValuePair<OCIChar, PauseCtrl.FileInfo>> Capture(IEnumerable<OCIChar> cs) =>
+            cs.Select(c => new KeyValuePair<OCIChar, PauseCtrl.FileInfo>(c, PreviewOrig.TryGetValue(c, out var o) ? o : new PauseCtrl.FileInfo(c))).ToList();
+
+        /// <summary>Called before a pose command changes these characters: ends any preview, returns the undo entry.</summary>
+        private static PoseUndo Begin(List<OCIChar> targets, string label)
+        {
+            var before = Capture(targets);
+            foreach (var c in targets) PreviewOrig.Remove(c); // the command's result replaces the preview
+            EndPreview();                                      // other characters still previewing go back
+            return new PoseUndo(before, label);
+        }
+
+        /// <summary>args: {ids, path} — show the pose on the characters until previewEnd (or a pose command).</summary>
+        private static object Preview(Dictionary<string, object> a)
+        {
+            string path = a.GetString("path");
+            if (string.IsNullOrEmpty(path) || !File.Exists(path)) throw new BridgeException("Pose file not found");
+            int n = 0;
+            foreach (var c in Targets(a))
+            {
+                if (!PreviewOrig.ContainsKey(c)) PreviewOrig[c] = new PauseCtrl.FileInfo(c);
+                if (PauseCtrl.Load(c, path)) n++;
+            }
+            return n;
+        }
+
+        public static void ForgetPreview() => PreviewOrig.Clear();
+
+        /// <summary>Short digest of a character's FK rotations and IK targets (tests: "is this the same pose?").</summary>
+        private static string Fingerprint(OCIChar c)
+        {
+            var sb = new System.Text.StringBuilder();
+            foreach (var kv in c.oiCharInfo.bones.OrderBy(k => k.Key))
+            {
+                var r = kv.Value.changeAmount.rot;
+                sb.Append(kv.Key).Append(':').Append(Mathf.RoundToInt(r.x)).Append(',').Append(Mathf.RoundToInt(r.y)).Append(',').Append(Mathf.RoundToInt(r.z)).Append(';');
+            }
+            foreach (var ik in c.listIKTarget)
+            {
+                if (ik?.targetInfo == null) continue;
+                var p = ik.targetInfo.changeAmount.pos;
+                sb.Append(Mathf.RoundToInt(p.x * 1000)).Append(',').Append(Mathf.RoundToInt(p.y * 1000)).Append(',').Append(Mathf.RoundToInt(p.z * 1000)).Append(';');
+            }
+            using (var md5 = System.Security.Cryptography.MD5.Create())
+                return BitConverter.ToString(md5.ComputeHash(System.Text.Encoding.UTF8.GetBytes(sb.ToString()))).Replace("-", "").Substring(0, 16);
+        }
+
+        /// <summary>Put every previewed character back in its own pose.</summary>
+        public static void EndPreview()
+        {
+            if (PreviewOrig.Count == 0) return;
+            foreach (var kv in PreviewOrig.ToList())
+            {
+                try { if (Alive(kv.Key)) kv.Value.Apply(kv.Key); }
+                catch (Exception e) { StudioBridgePlugin.Logger.LogWarning("Couldn't end pose preview: " + e.Message); }
+            }
+            PreviewOrig.Clear();
+        }
+
         private static IEnumerable<OCIChar> Targets(Dictionary<string, object> a)
         {
             foreach (var id in a.GetList("ids"))
@@ -168,8 +259,11 @@ namespace StudioEX.Bridge.Api
             string path = a.GetString("path");
             if (string.IsNullOrEmpty(path) || !File.Exists(path)) throw new BridgeException("Pose file not found");
             int n = 0;
-            foreach (var c in Targets(a)) if (PauseCtrl.Load(c, path)) n++;
+            var targets = Targets(a).ToList();
+            var undo = Begin(targets, "Load pose");
+            foreach (var c in targets) if (PauseCtrl.Load(c, path)) n++;
             if (n == 0) throw new BridgeException("Select one or more characters first");
+            UndoStack.Push(undo);
             if (path.StartsWith(Folder, StringComparison.OrdinalIgnoreCase))
             {
                 try { MetaFor(path, true)["lastUsed"] = (DateTime.UtcNow - new DateTime(1970, 1, 1)).TotalMilliseconds; SaveUserMeta(); } catch { }
@@ -182,13 +276,15 @@ namespace StudioEX.Bridge.Api
             var src = CharaApi.Chara(a.GetInt("from"));
             var pose = new PauseCtrl.FileInfo(src);
             int n = 0;
-            foreach (var c in Targets(a))
+            var targets = Targets(a).Where(c => c != src).ToList();
+            var undo = Begin(targets, "Copy pose");
+            foreach (var c in targets)
             {
-                if (c == src) continue;
                 pose.Apply(c);
                 n++;
             }
             if (n == 0) throw new BridgeException("Select the characters to copy the pose to");
+            UndoStack.Push(undo);
             return n;
         }
 
@@ -214,13 +310,16 @@ namespace StudioEX.Bridge.Api
         {
             int n = 0;
             bool fk = a.GetBool("fk", true), ik = a.GetBool("ik", true);
-            foreach (var c in Targets(a))
+            var targets = Targets(a).ToList();
+            var undo = Begin(targets, "Mirror pose");
+            foreach (var c in targets)
             {
                 if (fk) MirrorFk(c);
                 if (ik) MirrorIk(c);
                 n++;
             }
             if (n == 0) throw new BridgeException("Select one or more characters first");
+            UndoStack.Push(undo);
             return n;
         }
 

@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react';
+import { parseTags, useLibMeta } from '../lib/libmeta';
 import { call, toast, useStore } from '../state/store';
+import { PromptDialog, type PromptState } from './PromptDialog';
+import { StarIcon } from './StarIcon';
 import { Slider } from './CharacterPanel';
 import { ContextMenu, type MenuItem } from './ContextMenu';
 import { Icon } from './Icon';
@@ -35,6 +38,10 @@ export function LookPresets({ wide }: { wide?: boolean }) {
   const [menu, setMenu] = useState<{ x: number; y: number; items: MenuItem[] } | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<Preset | null>(null);
   const [query, setQuery] = useState('');
+  const [favOnly, setFavOnly] = useState(false);
+  const [tagFilter, setTagFilter] = useState<string[]>([]);
+  const [prompt, setPrompt] = useState<PromptState | null>(null);
+  const lib = useLibMeta('looks');
 
   useEffect(() => {
     if (status === 'open') call<Preset[]>('look.presets').then((p) => p && setPresets(p));
@@ -45,6 +52,7 @@ export function LookPresets({ wide }: { wide?: boolean }) {
     const r = await call('look.applyPreset', { file: p.file, groups: [...groups], strength, ids });
     if (r) {
       lookChanged();
+      lib.markUsed(p.file);
       toast(`Applied “${p.name}”${strength < 1 ? ` at ${Math.round(strength * 100)}%` : ''} — Ctrl+Z to undo`);
     }
   };
@@ -60,12 +68,23 @@ export function LookPresets({ wide }: { wide?: boolean }) {
   };
 
   const q = query.trim().toLowerCase();
-  const list = presets.filter((p) => !q || `${p.name} ${p.note}`.toLowerCase().includes(q));
+  // favorites first, then most recently used, then the saved order
+  const list = presets
+    .filter((p) => {
+      const m = lib.get(p.file);
+      return (!q || `${p.name} ${p.note} ${(m.tags ?? []).join(' ')}`.toLowerCase().includes(q)) && (!favOnly || m.favorite) && tagFilter.every((t) => m.tags?.includes(t));
+    })
+    .map((p, i) => ({ p, i, m: lib.get(p.file) }))
+    .sort((a, b) => Number(!!b.m.favorite) - Number(!!a.m.favorite) || (b.m.lastUsed ?? 0) - (a.m.lastUsed ?? 0) || a.i - b.i)
+    .map((x) => x.p);
 
   return (
     <div className={wide ? 'look-gallery wide' : 'look-gallery'}>
       <div className="look-gallery-bar">
-        {wide && <input className="input" placeholder="Search looks…" value={query} onChange={(e) => setQuery(e.target.value)} style={{ width: 200 }} />}
+        {wide && <input className="input" placeholder="Search looks and tags…" value={query} onChange={(e) => setQuery(e.target.value)} style={{ width: 200 }} />}
+        <button className={`btn ${favOnly ? 'on' : ''}`} style={{ height: 24 }} title="Favorites only" onClick={() => setFavOnly(!favOnly)}>
+          <StarIcon filled={favOnly} size={12} />
+        </button>
         <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
           {GROUPS.map((g) => (
             <button
@@ -100,11 +119,25 @@ export function LookPresets({ wide }: { wide?: boolean }) {
         </button>
       </div>
 
+      {wide && lib.allTags.length > 0 && (
+        <div className="face-tagbar">
+          {lib.allTags.slice(0, 30).map((t) => (
+            <button key={t} className={`face-tag-chip ${tagFilter.includes(t) ? 'on' : ''}`} onClick={() => setTagFilter(tagFilter.includes(t) ? tagFilter.filter((x) => x !== t) : [...tagFilter, t])}>
+              {t}
+            </button>
+          ))}
+          {tagFilter.length > 0 && (
+            <button className="face-tag-chip clear" onClick={() => setTagFilter([])}>
+              Clear
+            </button>
+          )}
+        </div>
+      )}
       <div className="look-grid">
         {list.map((p) => (
           <div {...pressable}
             key={p.file}
-            className="look-card"
+            className="look-card star-host"
             onClick={() => apply(p)}
             onContextMenu={(ev) => {
               ev.preventDefault();
@@ -114,6 +147,18 @@ export function LookPresets({ wide }: { wide?: boolean }) {
                 items: [
                   { label: p.name, header: true },
                   { label: 'Apply', action: () => apply(p) },
+                  { label: lib.get(p.file).favorite ? 'Remove from favorites' : 'Add to favorites', action: () => lib.toggleFavorite(p.file) },
+                  {
+                    label: 'Edit tags…',
+                    action: () =>
+                      setPrompt({
+                        title: `Tags for “${p.name}”`,
+                        hint: 'Separate tags with commas, e.g. night, warm, portrait',
+                        value: (lib.get(p.file).tags ?? []).join(', '),
+                        placeholder: 'night, warm, …',
+                        ok: (v) => lib.setTags(p.file, parseTags(v)),
+                      }),
+                  },
                   { label: 'Overwrite with current look…', action: () => window.confirm(`Replace “${p.name}” (settings and thumbnail) with the current look? This can't be undone.`) && save(p.name) },
                   { sep: true },
                   { label: 'Delete…', danger: true, action: () => setConfirmDelete(p) },
@@ -122,6 +167,17 @@ export function LookPresets({ wide }: { wide?: boolean }) {
             }}
             title={`${p.name}${p.note ? '\n' + p.note : ''}\nContains: ${p.groups.join(', ')}\nClick to apply · right-click for more`}
           >
+            <button
+              className={`face-star ${lib.get(p.file).favorite ? 'on' : ''}`}
+              tabIndex={-1}
+              title={lib.get(p.file).favorite ? 'Favorite (click to remove)' : 'Add to favorites'}
+              onClick={(ev) => {
+                ev.stopPropagation();
+                lib.toggleFavorite(p.file);
+              }}
+            >
+              <StarIcon filled={!!lib.get(p.file).favorite} />
+            </button>
             {p.thumb ? <img src={p.thumb} alt="" /> : <div className="look-card-ph">{p.name.slice(0, 1)}</div>}
             <div className="look-card-name">
               {p.name}
@@ -152,6 +208,7 @@ export function LookPresets({ wide }: { wide?: boolean }) {
       <div className="hint">Saved looks remember a thumbnail of the current view. Right-click a look to overwrite it with the current settings (also refreshes its thumbnail).</div>
 
       {menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />}
+      {prompt && <PromptDialog p={prompt} onClose={() => setPrompt(null)} />}
       {confirmDelete && (
         <div className="overlay" onClick={() => setConfirmDelete(null)}>
           <div className="dialog" style={{ width: 380 }} onClick={(ev) => ev.stopPropagation()}>

@@ -318,11 +318,14 @@ namespace StudioEX.Bridge.Api
                     var d = Json.Parse(System.IO.File.ReadAllText(f, System.Text.Encoding.UTF8)) as Dictionary<string, object>;
                     var bones = d?.GetObject("bones");
                     if (bones == null) continue;
+                    var shapes = d.GetObject("shapes");
+                    int shapeCount = shapes == null ? 0 : shapes.Values.OfType<Dictionary<string, object>>().Sum(m => m.Count);
                     var item = new Dictionary<string, object>
                     {
                         { "file", System.IO.Path.GetFileNameWithoutExtension(f) },
                         { "name", d.GetString("name") ?? System.IO.Path.GetFileNameWithoutExtension(f) },
                         { "bones", bones.Keys.Cast<object>().ToList() },
+                        { "shapes", shapeCount },
                         { "tags", d.GetList("tags").Where(x => x is string).ToList() },
                         { "favorite", d.GetBool("favorite") },
                         { "from", d.GetString("from") ?? "" },
@@ -358,7 +361,16 @@ namespace StudioEX.Bridge.Api
                 if (st.HasScale) e["scale"] = V(new Vector3(Div(st.Scale.x, st.BaseScale.x), Div(st.Scale.y, st.BaseScale.y), Div(st.Scale.z, st.BaseScale.z)));
                 bones[b.name] = e;
             }
-            if (bones.Count == 0) throw new BridgeException("This face has no adjustments to save yet");
+            var shapeEdits = new Dictionary<string, object>();
+            if (a.GetBool("shapes", true) && ResolveShapes())
+                foreach (var set in HeadShapes(t.Chara))
+                {
+                    if (set.Dirty.Count == 0) continue;
+                    var m = new Dictionary<string, object>();
+                    foreach (var kv in set.Dirty) m[kv.Key] = (double)kv.Value.Weight;
+                    shapeEdits[set.Renderer.name] = m;
+                }
+            if (bones.Count == 0 && shapeEdits.Count == 0) throw new BridgeException("This face has no adjustments to save yet");
             string file = System.IO.Path.Combine(PresetFolder, SafeFile(name) + ".json");
             var old = System.IO.File.Exists(file) ? ReadPreset(file) : null; // overwrite keeps tags, favorite, dates
             var d = new Dictionary<string, object>
@@ -370,6 +382,7 @@ namespace StudioEX.Bridge.Api
                 { "tags", old != null ? old.GetList("tags") : new List<object>() },
                 { "favorite", old != null && old.GetBool("favorite") },
                 { "bones", bones },
+                { "shapes", shapeEdits },
             };
             System.IO.File.WriteAllText(file, Json.Serialize(d), new System.Text.UTF8Encoding(false));
             try
@@ -392,12 +405,14 @@ namespace StudioEX.Bridge.Api
             if (!System.IO.File.Exists(path)) throw new BridgeException("Saved face not found");
             var doc = ReadPreset(path);
             var preset = doc?.GetObject("bones") ?? new Dictionary<string, object>();
-            var n = ApplyBones(a, preset);
+            var shapes = a.GetBool("shapes", false) && ResolveShapes() ? doc?.GetObject("shapes") ?? new Dictionary<string, object>() : null;
+            var n = ApplyBones(a, preset, shapes);
             try { doc["lastUsed"] = NowMs(); WritePreset(path, doc); } catch { } // for "recently used" sorting
             return n;
         }
 
-        private static object ApplyBones(Dictionary<string, object> a, Dictionary<string, object> preset)
+        /// <param name="shapes">saved shape edits by mesh name, or null when shapes aren't part of this apply</param>
+        private static object ApplyBones(Dictionary<string, object> a, Dictionary<string, object> preset, Dictionary<string, object> shapes = null)
         {
             var ids = a.GetList("ids");
             if (ids.Count == 0 && a.Has("id")) ids.Add(a["id"]);
@@ -407,6 +422,7 @@ namespace StudioEX.Bridge.Api
             if (scope.Count == 0) scope = new HashSet<string>(preset.Keys);
 
             var undo = new List<FaceUndo>();
+            var shapeUndo = new List<IUndoEntry>();
             var work = new List<KeyValuePair<Target, List<Transform>>>();
             foreach (var o in ids)
             {
@@ -414,9 +430,18 @@ namespace StudioEX.Bridge.Api
                 var bones = scope.Select(n => Bone(t, n)).Where(b => b != null).ToList();
                 undo.Add(new FaceUndo(t, bones, "preset", null));
                 work.Add(new KeyValuePair<Target, List<Transform>>(t, bones));
+                if (shapes != null)
+                    foreach (var set in HeadShapes(t.Chara))
+                    {
+                        var saved = shapes.GetObject(set.Renderer.name);
+                        var names = (saved?.Keys ?? Enumerable.Empty<string>()).Concat(clear ? set.Dirty.Keys : Enumerable.Empty<string>()).Distinct().ToList();
+                        if (names.Count > 0) shapeUndo.Add(new ShapeUndo(t.Chara, set.Key, names, null));
+                    }
             }
             if (work.Count == 0) throw new BridgeException("Select one or more characters first");
-            UndoStack.Push(new FaceMultiUndo(undo, "Apply saved face"));
+            var entries = new List<IUndoEntry> { new FaceMultiUndo(undo, "Apply saved face") };
+            entries.AddRange(shapeUndo);
+            UndoStack.Push(new CompositeUndo(entries, "Apply saved face"));
 
             foreach (var kv in work)
             {
@@ -436,8 +461,43 @@ namespace StudioEX.Bridge.Api
                         _setScale.Invoke(t.Bones, new object[] { b, Vector3.Scale(st.BaseScale, m) });
                     }
                 }
+                if (shapes != null) ApplyShapes(t.Chara, shapes, k, clear);
             }
             return work.Count;
+        }
+
+        /// <summary>Saved shape weights onto a character's head meshes, blended from the unedited weight by k.</summary>
+        private static void ApplyShapes(OCIChar c, Dictionary<string, object> shapes, float k, bool clear)
+        {
+            foreach (var set in HeadShapes(c))
+            {
+                var saved = shapes.GetObject(set.Renderer.name) ?? new Dictionary<string, object>();
+                if (clear)
+                    foreach (var name in set.Dirty.Keys.Where(x => !saved.ContainsKey(x)).ToList()) RemoveShape(set, name);
+                foreach (var kv in saved)
+                {
+                    int i = set.Renderer.sharedMesh.GetBlendShapeIndex(kv.Key);
+                    if (i < 0) continue; // this character's mesh doesn't have it
+                    float baseW = set.Dirty.TryGetValue(kv.Key, out var ed) ? ed.Original : set.Renderer.GetBlendShapeWeight(i);
+                    float w = baseW + (Convert.ToSingle(kv.Value) - baseW) * k;
+                    _setShape.Invoke(set.Editor, new object[] { set.Renderer, i, Mathf.Clamp(w, 0f, 100f) });
+                }
+            }
+        }
+
+        /// <summary>Several undo entries undone/redone as one step.</summary>
+        private sealed class CompositeUndo : IUndoEntry
+        {
+            private readonly List<IUndoEntry> _parts;
+            public CompositeUndo(List<IUndoEntry> parts, string label) { _parts = parts; Label = label; }
+            public string Label { get; }
+            public bool Absorbs(IUndoEntry newer) => false;
+            public IUndoEntry Restore()
+            {
+                var inverse = new List<IUndoEntry>();
+                for (int i = _parts.Count - 1; i >= 0; i--) inverse.Insert(0, _parts[i].Restore());
+                return new CompositeUndo(inverse, Label);
+            }
         }
 
         private static double NowMs() => (DateTime.UtcNow - new DateTime(1970, 1, 1)).TotalMilliseconds;
