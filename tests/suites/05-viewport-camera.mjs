@@ -48,14 +48,39 @@ export default async function (t) {
   await sleep(1200);
 
   await t.step('motion paths', async () => {
-    await ok('viewport.set', { paths: true, pathsCamera: false });
+    await ok('viewport.set', { paths: true, pathsCamera: false, pathsBody: false });
     await sleep(800);
     check('path drawn for the selected character', (await ok('viewport.get')).pathCount === 1);
     await ok('scene.select', { ids: [] });
     await sleep(800);
-    check('no path when nothing is selected', (await ok('viewport.get')).pathCount === 0);
+    const empty = await ok('viewport.get');
+    check('no path when nothing is selected, and it says why', empty.pathCount === 0 && /Select something/.test(empty.pathsNote), empty.pathsNote);
     await ok('scene.select', { ids: [chara.id] });
     await sleep(800);
+  });
+
+  await t.step('body paths (hands, feet, head)', async () => {
+    await ok('viewport.set', { pathsBody: true, pathsBones: 'hands,feet,head' });
+    let v;
+    for (let i = 0; i < 40; i++) {
+      await sleep(400);
+      v = await ok('viewport.get');
+      if (!v.pathsBaking && v.pathsDrawn >= 6) break;
+    }
+    check('traced: the root path + 5 body paths', v.pathsDrawn === 6 && v.pathsNote === '', JSON.stringify({ drawn: v.pathsDrawn, note: v.pathsNote }));
+    check('playhead put back after tracing', near((await ok('timeline.state')).time, 3));
+    await sleep(1500);
+    check('still there a moment later', (await ok('viewport.get')).pathsDrawn === 6);
+    await ok('viewport.set', { pathsBones: 'head' });
+    for (let i = 0; i < 30; i++) {
+      await sleep(400);
+      v = await ok('viewport.get');
+      if (!v.pathsBaking && v.pathsDrawn === 2) break;
+    }
+    check('only the chosen parts', v.pathsDrawn === 2);
+    await ok('viewport.set', { pathsBody: false, pathsBones: 'hands,feet,head' });
+    await sleep(500);
+    check('body paths off leaves the object path', (await ok('viewport.get')).pathsDrawn === 1);
   });
 
   await t.step('ghosts', async () => {

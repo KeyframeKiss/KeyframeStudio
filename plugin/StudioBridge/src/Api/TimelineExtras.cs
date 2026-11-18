@@ -186,6 +186,9 @@ namespace StudioEX.Bridge.Api
         // Viewport helpers (motion paths / ghosts)
         // =====================================================================
 
+        public static bool Animated(ObjectCtrlInfo oci) =>
+            IsReady && Interpolables.Values.Any(ip => ip.enabled && ip.oci == oci && ip.keyframes.Count >= 2);
+
         public static List<ViewportTools.PathInfo> PositionPaths(HashSet<ObjectCtrlInfo> ocis, bool camera)
         {
             var list = new List<ViewportTools.PathInfo>();

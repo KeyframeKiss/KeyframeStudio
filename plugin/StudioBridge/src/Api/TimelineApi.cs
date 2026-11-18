@@ -86,6 +86,9 @@ namespace StudioEX.Bridge.Api
             Available ? PositionPathsImpl(ocis, camera) : new List<ViewportTools.PathInfo>();
         [MethodImpl(MethodImplOptions.NoInlining)]
         private static List<ViewportTools.PathInfo> PositionPathsImpl(HashSet<ObjectCtrlInfo> ocis, bool camera) => TimelineImpl.PositionPaths(ocis, camera);
+        /// <summary>The object has an enabled Timeline track with at least two keys (something to trace).</summary>
+        public static bool Animated(ObjectCtrlInfo oci) => Available && AnimatedImpl(oci);
+        [MethodImpl(MethodImplOptions.NoInlining)] private static bool AnimatedImpl(ObjectCtrlInfo oci) => TimelineImpl.Animated(oci);
         public static List<float> KeyTimes(HashSet<ObjectCtrlInfo> ocis) => Available ? KeyTimesImpl(ocis) : new List<float>();
         [MethodImpl(MethodImplOptions.NoInlining)] private static List<float> KeyTimesImpl(HashSet<ObjectCtrlInfo> ocis) => TimelineImpl.KeyTimes(ocis);
 

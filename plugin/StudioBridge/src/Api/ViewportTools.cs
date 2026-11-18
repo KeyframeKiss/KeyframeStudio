@@ -56,6 +56,9 @@ namespace StudioEX.Bridge.Api
 
         public bool Paths;
         public bool PathsCamera = true;
+        /// <summary>Also trace where the selected characters' hands / feet / head go (FK, IK or anything else).</summary>
+        public bool PathsBody = true;
+        public string PathsBones = "hands,feet,head";
         public bool Ghosts;
         public bool GhostsAuto = true;
         public int GhostCount = 2;
@@ -69,6 +72,11 @@ namespace StudioEX.Bridge.Api
         private readonly List<Material> _ghostMats = new List<Material>();
         private readonly List<KeyValuePair<PathInfo, Transform>> _markers = new List<KeyValuePair<PathInfo, Transform>>();
         private float _nextPathCheck;
+        private GameObject _bodyRoot;
+        private Coroutine _bodyBake;
+        private string _bodySig = "", _bodyWantSig = "";
+        private float _bodyWantSince;
+        private int _bodyLines;
         private string _pathSig = "";
         private string _ghostSig = "", _ghostWantSig = "";
         private float _ghostWantSince;
@@ -89,7 +97,8 @@ namespace StudioEX.Bridge.Api
 
         private object State() => new Dictionary<string, object>
         {
-            { "paths", Paths }, { "pathsCamera", PathsCamera },
+            { "paths", Paths }, { "pathsCamera", PathsCamera }, { "pathsBody", PathsBody }, { "pathsBones", PathsBones },
+            { "pathsDrawn", _markers.Count + _bodyLines }, { "pathsBaking", _bodyBake != null }, { "pathsNote", Note() },
             { "ghosts", Ghosts }, { "ghostsAuto", GhostsAuto }, { "ghostCount", GhostCount },
             { "ghostMode", GhostMode }, { "ghostStep", GhostStep }, { "ghostOpacity", GhostOpacity },
             { "ghostCountBuilt", _ghostRoot != null ? _ghostRoot.transform.childCount : 0 },
@@ -130,6 +139,10 @@ namespace StudioEX.Bridge.Api
         {
             if (a.Has("paths")) Paths = a.GetBool("paths");
             if (a.Has("pathsCamera")) PathsCamera = a.GetBool("pathsCamera", true);
+            if (a.Has("pathsBody")) PathsBody = a.GetBool("pathsBody", true);
+            if (a.Has("pathsBones")) PathsBones = a.GetString("pathsBones") ?? "";
+            _bodySig = "";
+            if (!Paths || !PathsBody) ClearBody();
             if (a.Has("ghosts")) Ghosts = a.GetBool("ghosts");
             if (a.Has("ghostsAuto")) GhostsAuto = a.GetBool("ghostsAuto", true);
             if (a.Has("ghostCount")) GhostCount = Mathf.Clamp(a.GetInt("ghostCount"), 1, 5);
@@ -138,7 +151,7 @@ namespace StudioEX.Bridge.Api
             if (a.Has("ghostOpacity")) GhostOpacity = Mathf.Clamp(a.GetFloat("ghostOpacity"), 0.05f, 0.8f);
             _pathSig = "";
             _ghostSig = "";
-            if (!Paths) ClearPaths();
+            if (!Paths) { ClearPaths(); ClearBody(); }
             if (!Ghosts) ClearGhosts();
             else RequestGhosts(force: false);
             UpdateMaterials();
@@ -211,6 +224,8 @@ namespace StudioEX.Bridge.Api
                 _nextPathCheck = Time.unscaledTime + 0.3f;
                 try { RebuildPathsIfChanged(); }
                 catch (Exception e) { StudioBridgePlugin.Logger.LogDebug("paths: " + e.Message); }
+                try { if (PathsBody && !playing) AutoBody(); }
+                catch (Exception e) { StudioBridgePlugin.Logger.LogDebug("body paths: " + e.Message); }
             }
             if (Paths) UpdateMarkers();
 
@@ -338,6 +353,144 @@ namespace StudioEX.Bridge.Api
             _markers.Clear();
             if (_pathRoot != null) Destroy(_pathRoot);
             _pathRoot = null;
+        }
+
+        // ------------------------------------------------------------------
+        // Body paths: where a character's hands / feet / head travel, whatever moves them
+        // ------------------------------------------------------------------
+
+        private static readonly Dictionary<string, KeyValuePair<string, Color>[]> BodyParts = new Dictionary<string, KeyValuePair<string, Color>[]>
+        {
+            { "hands", new[] { new KeyValuePair<string, Color>("cf_j_hand_L", new Color(0.36f, 0.63f, 1f, 0.95f)), new KeyValuePair<string, Color>("cf_j_hand_R", new Color(1f, 0.62f, 0.18f, 0.95f)) } },
+            { "feet", new[] { new KeyValuePair<string, Color>("cf_j_foot_L", new Color(0.31f, 0.82f, 0.65f, 0.95f)), new KeyValuePair<string, Color>("cf_j_foot_R", new Color(0.88f, 0.82f, 0.29f, 0.95f)) } },
+            { "head", new[] { new KeyValuePair<string, Color>("cf_j_head", new Color(1f, 0.44f, 0.69f, 0.95f)) } },
+        };
+
+        // The overlay shader takes its colour from the material (not the line's vertex colours): one per colour.
+        private readonly Dictionary<Color, Material> _bodyMats = new Dictionary<Color, Material>();
+        private Material BodyMat(Color c)
+        {
+            if (!_bodyMats.TryGetValue(c, out var m) || m == null) _bodyMats[c] = m = MakeMat(c, true);
+            return m;
+        }
+
+        private void ClearBody()
+        {
+            if (_bodyRoot != null) Destroy(_bodyRoot);
+            _bodyRoot = null;
+            _bodyLines = 0;
+        }
+
+        /// <summary>
+        /// Retrace when the animation, the selection or the chosen parts change — once things have settled, while
+        /// paused, and never with unkeyed changes (tracing moves the playhead, which would reset them).
+        /// </summary>
+        private void AutoBody()
+        {
+            var chars = Selected().OfType<OCIChar>().Where(c => c.charInfo != null && TimelineApi.Animated(c)).OrderBy(c => c.objectInfo.dicKey).ToList();
+            if (chars.Count == 0 || PathsBones.Length == 0)
+            {
+                if (_bodyRoot != null) ClearBody();
+                _bodySig = "";
+                return;
+            }
+            string sig = TimelineApi.Signature() + "|" + string.Join(",", chars.Select(c => c.objectInfo.dicKey.ToString()).ToArray()) + "|" + PathsBones + "|" + TimelineApi.Duration();
+            if (sig == _bodySig || _bodyBake != null) return;
+            if (TimelineApi.Pending() > 0) return;
+            if (sig != _bodyWantSig)
+            {
+                _bodyWantSig = sig;
+                _bodyWantSince = Time.unscaledTime;
+                return;
+            }
+            if (Time.unscaledTime - _bodyWantSince < 0.8f || Busy || MotionSampler.Running) return;
+            _bodySig = sig;
+            _bodyBake = StartCoroutine(BakeBody(chars));
+        }
+
+        private IEnumerator BakeBody(List<OCIChar> chars)
+        {
+            float dur = Mathf.Max(0.1f, TimelineApi.Duration());
+            int n = Mathf.Clamp(Mathf.CeilToInt(dur * 10f) + 1, 2, 160);
+            var wanted = PathsBones.Split(',').Select(x => x.Trim()).Where(BodyParts.ContainsKey).SelectMany(x => BodyParts[x]).ToList();
+            var bones = new Dictionary<OCIChar, List<KeyValuePair<Transform, Color>>>();
+            foreach (var c in chars)
+            {
+                var all = c.charInfo.GetComponentsInChildren<Transform>(true);
+                bones[c] = wanted.Select(w => new KeyValuePair<Transform, Color>(all.FirstOrDefault(t => t.name == w.Key), w.Value)).Where(x => x.Key != null).ToList();
+            }
+            var pts = bones.ToDictionary(kv => kv.Key, kv => kv.Value.Select(_ => new Vector3[n]).ToList());
+            float back = TimelineApi.PlaybackTime();
+            bool seeked = false, ok = false;
+            try
+            {
+                for (int i = 0; i < n; i++)
+                {
+                    HoldBusy(); // requests and change detection wait until we're done
+                    TimelineApi.SeekTo(dur * i / (n - 1));
+                    seeked = true;
+                    yield return new WaitForEndOfFrame(); // FK / IK / animation applied for this time
+                    foreach (var kv in bones)
+                    {
+                        if (kv.Key.charInfo == null) yield break;
+                        for (int b = 0; b < kv.Value.Count; b++) pts[kv.Key][b][i] = kv.Value[b].Key.position;
+                    }
+                }
+                ok = true;
+            }
+            finally
+            {
+                if (seeked) { try { TimelineApi.SeekTo(back); } catch { } }
+                Busy = false;
+                EventPump.RequestRebase();
+                _bodyBake = null;
+                if (!ok) _bodySig = "";
+            }
+            ClearBody();
+            if (!Paths || !PathsBody) yield break;
+            UpdateMaterials();
+            _bodyRoot = new GameObject("StudioEX.BodyPaths") { hideFlags = HideFlags.DontSave };
+            foreach (var kv in bones)
+            {
+                // dots where the character has keys, so timing shows on the arcs
+                var keyTimes = TimelineApi.KeyTimes(new HashSet<ObjectCtrlInfo> { kv.Key });
+                for (int b = 0; b < kv.Value.Count; b++)
+                {
+                    var line = pts[kv.Key][b];
+                    var go = new GameObject("body path " + kv.Value[b].Key.name);
+                    go.transform.SetParent(_bodyRoot.transform, false);
+                    var lr = go.AddComponent<LineRenderer>();
+                    lr.useWorldSpace = true;
+                    lr.sharedMaterial = BodyMat(kv.Value[b].Value);
+                    lr.startWidth = lr.endWidth = 0.012f;
+                    lr.shadowCastingMode = ShadowCastingMode.Off;
+                    lr.receiveShadows = false;
+                    lr.positionCount = line.Length;
+                    lr.SetPositions(line);
+                    _bodyLines++;
+                    foreach (var t in keyTimes)
+                    {
+                        float f = Mathf.Clamp01(t / dur) * (n - 1);
+                        int i0 = Mathf.Min(n - 2, Mathf.FloorToInt(f));
+                        Dot(go.transform, Vector3.Lerp(line[i0], line[i0 + 1], f - i0), 0.022f);
+                    }
+                }
+            }
+            SetLayer(_bodyRoot, VisibleLayer(new HashSet<ObjectCtrlInfo>(chars.Cast<ObjectCtrlInfo>())));
+            StudioBridgePlugin.Instance?.Broadcast("viewport.changed", State());
+        }
+
+        /// <summary>Why Paths shows nothing (empty when something is drawn).</summary>
+        private string Note()
+        {
+            if (!Paths || _markers.Count > 0 || _bodyLines > 0) return "";
+            if (_bodyBake != null) return "Tracing body paths…";
+            var sel = Selected();
+            if (sel.Count == 0) return PathsCamera ? "Select something in Studio — paths follow the selection (the camera's path shows once its target moves)" : "Select something in Studio — paths follow the selection";
+            if (!sel.Any(TimelineApi.Animated)) return "The selection has no animation yet (a track needs two keys or more)";
+            if (TimelineApi.Pending() > 0 && PathsBody && sel.OfType<OCIChar>().Any(TimelineApi.Animated)) return "Key or reset your changes first — tracing body paths moves the playhead";
+            if (sel.OfType<OCIChar>().Any() && (!PathsBody || PathsBones.Length == 0)) return "Turn on body paths (hands, feet, head) to trace a character";
+            return "Nothing selected moves";
         }
 
         // ------------------------------------------------------------------
@@ -489,9 +642,11 @@ namespace StudioEX.Bridge.Api
         public void ClearAll()
         {
             if (_bake != null) { StopCoroutine(_bake); _bake = null; Busy = false; } // StopCoroutine skips finally
+            if (_bodyBake != null) { StopCoroutine(_bodyBake); _bodyBake = null; Busy = false; }
             ClearPaths();
+            ClearBody();
             ClearGhosts();
-            _pathSig = _ghostSig = _ghostWantSig = "";
+            _pathSig = _ghostSig = _ghostWantSig = _bodySig = _bodyWantSig = "";
         }
 
         private void OnDestroy() => ClearAll();
