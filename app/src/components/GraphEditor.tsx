@@ -21,6 +21,7 @@ import {
 import { TimeScrollbar } from './Scrollbars';
 
 import { pressable } from '../lib/pressable';
+import { perfRecord } from '../lib/perf';
 const RULER_H = 28;
 const PAD_L = 54; // value labels
 const HIT = 7;
@@ -119,6 +120,35 @@ function buildChannels(data: TrackData[]): Channel[] {
     pi++;
   }
   return out;
+}
+
+/** Selected key times per track, built once per selection (the draw loop asks for every key, every frame). */
+let selCache: { sel: Set<string> | null; map: Map<number, number[]> } = { sel: null, map: new Map() };
+function selectionByTrack(sel: Set<string>) {
+  if (selCache.sel === sel) return selCache.map;
+  const map = new Map<number, number[]>();
+  for (const id of sel) {
+    const i = id.indexOf('|');
+    const track = Number(id.slice(0, i));
+    const t = Number(id.slice(i + 1));
+    const a = map.get(track);
+    if (a) a.push(t);
+    else map.set(track, [t]);
+  }
+  for (const a of map.values()) a.sort((x, y) => x - y);
+  selCache = { sel, map };
+  return map;
+}
+/** Is t (within float noise) in the sorted list? */
+function hasTime(sorted: number[], t: number) {
+  let lo = 0,
+    hi = sorted.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (sorted[mid] < t - 1e-6) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo < sorted.length && Math.abs(sorted[lo] - t) < 1e-6;
 }
 
 function arrMin(a: number[]) {
@@ -324,6 +354,7 @@ export function GraphEditor() {
       if (!dirty.current && inter.current.mode === 'none' && now - lastPlayDraw < 50) return;
       lastPlayDraw = now;
       dirty.current = false;
+      const perfT0 = performance.now();
       const c = canvasRef.current;
       if (!c) return;
       const ctx = c.getContext('2d')!;
@@ -369,18 +400,40 @@ export function GraphEditor() {
 
       const it = inter.current;
       const drag = it.mode === 'drag' ? it : null;
+      // Large graphs (hundreds of curves, thousands of keys): only the visible time range, curve points at least
+      // a pixel apart, and each channel's keys as two batched paths (plain + selected), not one draw per key.
+      const selByTrack = selectionByTrack(st.selKeys);
+      const tVisLo = T(PAD_L) - (drag?.axis === 'time' ? Math.abs(drag.dt) : 0) - 1 / v.pps,
+        tVisHi = T(w) + (drag?.axis === 'time' ? Math.abs(drag.dt) : 0) + 1 / v.pps;
       ctx.save();
       ctx.beginPath();
       ctx.rect(PAD_L, RULER_H, w - PAD_L, h - RULER_H);
       ctx.clip();
       for (const ch of state.current.visible) {
-        // curve
+        // curve: from the last point before the view to the first after it
+        const poly = ch.poly;
+        const n = poly.length / 2;
+        let lo = 0,
+          hi = n;
+        while (lo < hi) {
+          const mid = (lo + hi) >> 1;
+          if (poly[mid * 2] < tVisLo) lo = mid + 1;
+          else hi = mid;
+        }
+        const start = Math.max(0, lo - 1);
         ctx.beginPath();
-        for (let i = 0; i < ch.poly.length; i += 2) {
-          const x = X(ch.poly[i]);
-          const y = Y(norm(ch, ch.poly[i + 1]));
-          if (i) ctx.lineTo(x, y);
-          else ctx.moveTo(x, y);
+        let lx = NaN,
+          ly = NaN;
+        for (let i = start; i < n; i++) {
+          const x = X(poly[i * 2]);
+          const y = Y(norm(ch, poly[i * 2 + 1]));
+          const last = i === n - 1 || poly[i * 2] > tVisHi;
+          if (i === start) ctx.moveTo(x, y);
+          else if (last || Math.abs(x - lx) >= 1 || Math.abs(y - ly) >= 1) ctx.lineTo(x, y);
+          else continue;
+          lx = x;
+          ly = y;
+          if (poly[i * 2] > tVisHi) break;
         }
         ctx.strokeStyle = ch.color;
         ctx.globalAlpha = ch.track.enabled ? 0.95 : 0.35;
@@ -388,22 +441,38 @@ export function GraphEditor() {
         ctx.stroke();
         ctx.globalAlpha = 1;
         // keys
-        ch.keys.forEach((k, i) => {
-          const sel = st.selKeys.has(keyId(ch.track.id, k.t));
+        const selT = selByTrack.get(ch.track.id);
+        const plain = new Path2D(),
+          picked = new Path2D();
+        let anyPicked = false;
+        const dense = ch.keys.length > 1 && (ch.keys[ch.keys.length - 1].t - ch.keys[0].t) * v.pps < ch.keys.length * 6; // keys < 6 px apart
+        const r = dense ? 2.5 : 4;
+        for (let i = 0; i < ch.keys.length; i++) {
+          const k = ch.keys[i];
+          const sel = !!selT && hasTime(selT, k.t);
           let t = k.t;
-          let val = norm(ch, k.v);
           if (drag && sel && drag.axis === 'time') t += drag.dt;
+          if (t < tVisLo || t > tVisHi) continue;
+          let val = norm(ch, k.v);
           if (drag && drag.ch.id === ch.id && drag.keyIndex === i && drag.axis === 'value') val += drag.dv;
           const x = X(t);
           const y = Y(val);
-          ctx.beginPath();
-          ctx.arc(x, y, sel ? 5 : 4, 0, Math.PI * 2);
-          ctx.fillStyle = sel ? '#ff9f2e' : '#111216';
-          ctx.fill();
-          ctx.strokeStyle = sel ? '#fff3dc' : ch.color;
-          ctx.lineWidth = 1.5;
-          ctx.stroke();
-        });
+          const p = sel ? picked : plain;
+          p.moveTo(x + (sel ? r + 1 : r), y);
+          p.arc(x, y, sel ? r + 1 : r, 0, Math.PI * 2);
+          if (sel) anyPicked = true;
+        }
+        ctx.lineWidth = 1.5;
+        ctx.fillStyle = '#111216';
+        ctx.fill(plain);
+        ctx.strokeStyle = ch.color;
+        ctx.stroke(plain);
+        if (anyPicked) {
+          ctx.fillStyle = '#ff9f2e';
+          ctx.fill(picked);
+          ctx.strokeStyle = '#fff3dc';
+          ctx.stroke(picked);
+        }
       }
       ctx.restore();
 
@@ -448,6 +517,7 @@ export function GraphEditor() {
         const txt = drag.axis === 'time' ? `Δt ${drag.dt >= 0 ? '+' : ''}${drag.dt.toFixed(3)}s` : `Δ ${drag.dv >= 0 ? '+' : ''}${drag.dv.toFixed(4)}${state.current.normalize ? ' (normalized)' : ''}`;
         ctx.fillText(txt, PAD_L + 6, h - 6);
       }
+      perfRecord('graphDraw', performance.now() - perfT0);
     };
     raf = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(raf);

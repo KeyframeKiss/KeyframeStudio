@@ -57,6 +57,16 @@ The goal is not to replace working systems. It is to make existing tools easier 
 - **Compatibility:** per-feature probes of the exact mod members used, versions tested, and features switched off on their own with the reason (see README).
 
 ### 0.6 Test Existing Workflows
+
+**Status (2026-11-17): large scenes done; external-plugin undo still open.** `node tests/run.mjs stress` builds 212 objects, 120 tracks and 5,400 keys. Results:
+- The plugin uses 0.3 ms of each Studio frame.
+- Change detection takes about 3 ms every 0.4 s. It used to parse XML twice per track per scan; it now compares the raw text once.
+- Moving or undoing all 5,280 keys takes under 70 ms.
+- The dope sheet draws in 1 ms.
+- The graph editor with every key selected went from 29 to 16 ms per draw.
+- Saving takes under 1 s.
+- Studio's own frame rate (about 30 fps with that many objects) is CharaStudio's rendering, not the bridge.
+
 - Validate large scenes with many objects and tracks (200+ objects, 100+ tracks, 5,000+ keys).
 - Test undo/redo with external plugin changes.
 - Verify saving and loading scenes with existing mods.

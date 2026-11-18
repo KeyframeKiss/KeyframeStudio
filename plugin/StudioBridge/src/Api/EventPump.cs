@@ -53,6 +53,10 @@ namespace StudioEX.Bridge.Api
         /// <summary>Ask for the change baseline to be retaken on the next change poll (e.g. after undo).</summary>
         public static void RequestRebase() { _rebaseRequested = true; }
         private int _lastPending = -1;
+
+        /// <summary>Cost of the change scan on Studio's main thread (runs every 0.4 s while the app is connected).</summary>
+        public static double ScanMs, ScanAvgMs, ScanMaxMs;
+        private static float _scanMaxAt;
         private int _lastStale = -1;
 
         private void SendStale()
@@ -86,8 +90,18 @@ namespace StudioEX.Bridge.Api
             bool mouseFree = !Input.GetMouseButton(0) && !Input.GetMouseButton(1) && !Input.GetMouseButton(2);
             // Volatility = "changes on its own while nobody touches it". Only sample it when the user isn't
             // dragging; otherwise a 1 s gizmo drag would mark that bone volatile and disable auto-key for it.
-            if (mouseFree) TimelineApi.Observe();
-            var r = TimelineApi.PollChanges(mouseFree);
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            int[] r;
+            TimelineApi.BeginScan(); // each track's value is read once for both passes
+            try
+            {
+                if (mouseFree) TimelineApi.Observe();
+                r = TimelineApi.PollChanges(mouseFree);
+            }
+            finally { TimelineApi.EndScan(); }
+            ScanMs = sw.Elapsed.TotalMilliseconds;
+            ScanAvgMs = ScanAvgMs <= 0 ? ScanMs : ScanAvgMs * 0.9 + ScanMs * 0.1;
+            if (ScanMs > ScanMaxMs || Time.unscaledTime - _scanMaxAt > 30f) { ScanMaxMs = ScanMs; _scanMaxAt = Time.unscaledTime; }
             if (r[1] > 0)
             {
                 _send("autokey", r[1]);

@@ -83,7 +83,26 @@ namespace StudioEX.Bridge
 
         private void Enqueue(string log) { lock (_logQueue) _logQueue.Enqueue(log); }
 
+        /// <summary>Main-thread time this plugin spends per frame (requests, events, change scan), smoothed.</summary>
+        internal static double FrameMs, FrameMaxMs;
+        private static float _frameMaxAt;
+        private readonly System.Diagnostics.Stopwatch _frameSw = new System.Diagnostics.Stopwatch();
+
         private void Update()
+        {
+            _frameSw.Reset();
+            _frameSw.Start();
+            try { UpdateInner(); }
+            finally
+            {
+                double ms = _frameSw.Elapsed.TotalMilliseconds + ViewportTools.LastFrameMs;
+                if (ms > 100) Logger.LogInfo("Slow bridge frame: " + Math.Round(ms) + " ms (viewport tools " + Math.Round(ViewportTools.LastFrameMs) + " ms)");
+                FrameMs = FrameMs * 0.95 + ms * 0.05;
+                if (ms > FrameMaxMs || UnityEngine.Time.unscaledTime - _frameMaxAt > 30f) { FrameMaxMs = ms; _frameMaxAt = UnityEngine.Time.unscaledTime; }
+            }
+        }
+
+        private void UpdateInner()
         {
             lock (_logQueue)
                 while (_logQueue.Count > 0) Logger.LogInfo(_logQueue.Dequeue());

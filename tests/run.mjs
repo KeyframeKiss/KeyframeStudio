@@ -28,12 +28,13 @@ const files = fs
 const suites = [];
 for (const f of files) {
   const mod = await import(pathToFileURL(path.join(here, 'suites', f)).href);
-  suites.push({ file: f, name: mod.name ?? f.replace(/\.mjs$/, ''), run: mod.default });
+  suites.push({ file: f, name: mod.name ?? f.replace(/\.mjs$/, ''), run: mod.default, optIn: !!mod.optIn });
 }
-const chosen = words.length ? suites.filter((s) => words.some((w) => s.file.toLowerCase().includes(w) || s.name.toLowerCase().includes(w))) : suites;
+// opt-in suites (e.g. the slow stress test) only run when named
+const chosen = words.length ? suites.filter((s) => words.some((w) => s.file.toLowerCase().includes(w) || s.name.toLowerCase().includes(w))) : suites.filter((s) => !s.optIn);
 
 if (flags.has('--list')) {
-  for (const s of suites) console.log(`${s.file.padEnd(28)} ${s.name}`);
+  for (const s of suites) console.log(`${s.file.padEnd(28)} ${s.name}${s.optIn ? '  (only when named)' : ''}`);
   process.exit(0);
 }
 if (!chosen.length) {
@@ -98,6 +99,7 @@ for (const s of chosen) {
     console.log(`${red('✘')} ${s.name} ${dim(`${r.pass} passed · ${secs}s`)} ${red(`${r.fail} failed`)}`);
     for (const f of r.failures) console.log(red(`    ✘ ${f}`));
   }
+  for (const m of r.metrics) console.log(`    ${m.label.padEnd(52)} ${typeof m.value === 'number' ? (Math.round(m.value * 10) / 10).toLocaleString('en-US') : m.value} ${m.unit}`);
   if (verbose) for (const l of r.lines) console.log(dim(`    ${l}`));
   summary.push({ name: s.name, ...r });
 }

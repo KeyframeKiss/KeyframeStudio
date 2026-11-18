@@ -17,6 +17,12 @@ const APP_ICON = path.join(__dirname, '..', 'build', 'icon.ico');
 app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
 app.commandLine.appendSwitch('disable-renderer-backgrounding');
 app.commandLine.appendSwitch('disable-background-timer-throttling');
+// Development/tests: KF_DEBUG_PORT=9333 opens Chromium's remote debugging on localhost (the stress test reads
+// the renderer's frame timings through it). Never on by default.
+if (/^\d{4,5}$/.test(process.env.KF_DEBUG_PORT || '')) {
+  app.commandLine.appendSwitch('remote-debugging-port', process.env.KF_DEBUG_PORT);
+  app.commandLine.appendSwitch('remote-debugging-address', '127.0.0.1');
+}
 
 protocol.registerSchemesAsPrivileged([{ scheme: 'sximg', privileges: { standard: true, secure: true, supportFetchAPI: true } }]);
 const thumbCache = new Map();

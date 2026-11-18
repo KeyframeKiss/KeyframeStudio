@@ -33,8 +33,12 @@ namespace StudioEX.Bridge.Api
                 if (blocked != null) throw new BridgeException(blocked);
                 if (cmd == null || !_handlers.TryGetValue(cmd, out var handler))
                     throw new BridgeException("Unknown command: " + cmd);
+                var sw = System.Diagnostics.Stopwatch.StartNew();
                 var result = handler(req.GetObject("args") ?? new Dictionary<string, object>());
-                return Json.Serialize(new Dictionary<string, object> { { "id", id }, { "ok", true }, { "result", result } });
+                var json = Json.Serialize(new Dictionary<string, object> { { "id", id }, { "ok", true }, { "result", result } });
+                // anything that stalls Studio's frame noticeably is worth knowing about (shows in Copy diagnostics)
+                if (sw.ElapsedMilliseconds > 50) StudioBridgePlugin.Logger.LogInfo("Slow command " + cmd + ": " + sw.ElapsedMilliseconds + " ms (" + json.Length / 1024 + " KB)");
+                return json;
             }
             catch (Exception e)
             {

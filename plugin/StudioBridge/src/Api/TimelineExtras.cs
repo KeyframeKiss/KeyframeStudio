@@ -315,8 +315,10 @@ namespace StudioEX.Bridge.Api
         {
             public Vector3 Pos, Rot, Scale;
             public ObjectCtrlInfo Oci;
-            public string Label;
+            public bool Root; // the object's own transform (else an FK bone / IK target)
         }
+
+        private static string LabelOf(GuideObject go, GoState st) => st.Root ? SceneApi.DisplayName(st.Oci) : TName(go);
 
         private sealed class Change
         {
@@ -397,14 +399,34 @@ namespace StudioEX.Bridge.Api
         private static bool Settled(GuideObject go) => !GoConsec.TryGetValue(go, out var c) || c == 0;
         private static bool Settled(Interpolable ip) => !TrackConsec.TryGetValue(ip, out var c) || c == 0;
 
+        /// <summary>
+        /// A track's current value as comparable text: Timeline's own XML for it, without parsing it back. During a
+        /// change scan (volatility sample + comparison, nothing changes in between) each value is computed once.
+        /// </summary>
         private static string ValueString(Interpolable ip)
         {
-            var d = DescribeValue(ip, ip.GetValue()) as Dictionary<string, object>;
-            if (d == null) return "";
-            var sb = new System.Text.StringBuilder();
-            foreach (var kv in d) sb.Append(kv.Key).Append('=').Append(kv.Value).Append(';');
-            return sb.ToString();
+            if (_scanCache && ValueCache.TryGetValue(ip, out var cached)) return cached;
+            var sw = new System.IO.StringWriter(System.Globalization.CultureInfo.InvariantCulture);
+            using (var w = new System.Xml.XmlTextWriter(sw))
+            {
+                w.WriteStartElement("v");
+                ip.WriteValueToXml(w, ip.GetValue());
+                w.WriteEndElement();
+            }
+            var text = sw.ToString();
+            if (_scanCache) ValueCache[ip] = text;
+            return text;
         }
+
+        private static readonly Dictionary<Interpolable, string> ValueCache = new Dictionary<Interpolable, string>();
+        private static bool _scanCache;
+
+        /// <summary>The event pump's change scan: values are read once and shared until EndScan.</summary>
+        public static void BeginScan() { ValueCache.Clear(); _scanCache = true; }
+        public static void EndScan() { _scanCache = false; ValueCache.Clear(); }
+
+        private static long CoverKey(int instanceId, string model) =>
+            ((long)instanceId << 2) | (model == "guideObjectPos" ? 1L : model == "guideObjectRot" ? 2L : 3L);
 
         /// <summary>Every guide object a user can move: object roots, active FK bones, active IK targets, item FK.</summary>
         private static IEnumerable<KeyValuePair<GuideObject, GoState>> GuideTargets()
@@ -414,30 +436,30 @@ namespace StudioEX.Bridge.Api
             foreach (var oci in studio.dicObjectCtrl.Values)
             {
                 if (oci?.guideObject != null)
-                    yield return Pair(oci.guideObject, oci, SceneApi.DisplayName(oci));
+                    yield return Pair(oci.guideObject, oci, true);
                 if (oci is OCIChar c)
                 {
                     if (c.oiCharInfo.enableFK)
                         foreach (var b in c.listBones)
-                            if (b?.guideObject != null && b.active) yield return Pair(b.guideObject, oci, TName(b.guideObject));
+                            if (b?.guideObject != null && b.active) yield return Pair(b.guideObject, oci, false);
                     if (c.oiCharInfo.enableIK)
                         foreach (var ik in c.listIKTarget)
-                            if (ik?.guideObject != null && ik.active) yield return Pair(ik.guideObject, oci, TName(ik.guideObject));
+                            if (ik?.guideObject != null && ik.active) yield return Pair(ik.guideObject, oci, false);
                 }
                 else if (oci is OCIItem it && it.listBones != null && it.itemInfo.enableFK)
                 {
                     foreach (var b in it.listBones)
-                        if (b?.guideObject != null) yield return Pair(b.guideObject, oci, TName(b.guideObject));
+                        if (b?.guideObject != null) yield return Pair(b.guideObject, oci, false);
                 }
             }
         }
 
         private static string TName(GuideObject g) => g.transformTarget != null ? g.transformTarget.name : "?";
 
-        private static KeyValuePair<GuideObject, GoState> Pair(GuideObject go, ObjectCtrlInfo oci, string label)
+        private static KeyValuePair<GuideObject, GoState> Pair(GuideObject go, ObjectCtrlInfo oci, bool root)
         {
             var ca = go.changeAmount;
-            return new KeyValuePair<GuideObject, GoState>(go, new GoState { Pos = ca.pos, Rot = ca.rot, Scale = ca.scale, Oci = oci, Label = label });
+            return new KeyValuePair<GuideObject, GoState>(go, new GoState { Pos = ca.pos, Rot = ca.rot, Scale = ca.scale, Oci = oci, Root = root });
         }
 
         /// <summary>Snapshot the current pose as "unchanged". Called after seeks, playback stops and edits.</summary>
@@ -471,10 +493,10 @@ namespace StudioEX.Bridge.Api
             var all = Interpolables;
 
             // Guide objects already covered by a GO track: (guide, modelId)
-            var covered = new HashSet<string>();
+            var covered = new HashSet<long>();
             foreach (var ip in all.Values)
                 if (ip.owner == "Timeline" && ip.parameter is GuideObject g && ip.id.StartsWith("guideObject"))
-                    covered.Add(g.GetInstanceID() + "|" + ip.id);
+                    covered.Add(CoverKey(g.GetInstanceID(), ip.id));
 
             foreach (var kv in TrackBase)
             {
@@ -495,12 +517,12 @@ namespace StudioEX.Bridge.Api
                     var st = kv.Value;
                     var ca = go.changeAmount;
                     int id = go.GetInstanceID();
-                    if ((ca.pos - st.Pos).sqrMagnitude > 1e-8f && !covered.Contains(id + "|guideObjectPos"))
-                        list.Add(new Change { Guide = go, Oci = st.Oci, ModelId = "guideObjectPos", Label = st.Label + " position" });
-                    if (Quaternion.Angle(Quaternion.Euler(ca.rot), Quaternion.Euler(st.Rot)) > 0.05f && !covered.Contains(id + "|guideObjectRot"))
-                        list.Add(new Change { Guide = go, Oci = st.Oci, ModelId = "guideObjectRot", Label = st.Label + " rotation" });
-                    if ((ca.scale - st.Scale).sqrMagnitude > 1e-8f && !covered.Contains(id + "|guideObjectScale"))
-                        list.Add(new Change { Guide = go, Oci = st.Oci, ModelId = "guideObjectScale", Label = st.Label + " scale" });
+                    if ((ca.pos - st.Pos).sqrMagnitude > 1e-8f && !covered.Contains(CoverKey(id, "guideObjectPos")))
+                        list.Add(new Change { Guide = go, Oci = st.Oci, ModelId = "guideObjectPos", Label = LabelOf(go, st) + " position" });
+                    if (Quaternion.Angle(Quaternion.Euler(ca.rot), Quaternion.Euler(st.Rot)) > 0.05f && !covered.Contains(CoverKey(id, "guideObjectRot")))
+                        list.Add(new Change { Guide = go, Oci = st.Oci, ModelId = "guideObjectRot", Label = LabelOf(go, st) + " rotation" });
+                    if ((ca.scale - st.Scale).sqrMagnitude > 1e-8f && !covered.Contains(CoverKey(id, "guideObjectScale")))
+                        list.Add(new Change { Guide = go, Oci = st.Oci, ModelId = "guideObjectScale", Label = LabelOf(go, st) + " scale" });
                 }
             return list;
         }
@@ -530,6 +552,7 @@ namespace StudioEX.Bridge.Api
         /// </summary>
         public static object KeyChanged(float t, bool includeNew, bool restKey, bool settledOnly = false)
         {
+            EndScan(); // keying (and a possible re-apply) changes values: no cached reads from here on
             var s = Ready;
             t = Mathf.Clamp(t, 0f, TL.duration);
             var changes = Changes(includeNew, settledOnly);
@@ -587,7 +610,7 @@ namespace StudioEX.Bridge.Api
                 if (c.Guide != null && c.Oci != null)
                 {
                     var ca = c.Guide.changeAmount;
-                    GoBase[c.Guide] = new GoState { Pos = ca.pos, Rot = ca.rot, Scale = ca.scale, Oci = c.Oci, Label = c.Label };
+                    GoBase[c.Guide] = new GoState { Pos = ca.pos, Rot = ca.rot, Scale = ca.scale, Oci = c.Oci, Root = c.Oci != null && c.Guide == c.Oci.guideObject };
                 }
             }
             // Tracks created by this key pass start from their current value.

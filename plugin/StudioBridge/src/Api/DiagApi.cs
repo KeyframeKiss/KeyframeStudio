@@ -46,6 +46,8 @@ namespace StudioEX.Bridge.Api
                 { "paths", Paths() },
                 { "features", Compat.Report() },
                 { "scene", new Dictionary<string, object> { { "objects", objects }, { "fps", Math.Round(1f / UnityEngine.Mathf.Max(1e-4f, UnityEngine.Time.smoothDeltaTime), 1) } } },
+                { "bridgeFrame", new Dictionary<string, object> { { "avg", Math.Round(StudioBridgePlugin.FrameMs, 2) }, { "max30s", Math.Round(StudioBridgePlugin.FrameMaxMs, 2) } } },
+                { "changeScan", new Dictionary<string, object> { { "last", Math.Round(EventPump.ScanMs, 2) }, { "avg", Math.Round(EventPump.ScanAvgMs, 2) }, { "max30s", Math.Round(EventPump.ScanMaxMs, 2) } } },
                 { "plugins", Chainloader.PluginInfos.Values
                     .OrderBy(p => p.Metadata.Name, StringComparer.OrdinalIgnoreCase)
                     .Select(p => (object)new Dictionary<string, object> { { "guid", p.Metadata.GUID }, { "name", p.Metadata.Name }, { "version", p.Metadata.Version.ToString() } })

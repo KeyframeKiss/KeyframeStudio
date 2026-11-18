@@ -36,6 +36,7 @@ import { createFolder, editTranslation, moveToFolder, renameFolder, setFolderExp
 import type { WireGroup } from '../bridge/types';
 
 import { pressable } from '../lib/pressable';
+import { perfRecord } from '../lib/perf';
 // Row height is user-adjustable (S/M/L); module-level so the rAF draw loop always reads the latest.
 const ROW_SIZES = { S: 18, M: 24, L: 32 } as const;
 type RowSize = keyof typeof ROW_SIZES;
@@ -347,6 +348,7 @@ export function DopeSheet() {
       const playing = !!st.tl?.playing;
       if (!dirty.current && !playing && inter.current.mode === 'none') return;
       dirty.current = false;
+      const perfT0 = performance.now();
 
       const c = canvasRef.current;
       if (!c) return;
@@ -558,6 +560,7 @@ export function DopeSheet() {
         const frames = Math.round(it.dt * fps);
         ctx.fillText(`${it.dt >= 0 ? '+' : ''}${it.dt.toFixed(3)}s  (${frames >= 0 ? '+' : ''}${frames}f)`, PAD, h - 6);
       }
+      perfRecord('dopeDraw', performance.now() - perfT0);
     };
     raf = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(raf);

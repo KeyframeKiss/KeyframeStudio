@@ -3,6 +3,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { bridge, type ConnectionStatus } from '../bridge/client';
 import type { Hello, KeyRef, SceneData, SceneNode, TimelineData, TimelineState, TrackModel, WireGroup, WireTrack } from '../bridge/types';
 import { log } from '../lib/log';
+import { perfRecord } from '../lib/perf';
 import { snapToFrame } from '../lib/time';
 
 export type KeyId = string;
@@ -278,6 +279,16 @@ let tlQueued = false;
 let pendingReselect: KeyRef[] | null = null;
 let lastTimelineError = '';
 
+let tlRetries = 0;
+
+/** Auto-key, unkeyed-change count and held-back edits as the plugin has them (they outlive app restarts). */
+function syncTimelineFlags(attempt = 0) {
+  Promise.all([bridge.request<{ on: boolean }>('timeline.setAutoKey', {}), bridge.request<{ pending?: number; poseStale?: boolean }>('timeline.state')])
+    .then(([ak, st]) => set({ autoKey: ak.on, pending: st.pending ?? 0, poseStale: !!st.poseStale }))
+    .catch(() => {
+      if (attempt < 60 && get().status === 'open') window.setTimeout(() => syncTimelineFlags(attempt + 1), 1500);
+    });
+}
 export async function refreshTimeline() {
   if (tlInFlight) {
     tlQueued = true;
@@ -285,14 +296,26 @@ export async function refreshTimeline() {
   }
   tlInFlight = true;
   try {
+    const t0 = performance.now();
     const data = await bridge.request<TimelineData>('timeline.get');
+    const t1 = performance.now();
     const { groups, tracks, ...state } = data;
     set((s) => ({ tl: state, tickAt: performance.now(), tracks, groups, revision: s.revision + 1 }));
     reconcileSelection();
+    perfRecord('timelineFetch', t1 - t0); // request + JSON parse
+    perfRecord('timelineApply', performance.now() - t1); // store update + React render
     lastTimelineError = '';
+    tlRetries = 0;
   } catch (e) {
     // Disconnects are covered by the status UI; anything else must be visible, not an empty sheet.
     const msg = (e as Error).message;
+    // Studio is still starting (Timeline loads a few seconds after the bridge): try again quietly.
+    if (/not loaded yet/i.test(msg) && get().status === 'open' && tlRetries++ < 60) {
+      window.setTimeout(() => {
+        if (get().status === 'open') refreshTimeline();
+      }, 1500);
+      return;
+    }
     if (get().status === 'open' && msg !== lastTimelineError && !/not connected|disconnected/i.test(msg)) {
       lastTimelineError = msg;
       toast(`Couldn't read the timeline from Studio: ${msg}`, 'error');
@@ -357,7 +380,8 @@ export function initBridge() {
   if (bridgeStarted) return;
   bridgeStarted = true;
   bridge.on('$status', async (s) => {
-    if (s !== get().status) log('info', `bridge ${s}`, 'bridge');
+    // only the moments it connects and drops (not every reconnect attempt while Studio is closed)
+    if (s !== get().status && (s === 'open' || get().status === 'open')) log('info', s === 'open' ? 'bridge connected' : 'bridge connection lost', 'bridge');
     set({ status: s as ConnectionStatus });
     // Offline: stop extrapolating the playhead (and the canvases redrawing every frame for it).
     if (s !== 'open') {
@@ -372,10 +396,9 @@ export function initBridge() {
         for (const f of hello.features ?? []) if (f.status === 'off' || f.status === 'untested') log(f.status === 'off' ? 'warn' : 'info', `${f.label}: ${f.reason}`, 'compat');
       }
       // Plugin state survives app restarts; read auto-key back instead of assuming off.
-      if (hello?.timeline) call<{ on: boolean; newTracks: boolean }>('timeline.setAutoKey', {}).then((r) => r && set({ autoKey: r.on }));
-      // ...and unkeyed changes / held-back edits (only their changes are pushed as events)
-      if (hello?.timeline)
-        call<{ pending?: number; poseStale?: boolean }>('timeline.state').then((r) => r && set({ pending: r.pending ?? 0, poseStale: !!r.poseStale }));
+      // ...and unkeyed changes / held-back edits (only their changes are pushed as events). Quiet: while Studio
+      // is still starting Timeline isn't loaded yet; the timeline refresh below retries and these follow it.
+      if (hello?.timeline) syncTimelineFlags();
       refreshScene();
       if (hello?.timeline) refreshTimeline();
       else if (hello) toast(hello.features?.find((f) => f.id === 'timeline')?.reason ?? 'Timeline plugin not found in this Studio install', 'error');

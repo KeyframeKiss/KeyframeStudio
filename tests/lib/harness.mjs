@@ -126,7 +126,7 @@ export async function freshStudio(studio) {
 
 /** The context a suite receives: checks, helpers and cleanups. */
 export function makeContext(studio, hello) {
-  const results = { pass: 0, fail: 0, failures: [], skipped: null, lines: [] };
+  const results = { pass: 0, fail: 0, failures: [], skipped: null, lines: [], metrics: [] };
   const cleanups = [];
   const say = (line) => results.lines.push(line);
   const t = {
@@ -139,6 +139,11 @@ export function makeContext(studio, hello) {
     near,
     results,
     say,
+    /** Record a measurement (always printed by the runner). */
+    metric(label, value, unit = 'ms') {
+      results.metrics.push({ label, value, unit });
+      return value;
+    },
     /** Record a check. */
     check(label, cond, detail = '') {
       if (cond) results.pass++;

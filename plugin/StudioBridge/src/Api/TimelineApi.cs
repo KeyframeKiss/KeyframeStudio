@@ -68,6 +68,10 @@ namespace StudioEX.Bridge.Api
         [MethodImpl(MethodImplOptions.NoInlining)] private static void SeekToImpl(float t) { if (TimelineImpl.IsReady) TL.Seek(t); }
         public static int Pending() => Available ? PendingImpl() : 0;
         public static bool PoseStale() => Available && PoseStaleImpl();
+        public static void BeginScan() { if (Available) BeginScanImpl(); }
+        public static void EndScan() { if (Available) EndScanImpl(); }
+        [MethodImpl(MethodImplOptions.NoInlining)] private static void BeginScanImpl() => TimelineImpl.BeginScan();
+        [MethodImpl(MethodImplOptions.NoInlining)] private static void EndScanImpl() => TimelineImpl.EndScan();
         [MethodImpl(MethodImplOptions.NoInlining)] private static bool PoseStaleImpl() => TimelineImpl.PoseStale;
         /// <summary>A seek or playback re-evaluated every track: the pose matches the keys again.</summary>
         public static void PoseFresh() { if (Available) PoseFreshImpl(); }

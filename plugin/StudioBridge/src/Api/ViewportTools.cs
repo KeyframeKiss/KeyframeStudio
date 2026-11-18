@@ -180,7 +180,19 @@ namespace StudioEX.Bridge.Api
             return set;
         }
 
+        /// <summary>Time the last Update took (paths, ghosts, markers), for the bridge's frame budget.</summary>
+        internal static double LastFrameMs;
+        private readonly System.Diagnostics.Stopwatch _sw = new System.Diagnostics.Stopwatch();
+
         private void Update()
+        {
+            _sw.Reset();
+            _sw.Start();
+            try { UpdateInner(); }
+            finally { LastFrameMs = _sw.Elapsed.TotalMilliseconds; }
+        }
+
+        private void UpdateInner()
         {
             if (Busy || !TimelineApi.Available) return;
             bool playing = TimelineApi.Playing();

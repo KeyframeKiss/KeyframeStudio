@@ -53,7 +53,12 @@ in Studio — save first.** Needs Node 22+.
 npm test                      # every suite, pass/fail summary (asks before touching Studio)
 node tests/run.mjs face look  # suites whose name contains a word
 node tests/run.mjs --list     # what exists · --yes skips the question · --verbose prints every check
+node tests/run.mjs stress     # large-scene stress test (200+ objects, 120 tracks, 5,400 keys; not in the default run)
 ```
+
+The stress test prints timings. Start the app with `KF_DEBUG_PORT=9333` (development only) to include the app
+window's own draw and refresh times. Commands that take over 50 ms are noted in the bridge log
+(Copy diagnostics).
 
 ## Diagnostics and compatibility
 
