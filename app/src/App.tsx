@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { CommandPalette } from './components/CommandPalette';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { PreviewPanel } from './components/PreviewPanel';
+import { RecordingBadge } from './components/QuickActions';
 import { Header } from './components/Shell';
 import { SHORTCUTS } from './components/shortcuts';
 import { AnimateWorkspace, LibraryWorkspace, LookWorkspace, PoseWorkspace } from './components/Workspaces';
@@ -169,6 +170,7 @@ export function App() {
             )}
             {autoKey && <span style={{ color: 'var(--playhead)' }}>● Auto-key on</span>}
             {pending > 0 && !autoKey && <span style={{ color: 'var(--accent)' }}>{pending} unkeyed change{pending > 1 ? 's' : ''}</span>}
+            <RecordingBadge />
             {hello && !hello.translator && <span>AutoTranslator not detected</span>}
             {translateJob && (
               <span className="sb-job" title="Translating Japanese names — Library › Translations">

@@ -51,6 +51,8 @@ namespace StudioEX.Bridge
             RenderApi.Register(_router);
             gameObject.AddComponent<ShotApi>();
             ShotApi.Register(_router);
+            gameObject.AddComponent<CardLibrary>();
+            CardLibrary.Register(_router);
             gameObject.AddComponent<MotionSampler>();
             MotionSampler.Register(_router);
             gameObject.AddComponent<PreviewStream>(); // experimental live preview (roadmap Phase 3 spike)

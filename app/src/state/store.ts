@@ -97,7 +97,7 @@ export interface AppState {
 }
 
 export type Workspace = 'animate' | 'pose' | 'look' | 'library';
-export type LibraryPage = 'scenes' | 'translate' | 'settings' | 'shortcuts' | 'about';
+export type LibraryPage = 'scenes' | 'characters' | 'macros' | 'translate' | 'settings' | 'shortcuts' | 'about';
 
 export function setWorkspace(w: Workspace) {
   set({ workspace: w });

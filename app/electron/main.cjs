@@ -36,7 +36,7 @@ function thumbHandler(request) {
     // (UserData\StudioEX\pose-thumbs\*.jpg) — checked again after resolving junctions/symlinks.
     const allowed = (f) =>
       /^[a-z]:\\/i.test(f) &&
-      ((/\.png$/i.test(f) && /[\\/]userdata[\\/]studio[\\/]/i.test(f)) || (/\.jpg$/i.test(f) && /[\\/]userdata[\\/]studioex[\\/]pose-thumbs[\\/]/i.test(f)));
+      ((/\.png$/i.test(f) && /[\\/]userdata[\\/](studio|chara)[\\/]/i.test(f)) || (/\.jpg$/i.test(f) && /[\\/]userdata[\\/]studioex[\\/]pose-thumbs[\\/]/i.test(f)));
     if (!path.isAbsolute(norm) || !allowed(norm)) return new Response('forbidden', { status: 403 });
     if (!allowed(fs.realpathSync(norm))) return new Response('forbidden', { status: 403 });
     const stat = fs.statSync(norm);
@@ -142,6 +142,16 @@ function createWindow() {
 
   ipcMain.handle('window:setAlwaysOnTop', (_e, on) => { win.setAlwaysOnTop(!!on); saveState(win); return win.isAlwaysOnTop(); });
   ipcMain.handle('window:getAlwaysOnTop', () => win.isAlwaysOnTop());
+  ipcMain.handle('window:getBounds', () => win.getNormalBounds());
+  ipcMain.handle('window:setBounds', (_e, b) => {
+    // only onto a connected screen (a saved layout from another monitor setup falls back to the current size)
+    const { screen } = require('electron');
+    const ok = b && [b.x, b.y, b.width, b.height].every(Number.isFinite) && screen.getAllDisplays().some(({ workArea: a }) => b.x + 80 < a.x + a.width && b.x + b.width - 80 > a.x && b.y >= a.y - 10 && b.y + 40 < a.y + a.height);
+    if (!ok) return false;
+    if (win.isMaximized()) win.unmaximize();
+    win.setBounds({ x: Math.round(b.x), y: Math.round(b.y), width: Math.max(900, Math.round(b.width)), height: Math.max(500, Math.round(b.height)) });
+    return true;
+  });
   // the renderer only gets the path the user picked (Studio reads and copies the file itself)
   // open a folder in Explorer — only an existing local directory (never a file, so nothing gets executed)
   ipcMain.handle('shell:openFolder', (_e, p) => {

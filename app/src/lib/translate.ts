@@ -37,6 +37,8 @@ declare global {
       isElectron: boolean;
       setAlwaysOnTop(on: boolean): Promise<boolean>;
       getAlwaysOnTop(): Promise<boolean>;
+      getBounds?(): Promise<{ x: number; y: number; width: number; height: number }>;
+      setBounds?(b: { x: number; y: number; width: number; height: number }): Promise<boolean>;
       translate?: Bridge;
       log?: {
         write(lines: { level: string; source: string; text: string }[]): Promise<void>;

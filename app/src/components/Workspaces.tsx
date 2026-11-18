@@ -4,6 +4,9 @@ import { call, displayName, selectedCharacters, toast, useStore, type LibraryPag
 import { AddTrackPanel } from './AddTrackPanel';
 import { AudioPanel } from './AudioPanel';
 import { ShotsPanel } from './ShotsPanel';
+import { CharacterLibrary } from './CharacterLibrary';
+import { QuickActionsPage } from './QuickActions';
+import { columns, setPanelSizes, usePanelSizes } from '../lib/layout';
 import { CleanupPanel } from './CleanupPanel';
 import { AnimationBrowser } from './AnimationBrowser';
 import { CameraPanel } from './CameraPanel';
@@ -105,8 +108,10 @@ function Disconnected() {
 // Animate: scene + tracks | timeline + transport | key inspector
 // ---------------------------------------------------------------------------
 export function AnimateWorkspace() {
+  const sizes_animate = usePanelSizes('animate');
   return (
-    <div className="ws ws-3">
+    <div className="ws ws-3" style={{ gridTemplateColumns: columns(sizes_animate) }}>
+      <Splitters ws="animate" />
       <TabbedPanel
         id="animate.left"
         side="left"
@@ -143,6 +148,7 @@ export function AnimateWorkspace() {
 // Pose: scene | pose library / animations | character + transform
 // ---------------------------------------------------------------------------
 export function PoseWorkspace() {
+  const sizes_pose = usePanelSizes('pose');
   const [center, setCenter] = useState<'poses' | 'anims' | 'face'>(() => (localStorage.getItem('studioex.pose.center') as 'poses' | 'anims' | 'face') || 'poses');
   // The command palette can open a tab directly.
   useEffect(() => {
@@ -159,7 +165,8 @@ export function PoseWorkspace() {
     }
   };
   return (
-    <div className="ws ws-3">
+    <div className="ws ws-3" style={{ gridTemplateColumns: columns(sizes_pose) }}>
+      <Splitters ws="pose" />
       <TabbedPanel id="pose.left" side="left" tabs={[{ id: 'scene', label: 'Scene', render: () => <Outliner /> }]} />
       <main className="ws-center">
         <div className="center-tabs">
@@ -230,8 +237,10 @@ function AnimationLibrary() {
 // Look: scene (for material targets) | preset gallery | look controls
 // ---------------------------------------------------------------------------
 export function LookWorkspace() {
+  const sizes_look = usePanelSizes('look');
   return (
-    <div className="ws ws-3">
+    <div className="ws ws-3" style={{ gridTemplateColumns: columns(sizes_look) }}>
+      <Splitters ws="look" />
       <TabbedPanel id="look.left" side="left" tabs={[{ id: 'scene', label: 'Scene', render: () => <Outliner /> }]} />
       <main className="ws-center" style={{ position: 'relative' }}>
         <div className="page">
@@ -259,6 +268,8 @@ export function LookWorkspace() {
 // ---------------------------------------------------------------------------
 const PAGES: { id: LibraryPage; label: string; icon: string; hint: string }[] = [
   { id: 'scenes', label: 'Scenes', icon: 'scenes', hint: 'Load, import, save scenes' },
+  { id: 'characters', label: 'Characters', icon: 'pose', hint: 'Cards: add or swap characters' },
+  { id: 'macros', label: 'Quick actions', icon: 'bolt', hint: 'Record and replay steps' },
   { id: 'translate', label: 'Translations', icon: 'translate', hint: 'Fix Japanese → English names' },
   { id: 'settings', label: 'Mod settings', icon: 'settings', hint: 'Every plugin option' },
   { id: 'shortcuts', label: 'Shortcuts', icon: 'keyboard', hint: 'Keyboard & mouse' },
@@ -282,6 +293,8 @@ export function LibraryWorkspace() {
       </aside>
       <main className="ws-center" style={{ position: 'relative' }}>
         {page === 'scenes' && <SceneBrowser />}
+        {page === 'characters' && <CharacterLibrary />}
+        {page === 'macros' && <QuickActionsPage />}
         {page === 'translate' && (
           <div className="page">
             <div className="page-inner narrow" style={{ padding: 16 }}>
@@ -307,8 +320,45 @@ export function LibraryWorkspace() {
             </div>
           </div>
         )}
-        {page !== 'shortcuts' && page !== 'translate' && page !== 'about' && <Disconnected />}
+        {page !== 'shortcuts' && page !== 'translate' && page !== 'about' && page !== 'macros' && <Disconnected />}
       </main>
     </div>
+  );
+}
+
+/** Drag handles on the side panels' inner edges: drag to resize, double-click to hide or bring back. */
+function Splitters({ ws }: { ws: string }) {
+  const sz = usePanelSizes(ws);
+  const drag = (side: 'left' | 'right') => (e: React.PointerEvent<HTMLDivElement>) => {
+    const el = e.currentTarget;
+    el.setPointerCapture(e.pointerId);
+    const x0 = e.clientX,
+      w0 = side === 'left' ? sz.left : sz.right;
+    if (side === 'left' ? sz.leftHidden : sz.rightHidden) setPanelSizes(ws, side === 'left' ? { leftHidden: false } : { rightHidden: false });
+    const move = (ev: PointerEvent) => setPanelSizes(ws, side === 'left' ? { left: w0 + (ev.clientX - x0) } : { right: w0 - (ev.clientX - x0) });
+    const up = () => {
+      el.removeEventListener('pointermove', move);
+      el.removeEventListener('pointerup', up);
+    };
+    el.addEventListener('pointermove', move);
+    el.addEventListener('pointerup', up);
+  };
+  return (
+    <>
+      <div
+        className={`ws-split ${sz.leftHidden ? 'hidden' : ''}`}
+        style={{ left: (sz.leftHidden ? 0 : sz.left) - 3 }}
+        onPointerDown={drag('left')}
+        onDoubleClick={() => setPanelSizes(ws, { leftHidden: !sz.leftHidden })}
+        title="Drag to resize · double-click to hide/show the panel"
+      />
+      <div
+        className={`ws-split ${sz.rightHidden ? 'hidden' : ''}`}
+        style={{ right: (sz.rightHidden ? 0 : sz.right) - 3 }}
+        onPointerDown={drag('right')}
+        onDoubleClick={() => setPanelSizes(ws, { rightHidden: !sz.rightHidden })}
+        title="Drag to resize · double-click to hide/show the panel"
+      />
+    </>
   );
 }

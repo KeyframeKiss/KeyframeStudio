@@ -150,6 +150,64 @@ select {
 }
 .ws-3 {
   grid-template-columns: 264px minmax(0, 1fr) 316px;
+  position: relative; /* splitters */
+}
+.ws-3 > aside {
+  min-width: 0;
+  overflow: hidden;
+}
+.ws-split {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  z-index: 5;
+  cursor: col-resize;
+}
+.ws-split:hover,
+.ws-split:active {
+  background: color-mix(in srgb, var(--accent-2) 45%, transparent);
+}
+.ws-split.hidden {
+  width: 8px;
+  background: color-mix(in srgb, var(--accent-2) 18%, transparent);
+}
+.layout-menu {
+  display: grid;
+  gap: 4px;
+  padding: 8px;
+  font-size: 12px;
+}
+.layout-menu label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.layout-menu-h {
+  margin-top: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-2);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.layout-item {
+  display: flex;
+  gap: 4px;
+}
+/* compact mode: smaller type and tighter spacing everywhere */
+html.compact body {
+  font-size: 11.5px;
+}
+html.compact .section {
+  padding: 7px 10px 9px;
+}
+html.compact .panel-tab {
+  padding-top: 5px;
+  padding-bottom: 5px;
+}
+html.compact .btn {
+  height: 24px;
 }
 .ws-lib {
   grid-template-columns: 220px minmax(0, 1fr);
@@ -2938,4 +2996,104 @@ select {
   resize: vertical;
   min-height: 22px;
   font-size: 11px;
+}
+
+/* Library › Characters */
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+}
+.char-card {
+  position: relative;
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--bg-2);
+  border: 1px solid var(--line-soft);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+}
+.char-card:hover {
+  border-color: var(--accent);
+}
+.char-card-img {
+  aspect-ratio: 252 / 352;
+  background: var(--bg-0);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-3);
+}
+.char-card-img img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.char-card-name {
+  padding: 6px 8px 2px;
+  min-width: 0;
+}
+.char-card-name b {
+  display: block;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.char-card-name small {
+  color: var(--text-3);
+  font-size: 10px;
+}
+.char-card-actions {
+  display: flex;
+  gap: 4px;
+  padding: 4px 8px 8px;
+}
+
+/* Quick actions */
+.macro-rec {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #ff6b6b;
+  font-weight: 600;
+}
+.macro-list {
+  display: grid;
+  gap: 6px;
+}
+.macro-item {
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: var(--bg-1);
+  padding: 8px 10px;
+}
+.macro-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+.macro-head small {
+  color: var(--text-3);
+}
+.macro-head label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-2);
+  font-size: 11px;
+}
+.macro-steps {
+  margin: 6px 0 0 18px;
+  padding: 0;
+  color: var(--text-2);
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+.char-card-img[data-ph]::after {
+  content: attr(data-ph);
+  font-size: 28px;
 }

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { call, useStore } from '../state/store';
 
 /** Favorites, tags and last use for scenes, animation clips and looks (stored by the bridge plugin). */
-export type LibKind = 'scenes' | 'animations' | 'looks';
+export type LibKind = 'scenes' | 'animations' | 'looks' | 'characters';
 export interface LibMeta {
   favorite?: boolean;
   tags?: string[];

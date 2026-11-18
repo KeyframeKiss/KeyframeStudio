@@ -31,6 +31,8 @@ import { PRESETS, toFlat } from '../lib/curve';
 import { Icon } from './Icon';
 import { lookChanged } from './LookPresets';
 
+import { isRecording, macros } from '../lib/macros';
+import { runMacro } from './QuickActions';
 interface Cmd {
   id: string;
   title: string;
@@ -107,6 +109,8 @@ function PaletteInner() {
       { id: 'pose.mirror', group: 'Pose', title: 'Mirror pose of selected characters', kbd: 'M', run: () => { const ids = selectedCharacters(); if (!ids.length) return toast('Select a character first'); call('pose.mirror', { ids }); } },
       { id: 'look.reset', group: 'Look', title: "Reset look to Studio's default", run: () => call('look.resetDefault').then(lookChanged) },
       { id: 'folder.new', group: 'Tracks', title: 'New folder from selected tracks', kbd: 'Ctrl G', run: () => window.dispatchEvent(new CustomEvent('studioex:group')) },
+      { id: 'macro.record', group: 'Quick actions', title: isRecording() ? 'Stop recording the quick action' : 'Record a quick action', keywords: 'macro automate repeat', run: () => openLibrary('macros') },
+      ...macros().map((m) => ({ id: 'macro.run.' + m.name, group: 'Quick actions', title: `Run: ${m.name}`, keywords: 'macro quick action', run: () => runMacro(m) })),
       ...looks.map((l) => ({ id: 'look.apply.' + l.file, group: 'Apply look', title: l.name, keywords: 'preset look', run: () => call('look.applyPreset', { file: l.file, strength: 1, ids: useStore.getState().studioSelection }).then((r) => { if (r) { lookChanged(); toast(`Applied “${l.name}”`); } }) })),
       ...Object.values(nodes)
         .filter((n) => n.type !== 'node')

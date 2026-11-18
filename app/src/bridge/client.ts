@@ -1,3 +1,4 @@
+import { noteRequest } from '../lib/macros';
 // WebSocket client for the in-game Keyframe Studio Bridge plugin.
 // Request/response with ids, plus server-pushed events. Auto-reconnects.
 
@@ -100,6 +101,7 @@ export class BridgeClient {
     const ws = this.ws;
     if (!ws || ws.readyState !== WebSocket.OPEN) return Promise.reject(new Error('Not connected to Studio'));
     const id = this.nextId++;
+    noteRequest(cmd, args); // quick-action recording (only while recording; skips reads)
     return new Promise<T>((resolve, reject) => {
       const timer = window.setTimeout(() => {
         this.pending.delete(id);

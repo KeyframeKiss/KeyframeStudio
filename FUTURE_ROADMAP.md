@@ -351,6 +351,11 @@ Extends the Library workspace and the Phase 1 organization features.
 - Thumbnails for characters, animations, items, and scenes.
 - Saved production templates.
 
+**Status (2026-11-17): character cards done** (Library › Characters).
+- **Browsing:** cards from UserData/chara with their card art, names read in the background (cached), search, female/male, folders, favorites, recent and tags.
+- **Using:** **Add** to the scene (undoable), or **Swap** the selected character for another card (pose kept).
+- **Not done:** thumbnails for items and animations (the game has none to show) and production templates.
+
 ### 7.3 Workspace Layouts
 Saved layouts give most of the benefit of dockable panels at a fraction of the cost.
 
@@ -359,11 +364,21 @@ Saved layouts give most of the benefit of dockable panels at a fraction of the c
 - Compact and advanced UI modes.
 - Fully dockable or detachable panels only if saved layouts prove insufficient.
 
+**Status (2026-11-17): done** (Layout menu in the header).
+- **Panels:** drag a side panel's edge to resize it, double-click to hide it; remembered per workspace.
+- **Compact mode** for small screens.
+- **Saved layouts** remember panel sizes, hidden panels, every panel's tab, compact mode, and the window's size and position. They're restored only onto a connected monitor.
+
 ### 7.4 Workflow Automation
 - Batch editing commands and repeatable macros.
 - User-defined quick actions (via the command palette).
 - Optional scripting support.
 - Project-specific presets.
+
+**Status (2026-11-17): quick actions done** (Library › Quick actions, Ctrl+K).
+- **Recording:** records the changes made in Keyframe Studio. Reads, previews and peeks are skipped.
+- **Replaying:** from the page or the command palette, optionally on the current selection. Each step is undoable.
+- **Not done:** scripting. Batch edits already happen wherever a panel works on several selected characters.
 
 ### 7.5 Render and Export
 First check what installed screenshot and recording mods already do; drive them from Keyframe Studio rather than rebuilding them.

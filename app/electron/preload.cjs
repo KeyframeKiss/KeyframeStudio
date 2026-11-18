@@ -4,6 +4,8 @@ contextBridge.exposeInMainWorld('studioEx', {
   isElectron: true,
   setAlwaysOnTop: (on) => ipcRenderer.invoke('window:setAlwaysOnTop', on),
   getAlwaysOnTop: () => ipcRenderer.invoke('window:getAlwaysOnTop'),
+  getBounds: () => ipcRenderer.invoke('window:getBounds'),
+  setBounds: (b) => ipcRenderer.invoke('window:setBounds', b),
   log: {
     write: (lines) => ipcRenderer.invoke('log:write', lines),
     tail: (n) => ipcRenderer.invoke('log:tail', n),

@@ -15,7 +15,7 @@ namespace StudioEX.Bridge.Api
     /// </summary>
     internal static class LibraryMeta
     {
-        private static readonly HashSet<string> Kinds = new HashSet<string> { "scenes", "animations", "looks" };
+        private static readonly HashSet<string> Kinds = new HashSet<string> { "scenes", "animations", "looks", "characters" };
         private static Dictionary<string, object> _all;
         private static string FilePath => Path.GetFullPath(Path.Combine(UserData.Path, "StudioEX/library-meta.json"));
 

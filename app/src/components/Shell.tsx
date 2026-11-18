@@ -22,6 +22,7 @@ import {
 } from '../state/store';
 import { parseTime } from '../lib/time';
 
+import { applyLayout, deleteLayout, resetLayout, saveLayout, savedLayouts, setCompact, setPanelSizes, useCompact, usePanelSizes } from '../lib/layout';
 const WORKSPACES: { id: Workspace; label: string; icon: string; hint: string }[] = [
   { id: 'animate', label: 'Animate', icon: 'animate', hint: 'Timeline, keys and curves (Ctrl+1)' },
   { id: 'pose', label: 'Pose', icon: 'pose', hint: 'Characters, poses and animations (Ctrl+2)' },
@@ -74,6 +75,7 @@ export function Header() {
           <Icon name="pin" />
         </button>
       )}
+      <LayoutMenu />
       <button className="btn icon" title="Mod settings (Ctrl+,)" onClick={() => openLibrary('settings')}>
         <Icon name="settings" />
       </button>
@@ -275,5 +277,64 @@ function TimelineMoreMenu() {
       <Row on={autoKeyNew} label="Auto-key creates new tracks" hint="Moving an un-animated bone/object creates its track" onClick={() => setAutoKey(autoKey, !autoKeyNew)} />
       <Row on={!!tl?.uiVisible} label="Show Timeline's own window" hint="The original Timeline UI inside Studio" onClick={() => tl.has && setTimelineUiVisible(!tl.uiVisible)} />
     </div>
+  );
+}
+
+/** Header menu: compact mode, show/hide side panels, saved layouts (panels, tabs, window position). */
+function LayoutMenu() {
+  const ws = useStore((s) => s.workspace);
+  const compact = useCompact();
+  const sz = usePanelSizes(ws);
+  const [list, setList] = useState(savedLayouts);
+  const [name, setName] = useState('');
+  const hasSides = ws !== 'library';
+  return (
+    <Popover
+      align="right"
+      placement="down"
+      width={250}
+      trigger={(open, toggle) => (
+        <button className={`btn icon ${open ? 'on' : ''}`} title="Layout: panel sizes, compact mode, saved layouts" onClick={() => { setList(savedLayouts()); toggle(); }}>
+          <Icon name="grid" />
+        </button>
+      )}
+    >
+      <div className="layout-menu">
+        <label>
+          <input type="checkbox" checked={compact} onChange={(e) => setCompact(e.target.checked)} /> Compact (smaller text and spacing)
+        </label>
+        {hasSides && (
+          <>
+            <label>
+              <input type="checkbox" checked={!sz.leftHidden} onChange={(e) => setPanelSizes(ws, { leftHidden: !e.target.checked })} /> Left panel
+            </label>
+            <label>
+              <input type="checkbox" checked={!sz.rightHidden} onChange={(e) => setPanelSizes(ws, { rightHidden: !e.target.checked })} /> Right panel
+            </label>
+            <div className="hint" style={{ margin: '2px 0 6px' }}>Drag a panel's edge to resize it.</div>
+          </>
+        )}
+        <div className="layout-menu-h">Saved layouts</div>
+        {list.map((l) => (
+          <div key={l.name} className="layout-item">
+            <button className="btn small solid" style={{ flex: 1, justifyContent: 'flex-start' }} onClick={() => applyLayout(l)} title={l.bounds ? 'Panels, tabs, compact mode and window position' : 'Panels, tabs and compact mode'}>
+              {l.name}
+            </button>
+            <button className="btn small" title="Delete" onClick={() => { deleteLayout(l.name); setList(savedLayouts()); }}>
+              ✕
+            </button>
+          </div>
+        ))}
+        <div style={{ display: 'flex', gap: 4, marginTop: 4 }}>
+          <input className="input" style={{ flex: 1, minWidth: 0, height: 24 }} placeholder="Save current as…" value={name} onChange={(e) => setName(e.target.value)} />
+          <button className="btn small primary" disabled={!name.trim()} onClick={async () => { await saveLayout(name.trim()); setName(''); setList(savedLayouts()); }}>
+            Save
+          </button>
+        </div>
+        <button className="btn small" style={{ marginTop: 6 }} onClick={resetLayout}>
+          Reset to default
+        </button>
+      </div>
+    </Popover>
   );
 }
