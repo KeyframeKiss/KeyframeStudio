@@ -83,14 +83,16 @@ version that still matches stays on and is marked "untested".
 
 ## Workspaces
 
-| Workspace | Left | Center | Right |
+| Workspace | Left | Center sub-tabs | Right |
 | --- | --- | --- | --- |
-| **Animate** (`Ctrl+1`) | Scene | Dope sheet / graph, transport | Keyframe or track inspector, Cleanup, selected object |
-| **Pose** (`Ctrl+2`) | Scene | Pose library / Animations / Face Studio | Selected character: animation, FK/IK, expression, clothes, saved outfits, transform |
-| **Look** (`Ctrl+3`) | Scene | Look presets | Look settings, lighting rigs |
-| **Shoot** (`Ctrl+4`) | Scene | Shots and camera over the dope sheet | Render, audio & lip-sync |
+| **Animate** (`Ctrl+1`) | Scene | Timeline (dope sheet / graph) · **Face** · Motion clips — transport underneath | Keyframe or track details, Cleanup, selected object |
+| **Pose** (`Ctrl+2`) | Scene | Pose library · Animations · Face Studio · Outfit | Selected character: animation, FK/IK + hands, body sliders, transform |
+| **Look** (`Ctrl+3`) | Scene | Presets · Settings · Lighting rigs | — |
+| **Shoot** (`Ctrl+4`) | Scene | Shots & camera (over the dope sheet) · Render · Templates | Audio track |
 | **Library** (`Ctrl+5`) | Scenes, characters, quick actions | | |
 | **Settings** (⚙ menu, `Ctrl+,`) | Mod settings, translations, shortcuts, about & diagnostics | | |
+
+**Animating a face:** Animate › Face. Pick the character, move the playhead, change the expression (brows, eyes, mouth shape and opening, blush, tears, neck) — with *Key as I change* on, each change is keyed there. The strip underneath shows only that character's face tracks (click to jump, ◆ to key a row, right-click a key to delete it). Lip-sync from a WAV (with vowel shapes) and blinks are on the same page.
 
 The right panel is one column of collapsible groups that follows the selection (each remembers if it's open).
 Side panels resize by dragging their edge. The ⚙ menu (top right) has Settings, shortcuts, keep-on-top, compact mode and saved layouts.

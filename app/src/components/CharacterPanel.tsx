@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { bridge } from '../bridge/client';
-import { call, displayName, selectedCharacters, setWorkspace, toast, useStore } from '../state/store';
+import { call, displayName, selectedCharacters, showTab, toast, useStore } from '../state/store';
 import { Icon } from './Icon';
 import { AnimationBrowser } from './AnimationBrowser';
 import { AbmxSection } from './AbmxSection';
@@ -42,8 +42,15 @@ export interface CharaState {
 
 const CLOTH_STATES = ['On', 'Shift', 'Shift 2', 'Off'];
 
-/** The selected character's animation, posing, expression and clothes. `bare`: the name row is shown by the panel around it. */
-export function CharacterPanel({ bare }: { bare?: boolean } = {}) {
+export type CharaSection = 'anim' | 'pose' | 'face' | 'outfit' | 'abmx';
+
+/**
+ * The selected character's animation, posing (with hands), expression, clothes and body sliders. `sections`
+ * picks which (Pose's side panel: animation, posing, body; Pose › Outfit: clothes). `bare`: the name row is
+ * shown by the panel around it.
+ */
+export function CharacterPanel({ bare, sections = ['anim', 'pose', 'face', 'outfit', 'abmx'] }: { bare?: boolean; sections?: CharaSection[] } = {}) {
+  const has = (x: CharaSection) => sections.includes(x);
   const selection = useStore((s) => s.studioSelection);
   const nodes = useStore((s) => s.nodes);
   useStore((s) => s.showEnglish);
@@ -151,6 +158,7 @@ export function CharacterPanel({ bare }: { bare?: boolean } = {}) {
         </div>
       )}
 
+      {has('anim') && (
       <CollapsibleSection open={!!open.anim} onToggle={() => tog('anim')} title="Animation">
         <div className="kv">
           <label>Clip</label>
@@ -168,8 +176,10 @@ export function CharacterPanel({ bare }: { bare?: boolean } = {}) {
           Restart animation
         </button>
       </CollapsibleSection>
+      )}
 
-      <CollapsibleSection open={!!open.pose} onToggle={() => tog('pose')} title="Posing (FK / IK)">
+      {has('pose') && (
+      <CollapsibleSection open={!!open.pose} onToggle={() => tog('pose')} title="Posing (FK / IK, hands)">
         <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
           <Toggle label="FK" on={state.kinematics.fk} onChange={(v) => apply({ fk: v })} />
           <Toggle label="IK" on={state.kinematics.ik} onChange={(v) => apply({ ik: v })} />
@@ -180,14 +190,22 @@ export function CharacterPanel({ bare }: { bare?: boolean } = {}) {
         {state.kinematics.ik && (
           <Chips label="IK parts" items={state.kinematics.ikParts} onToggle={(i, on) => apply({ ikPart: { index: i, on } })} />
         )}
+        <div className="kv" style={{ marginTop: 10 }}>
+          <label>Left hand</label>
+          <Picker value={state.hands[0].ptn} options={state.hands[0].options.map((o) => displayName(o) || `#${o.no}`)} values={state.hands[0].options.map((o) => o.no)} onChange={(v) => apply({ handLeft: v })} />
+          <label>Right hand</label>
+          <Picker value={state.hands[1].ptn} options={state.hands[1].options.map((o) => displayName(o) || `#${o.no}`)} values={state.hands[1].options.map((o) => o.no)} onChange={(v) => apply({ handRight: v })} />
+        </div>
       </CollapsibleSection>
+      )}
 
+      {has('face') && (
       <CollapsibleSection
         open={!!open.face}
         onToggle={() => tog('face')}
-        title="Expression & hands"
+        title="Expression"
         extra={
-          <button className="btn" style={{ height: 20, fontSize: 10 }} title="Every face part and shape: Face Studio" onClick={() => { setWorkspace('pose'); window.setTimeout(() => window.dispatchEvent(new CustomEvent('studioex:pose-tab', { detail: 'face' })), 0); }}>
+          <button className="btn" style={{ height: 20, fontSize: 10 }} title="Every face part and shape: Face Studio" onClick={() => showTab('pose', 'face')}>
             Face Studio ›
           </button>
         }
@@ -211,21 +229,15 @@ export function CharacterPanel({ bare }: { bare?: boolean } = {}) {
           <Picker value={f.eyesLook} options={f.eyesLookOptions} onChange={(v) => apply({ eyesLook: v }, (s) => ({ ...s, face: { ...s.face, eyesLook: v } }))} />
           <label>Neck look</label>
           <Picker value={f.neckLook} options={f.neckLookOptions} onChange={(v) => apply({ neckLook: v }, (s) => ({ ...s, face: { ...s.face, neckLook: v } }))} />
-          <label>Nipples</label>
-          <Slider value={f.nipples} min={0} max={1} step={0.01} onChange={(v) => apply({ nipples: v }, (s) => ({ ...s, face: { ...s.face, nipples: v } }))} />
         </div>
         <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
           <Toggle label="Blink" on={f.blink} onChange={(v) => apply({ blink: v }, (s) => ({ ...s, face: { ...s.face, blink: v } }))} />
           <Toggle label="Lip sync" on={f.lipSync} onChange={(v) => apply({ lipSync: v }, (s) => ({ ...s, face: { ...s.face, lipSync: v } }))} />
         </div>
-        <div className="kv" style={{ marginTop: 10 }}>
-          <label>Left hand</label>
-          <Picker value={state.hands[0].ptn} options={state.hands[0].options.map((o) => displayName(o) || `#${o.no}`)} values={state.hands[0].options.map((o) => o.no)} onChange={(v) => apply({ handLeft: v })} />
-          <label>Right hand</label>
-          <Picker value={state.hands[1].ptn} options={state.hands[1].options.map((o) => displayName(o) || `#${o.no}`)} values={state.hands[1].options.map((o) => o.no)} onChange={(v) => apply({ handRight: v })} />
-        </div>
       </CollapsibleSection>
+      )}
 
+      {has('outfit') && (
       <CollapsibleSection open={!!open.outfit} onToggle={() => tog('outfit')}
         title="Clothes"
         extra={
@@ -244,6 +256,8 @@ export function CharacterPanel({ bare }: { bare?: boolean } = {}) {
           <Picker value={state.coordinate} options={state.coordinates} onChange={(v) => apply({ coordinate: v })} />
           <label>Shoes</label>
           <Seg value={state.shoesType} options={['Indoor', 'Outdoor']} onChange={(v) => apply({ shoesType: v })} />
+          <label>Nipples</label>
+          <Slider value={f.nipples} min={0} max={1} step={0.01} onChange={(v) => apply({ nipples: v }, (s) => ({ ...s, face: { ...s.face, nipples: v } }))} />
         </div>
         <div style={{ marginTop: 8, display: 'grid', gap: 4 }}>
           {state.clothes
@@ -263,8 +277,9 @@ export function CharacterPanel({ bare }: { bare?: boolean } = {}) {
             ))}
         </div>
       </CollapsibleSection>
+      )}
 
-      {state.abmx && (
+      {has('abmx') && state.abmx && (
         <CollapsibleSection open={!!open.abmx} onToggle={() => tog('abmx')} title="Body sliders (ABMX)">
           <AbmxSection id={primary} />
         </CollapsibleSection>

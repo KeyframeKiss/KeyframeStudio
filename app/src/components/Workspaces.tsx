@@ -1,6 +1,7 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { bridge } from '../bridge/client';
-import { call, displayName, selectedCharacters, toast, useStore, type LibraryPage } from '../state/store';
+import { call, displayName, selectedCharacters, showTab, toast, useStore, type LibraryPage } from '../state/store';
+import { FaceAnimation } from './FaceAnimation';
 import { Group, SelectionHeader, Stack } from './InspectorStack';
 import { AudioPanel } from './AudioPanel';
 import { ShotsPanel } from './ShotsPanel';
@@ -68,17 +69,102 @@ function ScenePanel() {
 }
 
 // ---------------------------------------------------------------------------
-// Animate: scene | dope sheet / graph + transport | keys, cleanup, selected object
+// Center sub-tabs (like Pose's): the big tools of a workspace, one at a time, at full width
 // ---------------------------------------------------------------------------
+interface SubTab {
+  id: string;
+  label: string;
+  icon: string;
+  hint?: string;
+}
+
+/** The workspace's current sub-tab: remembered, and switchable from elsewhere with showTab(ws, tab). */
+function useCenterTab(ws: string, tabs: SubTab[], legacyKey?: string): [string, (id: string) => void] {
+  const key = `kf.center.${ws}`;
+  const valid = (t: string | null | undefined) => (t && tabs.some((x) => x.id === t) ? t : null);
+  const [tab, setTab] = useState(() => {
+    try {
+      return valid(localStorage.getItem(key)) ?? valid(legacyKey ? localStorage.getItem(legacyKey) : null) ?? tabs[0].id;
+    } catch {
+      return tabs[0].id;
+    }
+  });
+  const pick = (id: string) => {
+    setTab(id);
+    try {
+      localStorage.setItem(key, id);
+    } catch {
+      /* ignore */
+    }
+  };
+  useEffect(() => {
+    const on = (e: Event) => {
+      const d = (e as CustomEvent<{ ws: string; tab: string }>).detail;
+      if (d.ws === ws && valid(d.tab)) setTab(d.tab);
+    };
+    window.addEventListener('kf:center-tab', on);
+    return () => window.removeEventListener('kf:center-tab', on);
+  }, [ws]); // eslint-disable-line react-hooks/exhaustive-deps
+  return [tab, pick];
+}
+
+function CenterTabBar({ tabs, tab, pick, extra }: { tabs: SubTab[]; tab: string; pick: (id: string) => void; extra?: React.ReactNode }) {
+  return (
+    <div className="center-tabs">
+      {tabs.map((t) => (
+        <button key={t.id} className={`ws-subtab ${tab === t.id ? 'active' : ''}`} onClick={() => pick(t.id)} title={t.hint}>
+          <Icon name={t.icon} size={14} /> {t.label}
+        </button>
+      ))}
+      {extra && (
+        <>
+          <span style={{ flex: 1 }} />
+          {extra}
+        </>
+      )}
+    </div>
+  );
+}
+
+/** A scrolling page inside a sub-tab, centred and not wider than `max`. */
+function SubPage({ max = 760, children }: { max?: number; children: React.ReactNode }) {
+  return (
+    <div className="subpage">
+      <div className="subpage-inner" style={{ maxWidth: max }}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Animate: scene | Timeline / Face / Motion clips + transport | keys, cleanup, selected object
+// ---------------------------------------------------------------------------
+const ANIMATE_TABS: SubTab[] = [
+  { id: 'timeline', label: 'Timeline', icon: 'tracks', hint: 'Dope sheet and graph editor (Tab switches)' },
+  { id: 'face', label: 'Face', icon: 'target', hint: 'Animate a face: expressions keyed at the playhead, lip-sync, blinks' },
+  { id: 'clips', label: 'Motion clips', icon: 'scissors', hint: 'Save a stretch of animation and reuse it on any character' },
+];
+
 export function AnimateWorkspace() {
   const sizes = usePanelSizes('animate');
+  const [tab, pick] = useCenterTab('animate', ANIMATE_TABS);
   return (
     <div className="ws ws-3" style={{ gridTemplateColumns: columns(sizes) }}>
       <Splitters ws="animate" />
       <ScenePanel />
       <main className="ws-center">
-        <div style={{ flex: 1, minHeight: 0, display: 'flex', position: 'relative' }}>
-          <DopeSheet />
+        <CenterTabBar tabs={ANIMATE_TABS} tab={tab} pick={pick} />
+        <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', position: 'relative' }}>
+          <ErrorBoundary key={tab} name={ANIMATE_TABS.find((t) => t.id === tab)?.label ?? tab}>
+            {tab === 'timeline' && <DopeSheet />}
+            {tab === 'face' && <FaceAnimation />}
+            {tab === 'clips' && (
+              <SubPage max={1100}>
+                <ClipsPanel wide />
+              </SubPage>
+            )}
+          </ErrorBoundary>
           <Disconnected />
         </div>
         <TransportBar />
@@ -106,9 +192,6 @@ function AnimateInspector() {
           <Inspector />
         </Group>
       )}
-      <Group ws="animate" id="clips" icon="scissors" title="Motion clips" defaultOpen={false}>
-        <ClipsPanel />
-      </Group>
       <Group ws="animate" id="cleanup" icon="sliders" title="Cleanup" defaultOpen={false}>
         <CleanupPanel />
       </Group>
@@ -132,44 +215,30 @@ function AnimateInspector() {
 }
 
 // ---------------------------------------------------------------------------
-// Pose: scene | pose library / animations / face studio | selected character
+// Pose: scene | Pose library / Animations / Face Studio / Outfit | the selected character's basics
 // ---------------------------------------------------------------------------
+const POSE_TABS: SubTab[] = [
+  { id: 'poses', label: 'Pose library', icon: 'pose' },
+  { id: 'anims', label: 'Animations', icon: 'animate' },
+  { id: 'face', label: 'Face Studio', icon: 'target', hint: 'Face shape, expressions, mesh shapes' },
+  { id: 'outfit', label: 'Outfit', icon: 'look', hint: 'Clothes, saved outfits, accessories' },
+];
+
 export function PoseWorkspace() {
   const sizes = usePanelSizes('pose');
-  const [center, setCenter] = useState<'poses' | 'anims' | 'face'>(() => (localStorage.getItem('studioex.pose.center') as 'poses' | 'anims' | 'face') || 'poses');
-  // The command palette can open a tab directly.
-  useEffect(() => {
-    const on = (e: Event) => pick((e as CustomEvent).detail);
-    window.addEventListener('studioex:pose-tab', on);
-    return () => window.removeEventListener('studioex:pose-tab', on);
-  }, []);
-  const pick = (c: 'poses' | 'anims' | 'face') => {
-    setCenter(c);
-    try {
-      localStorage.setItem('studioex.pose.center', c);
-    } catch {
-      /* ignore */
-    }
-  };
+  const [tab, pick] = useCenterTab('pose', POSE_TABS, 'studioex.pose.center');
   return (
     <div className="ws ws-3" style={{ gridTemplateColumns: columns(sizes) }}>
       <Splitters ws="pose" />
       <ScenePanel />
       <main className="ws-center">
-        <div className="center-tabs">
-          <button className={`ws-subtab ${center === 'poses' ? 'active' : ''}`} onClick={() => pick('poses')}>
-            <Icon name="pose" size={14} /> Pose library
-          </button>
-          <button className={`ws-subtab ${center === 'anims' ? 'active' : ''}`} onClick={() => pick('anims')}>
-            <Icon name="animate" size={14} /> Animations
-          </button>
-          <button className={`ws-subtab ${center === 'face' ? 'active' : ''}`} onClick={() => pick('face')}>
-            <Icon name="target" size={14} /> Face Studio
-          </button>
-        </div>
+        <CenterTabBar tabs={POSE_TABS} tab={tab} pick={pick} />
         <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', position: 'relative' }}>
-          <ErrorBoundary key={center} name={center === 'face' ? 'Face Studio' : center === 'anims' ? 'Animations' : 'Pose library'}>
-            {center === 'poses' ? <PosePanel wide /> : center === 'anims' ? <AnimationLibrary /> : <FaceStudio />}
+          <ErrorBoundary key={tab} name={POSE_TABS.find((t) => t.id === tab)?.label ?? tab}>
+            {tab === 'poses' && <PosePanel wide />}
+            {tab === 'anims' && <AnimationLibrary />}
+            {tab === 'face' && <FaceStudio />}
+            {tab === 'outfit' && <OutfitPage />}
           </ErrorBoundary>
           <Disconnected />
         </div>
@@ -187,12 +256,7 @@ function PoseInspector() {
       <SelectionHeader empty="Select a character in the Scene list or in Studio. With several selected, changes apply to all of them." />
       {isChar && (
         <Group ws="pose" id="character" icon="pose" title="Character">
-          <CharacterPanel bare />
-        </Group>
-      )}
-      {isChar && (
-        <Group ws="pose" id="outfits" icon="look" title="Saved outfits & accessories" defaultOpen={false}>
-          <OutfitPanel />
+          <CharacterPanel bare sections={['anim', 'pose', 'abmx']} />
         </Group>
       )}
       {any && (
@@ -201,6 +265,30 @@ function PoseInspector() {
         </Group>
       )}
     </Stack>
+  );
+}
+
+/** Pose › Outfit: what the character wears (clothes and their states), saved outfits, accessories. */
+function OutfitPage() {
+  const isChar = useStore((s) => s.studioSelection.length > 0 && s.nodes[s.studioSelection[0]]?.type === 'Char');
+  if (!isChar)
+    return (
+      <div className="empty" style={{ margin: 'auto' }}>
+        <strong>Select a character</strong>
+        Pick a character in the Scene list or in Studio to change what they wear.
+      </div>
+    );
+  return (
+    <div className="subpage">
+      <div className="outfit-page">
+        <div className="outfit-col">
+          <CharacterPanel bare sections={['outfit']} />
+        </div>
+        <div className="outfit-col">
+          <OutfitPanel />
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -238,37 +326,52 @@ function AnimationLibrary() {
 }
 
 // ---------------------------------------------------------------------------
-// Look: scene (for material targets) | preset gallery | look controls + lighting rigs
+// Look: scene (for material targets) | Presets / Settings / Lighting (no side panel: everything is wide)
 // ---------------------------------------------------------------------------
+const LOOK_TABS: SubTab[] = [
+  { id: 'presets', label: 'Presets', icon: 'look', hint: 'Saved looks: apply all or some parts, at any strength' },
+  { id: 'settings', label: 'Settings', icon: 'sliders', hint: 'Color grade, bloom, depth of field, fog, toon shading, lights, materials' },
+  { id: 'lighting', label: 'Lighting rigs', icon: 'bolt', hint: 'Light setups placed around a character' },
+];
+
 export function LookWorkspace() {
   const sizes = usePanelSizes('look');
+  const [tab, pick] = useCenterTab('look', LOOK_TABS);
   return (
-    <div className="ws ws-3" style={{ gridTemplateColumns: columns(sizes) }}>
-      <Splitters ws="look" />
+    <div className="ws ws-3" style={{ gridTemplateColumns: `${leftCss(sizes)} minmax(0, 1fr)` }}>
+      <Splitters ws="look" right={false} />
       <ScenePanel />
       <main className="ws-center" style={{ position: 'relative' }}>
-        <div className="page">
-          <div className="page-inner" style={{ padding: 16, overflow: 'auto' }}>
-            <h2 className="page-title">Looks</h2>
-            <LookPresets wide />
-          </div>
+        <CenterTabBar tabs={LOOK_TABS} tab={tab} pick={pick} />
+        <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', position: 'relative' }}>
+          <ErrorBoundary key={tab} name={LOOK_TABS.find((t) => t.id === tab)?.label ?? tab}>
+            {tab === 'presets' && (
+              <div className="subpage">
+                <div className="subpage-inner" style={{ maxWidth: 'none', padding: 16 }}>
+                  <LookPresets wide />
+                </div>
+              </div>
+            )}
+            {tab === 'settings' && (
+              <div className="subpage look-wide">
+                <LookPanel showPresets={false} />
+              </div>
+            )}
+            {tab === 'lighting' && (
+              <SubPage max={640}>
+                <LightRigsPanel />
+              </SubPage>
+            )}
+          </ErrorBoundary>
+          <Disconnected />
         </div>
-        <Disconnected />
       </main>
-      <Stack>
-        <Group ws="look" id="look" icon="look" title="Look settings">
-          <LookPanel showPresets={false} />
-        </Group>
-        <Group ws="look" id="rigs" icon="bolt" title="Lighting rigs" defaultOpen={false}>
-          <LightRigsPanel />
-        </Group>
-      </Stack>
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Shoot: scene | shots + camera over the timeline | render + audio
+// Shoot: scene | Shots & camera (over the timeline) / Render / Templates | audio track
 // ---------------------------------------------------------------------------
 const SHOOT_KEY = 'kf.shoot.top';
 let shootTop = (() => {
@@ -295,8 +398,51 @@ const setShootTop = (v: number) => {
   shootSubs.forEach((l) => l());
 };
 
+const SHOOT_TABS: SubTab[] = [
+  { id: 'shots', label: 'Shots & camera', icon: 'camera', hint: 'Shots, saved views, camera keys and moves, over the timeline' },
+  { id: 'render', label: 'Render', icon: 'record', hint: 'Make a video with VideoExport' },
+  { id: 'templates', label: 'Templates', icon: 'library', hint: "A scene's staging, reused in another scene" },
+];
+
 export function ShootWorkspace() {
   const sizes = usePanelSizes('shoot');
+  const [tab, pick] = useCenterTab('shoot', SHOOT_TABS);
+  return (
+    <div className="ws ws-3" style={{ gridTemplateColumns: columns(sizes) }}>
+      <Splitters ws="shoot" />
+      <ScenePanel />
+      <main className="ws-center" style={{ position: 'relative' }}>
+        <CenterTabBar tabs={SHOOT_TABS} tab={tab} pick={pick} />
+        <ErrorBoundary key={tab} name={SHOOT_TABS.find((t) => t.id === tab)?.label ?? tab}>
+          {tab === 'shots' && <ShotsAndCamera />}
+          {tab === 'render' && (
+            <SubPage max={620}>
+              <RenderPanel />
+            </SubPage>
+          )}
+          {tab === 'templates' && (
+            <SubPage max={620}>
+              <TemplatesPanel />
+            </SubPage>
+          )}
+        </ErrorBoundary>
+        <Disconnected />
+      </main>
+      <Stack>
+        <Group ws="shoot" id="audio" icon="pulse" title="Audio track">
+          <AudioPanel parts={['track']} />
+          <div className="section">
+            <button className="btn solid wide" style={{ width: '100%', justifyContent: 'center' }} onClick={() => showTab('animate', 'face')} title="Lip-sync and blinks are with the face controls">
+              Lip-sync in Animate › Face ›
+            </button>
+          </div>
+        </Group>
+      </Stack>
+    </div>
+  );
+}
+
+function ShotsAndCamera() {
   const top = useSyncExternalStore(subscribeShoot, () => shootTop);
   const noShots = useStore((s) => s.shots.length === 0);
   const drag = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -312,36 +458,20 @@ export function ShootWorkspace() {
     el.addEventListener('pointerup', up);
   };
   return (
-    <div className="ws ws-3" style={{ gridTemplateColumns: columns(sizes) }}>
-      <Splitters ws="shoot" />
-      <ScenePanel />
-      <main className="ws-center" style={{ position: 'relative' }}>
-        <div className={`shoot-top ${noShots ? 'no-shots' : ''}`} style={{ flexBasis: `${top * 100}%` }}>
-          <section className="shoot-col">
-            <ShotsPanel />
-          </section>
-          <section className="shoot-col">
-            <CameraPanel />
-          </section>
-        </div>
-        <div className="shoot-split" onPointerDown={drag} onDoubleClick={() => setShootTop(0.48)} title="Drag to resize · double-click to reset" />
-        <div style={{ flex: 1, minHeight: 0, display: 'flex', position: 'relative' }}>
-          <DopeSheet />
-        </div>
-        <TransportBar />
-        <Disconnected />
-      </main>
-      <Stack>
-        <Group ws="shoot" id="templates" icon="library" title="Templates" defaultOpen={false}>
-          <TemplatesPanel />
-        </Group>
-        <Group ws="shoot" id="render" icon="record" title="Render">
-          <RenderPanel />
-        </Group>
-        <Group ws="shoot" id="audio" icon="pulse" title="Audio & lip-sync">
-          <AudioPanel />
-        </Group>
-      </Stack>
+    <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+      <div className={`shoot-top ${noShots ? 'no-shots' : ''}`} style={{ flexBasis: `${top * 100}%` }}>
+        <section className="shoot-col">
+          <ShotsPanel />
+        </section>
+        <section className="shoot-col">
+          <CameraPanel />
+        </section>
+      </div>
+      <div className="shoot-split" onPointerDown={drag} onDoubleClick={() => setShootTop(0.48)} title="Drag to resize · double-click to reset" />
+      <div style={{ flex: 1, minHeight: 0, display: 'flex', position: 'relative' }}>
+        <DopeSheet />
+      </div>
+      <TransportBar />
     </div>
   );
 }
@@ -437,7 +567,7 @@ export function SettingsWorkspace() {
 }
 
 /** Drag handles on the side panels' inner edges: drag to resize, double-click to hide or bring back. */
-function Splitters({ ws }: { ws: string }) {
+function Splitters({ ws, right = true }: { ws: string; right?: boolean }) {
   const sz = usePanelSizes(ws);
   const drag = (side: 'left' | 'right') => (e: React.PointerEvent<HTMLDivElement>) => {
     const el = e.currentTarget;
@@ -463,6 +593,7 @@ function Splitters({ ws }: { ws: string }) {
         onDoubleClick={() => setPanelSizes(ws, { leftHidden: !sz.leftHidden })}
         title="Drag to resize · double-click to hide/show the panel"
       />
+      {right && (
       <div
         className={`ws-split ${sz.rightHidden ? 'hidden' : ''}`}
         style={{ right: `calc(${rightCss(sz)} - 3px)` }}
@@ -470,6 +601,7 @@ function Splitters({ ws }: { ws: string }) {
         onDoubleClick={() => setPanelSizes(ws, { rightHidden: !sz.rightHidden })}
         title="Drag to resize · double-click to hide/show the panel"
       />
+      )}
     </>
   );
 }

@@ -52,7 +52,7 @@ const SPEEDS = [0.5, 1, 1.5, 2];
 const BLENDS = [0, 0.1, 0.25, 0.5];
 
 /** Animate › Motion clips: save a stretch of animation, drop it in again (any character), blend it. */
-export function ClipsPanel() {
+export function ClipsPanel({ wide }: { wide?: boolean } = {}) {
   const status = useStore((s) => s.status);
   const selKeys = useStore((s) => s.selKeys);
   const selTracks = useStore((s) => s.selTracks);
@@ -105,7 +105,7 @@ export function ClipsPanel() {
   const span = (c: Clip) => (c.length / speed) * loops;
 
   return (
-    <div className="panel-body clips">
+    <div className={`panel-body clips ${wide ? 'wide' : ''}`}>
       <div className="section">
         <h3>Save as a clip</h3>
         <div className="hint" style={{ marginTop: 0 }}>

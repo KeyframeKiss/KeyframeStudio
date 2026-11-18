@@ -3673,3 +3673,172 @@ html.frameless .popover,
 html.frameless .tooltip {
   -webkit-app-region: no-drag;
 }
+
+/* ---------- Center sub-tab pages ---------- */
+.subpage {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+.subpage-inner {
+  margin: 0 auto;
+  padding: 12px 16px 24px;
+}
+.subpage .panel-body {
+  overflow: visible;
+}
+.clips.wide .clip-list {
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  align-items: start;
+  gap: 8px;
+}
+.clips.wide .clip-row img,
+.clips.wide .clip-ph {
+  width: 96px;
+  height: 54px;
+}
+/* Look › Settings: the sections flow in columns instead of one tall strip */
+.look-wide > .panel-body {
+  column-width: 340px;
+  column-gap: 0;
+  padding: 4px 8px 16px;
+}
+.look-wide > .panel-body > * {
+  break-inside: avoid;
+}
+/* Pose › Outfit: clothes | saved outfits + accessories */
+.outfit-page {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 12px;
+  padding: 12px 16px 24px;
+  max-width: 1100px;
+  margin: 0 auto;
+  align-items: start;
+}
+.outfit-col {
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+/* ---------- Animate › Face ---------- */
+.face-anim {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.face-anim-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg-1);
+}
+.face-anim-main {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(220px, 0.9fr) minmax(320px, 1.1fr);
+}
+.face-anim-view {
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+  background: var(--bg-0);
+}
+.face-anim-view img {
+  max-width: 100%;
+  max-height: 100%;
+  aspect-ratio: 1;
+  object-fit: contain;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+}
+.face-anim-controls {
+  min-height: 0;
+  overflow: auto;
+  padding: 12px;
+  border-left: 1px solid var(--line);
+}
+.face-anim-controls .face-card .panel-body {
+  overflow: visible;
+}
+.key-badge {
+  color: var(--accent);
+  font-size: 9px;
+  margin-left: 4px;
+}
+.rec-dot.live {
+  background: var(--accent);
+}
+.face-lanes {
+  flex: none;
+  border-top: 1px solid var(--line);
+  background: var(--bg-1);
+  padding: 6px 12px 4px;
+}
+.face-lane-row {
+  display: grid;
+  grid-template-columns: 86px 22px minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+  height: 20px;
+}
+.face-lane-label {
+  font-size: 11px;
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.face-lane-key {
+  width: 20px !important;
+  height: 18px !important;
+  color: var(--text-3);
+}
+.face-lane-key:hover {
+  color: var(--accent);
+}
+.face-lane {
+  position: relative;
+  height: 14px;
+  border-radius: 3px;
+  background: var(--bg-2);
+  cursor: col-resize;
+}
+.face-lane.empty-lane {
+  background: color-mix(in srgb, var(--bg-2) 50%, transparent);
+}
+.face-key {
+  position: absolute;
+  top: 50%;
+  width: 8px;
+  height: 8px;
+  margin: -4px 0 0 -4px;
+  background: var(--text-1);
+  transform: rotate(45deg);
+  cursor: pointer;
+}
+.face-key:hover,
+.face-key.here {
+  background: var(--accent);
+}
+.face-playhead {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  width: 1px;
+  background: #ff4d6d;
+  pointer-events: none;
+}
+.face-lane-foot {
+  font-size: 10.5px;
+  color: var(--text-3);
+  padding: 4px 0 0 92px;
+}

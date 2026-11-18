@@ -13,8 +13,13 @@ async function trackFor(oci: number, model: string): Promise<number | undefined>
   return call<number>('timeline.addTrack', { owner: 'Timeline', model, oci });
 }
 
-/** Audio track synced to Timeline, lip-sync from it, and quick facial-animation helpers. */
-export function AudioPanel() {
+export type AudioPart = 'track' | 'lipsync' | 'face';
+
+/**
+ * Audio track synced to Timeline, lip-sync from it, and quick facial-animation helpers. `parts` picks the
+ * sections: Shoot shows the audio track, Animate › Face shows lip-sync and the face helpers.
+ */
+export function AudioPanel({ parts = ['track', 'lipsync', 'face'] }: { parts?: AudioPart[] }) {
   const status = useStore((s) => s.status);
   const audio = useStore((s) => s.audio);
   const tl = useStore((s) => s.tl);
@@ -154,6 +159,7 @@ export function AudioPanel() {
 
   return (
     <div className="panel-body audio-panel">
+      {parts.includes('track') && (
       <div className="section">
         <h3>Audio track</h3>
         <div className="cleanup-row">
@@ -205,9 +211,21 @@ export function AudioPanel() {
           </>
         )}
       </div>
+      )}
 
+      {parts.includes('lipsync') && (
       <div className="section">
         <h3>Lip-sync</h3>
+        {!audio && (
+          <div className="hint" style={{ marginTop: 0 }}>
+            Needs the voice as a WAV (it plays with the timeline and is saved with the scene).{' '}
+            {window.studioEx?.openAudio && (
+              <button className="btn small solid" onClick={browse}>
+                Choose a WAV…
+              </button>
+            )}
+          </div>
+        )}
         <div className="hint" style={{ marginTop: 0 }}>
           {who ? `${who}'s mouth opens with the audio's loudness${vowels ? ' and takes the A / I / U / E / O shape of each sound' : ''}.` : 'Select the character who speaks.'} Rough but quick — refine keys by hand afterwards.
         </div>
@@ -252,7 +270,9 @@ export function AudioPanel() {
           {busy ? 'Working…' : 'Generate lip-sync'}
         </button>
       </div>
+      )}
 
+      {parts.includes('face') && (
       <div className="section">
         <h3>Face</h3>
         <button className="btn solid wide" disabled={!chars.length} onClick={keyFace} title="Keys eyes, eyelids, eyebrows, mouth, mouth open and neck direction at the playhead">
@@ -265,8 +285,9 @@ export function AudioPanel() {
         <button className="btn solid wide" disabled={!chars.length} onClick={blink} title="Adds natural blinks over the whole timeline on the Eyes Open track">
           Add blinks
         </button>
-        <div className="hint">Tip: turn off the character's automatic blinking (Pose › Character › Expression & hands) so it doesn't fight the keys.</div>
+        <div className="hint">Tip: turn off the character's automatic blinking (Blink, under Eyes) so it doesn't fight the keys.</div>
       </div>
+      )}
     </div>
   );
 }

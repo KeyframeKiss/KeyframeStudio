@@ -30,7 +30,14 @@ interface FaceState {
   blush: number;
 }
 
-export function ExpressionControls({ ids, onChanged }: { ids: number[]; onChanged: () => void }) {
+/** Fields this panel changes (what onChanged reports). */
+export type ExpressionField = 'eyebrowPtn' | 'eyesPtn' | 'eyesOpen' | 'eyesLook' | 'blink' | 'mouthPtn' | 'mouthOpen' | 'lipSync' | 'blush' | 'tears' | 'neckLook';
+
+/**
+ * `watch`: anything that should re-read the face when it changes (e.g. the playhead, in Animate › Face).
+ * `badge`: marks a field's row, e.g. ◆ where the field has a key at the playhead.
+ */
+export function ExpressionControls({ ids, onChanged, watch, badge }: { ids: number[]; onChanged: (fields: ExpressionField[]) => void; watch?: unknown; badge?: (f: ExpressionField) => React.ReactNode }) {
   const revision = useStore((s) => s.revision);
   const id = ids[0];
   const [st, setSt] = useState<FaceState | null>(null);
@@ -46,7 +53,7 @@ export function ExpressionControls({ ids, onChanged }: { ids: number[]; onChange
       .then((r) => want.current === cid && performance.now() - lastEdit.current > 600 && setSt(r.face))
       .catch(() => {});
   }, [id]);
-  useEffect(load, [load, revision]);
+  useEffect(load, [load, revision, watch]);
 
   // batched, once per frame (slider drags stay smooth and live)
   const pending = useRef<Record<string, unknown>>({});
@@ -63,7 +70,7 @@ export function ExpressionControls({ ids, onChanged }: { ids: number[]; onChange
       pending.current = {};
       bridge
         .request('chara.set', { ids, ...p })
-        .then(onChanged)
+        .then(() => onChanged(Object.keys(p) as ExpressionField[]))
         .catch((e) => toast((e as Error).message, 'error'));
     });
   };
@@ -78,10 +85,10 @@ export function ExpressionControls({ ids, onChanged }: { ids: number[]; onChange
         <div className="face-card-head">
           <strong>Eyes &amp; brows</strong>
         </div>
-        <Row label="Eyebrows">
+        <Row label="Eyebrows" badge={badge?.('eyebrowPtn')}>
           <Stepper value={st.eyebrowPtn} count={st.eyebrowCount} onStep={(d) => step('eyebrowPtn', st.eyebrowCount, d)} onSet={(v) => set({ eyebrowPtn: v })} />
         </Row>
-        <Row label="Eyes">
+        <Row label="Eyes" badge={badge?.('eyesPtn')}>
           <select className="input" value={st.eyesPtn} onChange={(e) => set({ eyesPtn: Number(e.target.value) })}>
             {st.eyesOptions.map((n, i) => (
               <option key={i} value={i}>
@@ -90,10 +97,10 @@ export function ExpressionControls({ ids, onChanged }: { ids: number[]; onChange
             ))}
           </select>
         </Row>
-        <Row label="Eyes open">
+        <Row label="Eyes open" badge={badge?.('eyesOpen')}>
           <Range value={st.eyesOpen} onChange={(v) => set({ eyesOpen: v })} />
         </Row>
-        <Row label="Look">
+        <Row label="Look" badge={badge?.('eyesLook')}>
           <select className="input" value={st.eyesLook} onChange={(e) => set({ eyesLook: Number(e.target.value) })}>
             {st.eyesLookOptions.map((n, i) => (
               <option key={i} value={i}>
@@ -111,10 +118,10 @@ export function ExpressionControls({ ids, onChanged }: { ids: number[]; onChange
         <div className="face-card-head">
           <strong>Mouth</strong>
         </div>
-        <Row label="Shape">
+        <Row label="Shape" badge={badge?.('mouthPtn')}>
           <Stepper value={st.mouthPtn} count={st.mouthCount} onStep={(d) => step('mouthPtn', st.mouthCount, d)} onSet={(v) => set({ mouthPtn: v })} />
         </Row>
-        <Row label="Open">
+        <Row label="Open" badge={badge?.('mouthOpen')}>
           <Range value={st.mouthOpen} onChange={(v) => set({ mouthOpen: v })} />
         </Row>
         <Row label="Lip sync">
@@ -126,10 +133,10 @@ export function ExpressionControls({ ids, onChanged }: { ids: number[]; onChange
         <div className="face-card-head">
           <strong>Cheeks &amp; tears</strong>
         </div>
-        <Row label="Blush">
+        <Row label="Blush" badge={badge?.('blush')}>
           <Range value={st.blush} onChange={(v) => set({ blush: v })} />
         </Row>
-        <Row label="Tears">
+        <Row label="Tears" badge={badge?.('tears')}>
           <div className="seg">
             {[0, 1, 2, 3].map((n) => (
               <button key={n} className={st.tears === n ? 'on' : ''} onClick={() => set({ tears: n })}>
@@ -144,7 +151,7 @@ export function ExpressionControls({ ids, onChanged }: { ids: number[]; onChange
         <div className="face-card-head">
           <strong>Head</strong>
         </div>
-        <Row label="Neck">
+        <Row label="Neck" badge={badge?.('neckLook')}>
           <select className="input" value={st.neckLook} onChange={(e) => set({ neckLook: Number(e.target.value) })}>
             {st.neckLookOptions.map((n, i) => (
               <option key={i} value={i}>
@@ -159,10 +166,13 @@ export function ExpressionControls({ ids, onChanged }: { ids: number[]; onChange
   );
 }
 
-function Row({ label, children }: { label: string; children: React.ReactNode }) {
+function Row({ label, badge, children }: { label: string; badge?: React.ReactNode; children: React.ReactNode }) {
   return (
     <div className="expr-row">
-      <span className="face-row-label">{label}</span>
+      <span className="face-row-label">
+        {label}
+        {badge}
+      </span>
       <div className="expr-ctl">{children}</div>
     </div>
   );

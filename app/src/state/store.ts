@@ -270,6 +270,17 @@ export function editTranslation(text: string) {
   openLibrary('translate');
 }
 
+/** Switch workspace and bring one of its center sub-tabs forward (e.g. Animate › Face). */
+export function showTab(workspace: Workspace, tab: string) {
+  try {
+    localStorage.setItem(`kf.center.${workspace}`, tab);
+  } catch {
+    /* ignore */
+  }
+  setWorkspace(workspace);
+  requestAnimationFrame(() => window.dispatchEvent(new CustomEvent('kf:center-tab', { detail: { ws: workspace, tab } })));
+}
+
 /** Switch workspace and open (and scroll to) one of its side-panel groups. */
 export function showPanel(workspace: Workspace, group: string) {
   try {

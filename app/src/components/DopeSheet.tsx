@@ -22,7 +22,7 @@ import {
   setTrackProps,
   studioSelect,
   keyAllOfSelectedObjects,
-  showPanel,
+  showTab,
   useStore,
   visibleTracks,
   type KeyId,
@@ -775,7 +775,7 @@ export function DopeSheet() {
       for (const p of PRESETS.slice(0, 5)) items.push({ label: p.label, kbd: p.hotkey, action: () => applyCurveToSelected(toFlat(p.curve)) });
       items.push({ sep: true });
       items.push({ label: 'Copy', kbd: 'Ctrl+C', action: copySelected });
-      items.push({ label: 'Save as a motion clip…', action: () => showPanel('animate', 'clips') });
+      items.push({ label: 'Save as a motion clip…', action: () => showTab('animate', 'clips') });
       items.push({ label: 'Delete', kbd: 'Del', danger: true, action: deleteSelectedKeys });
       items.push({ sep: true });
     }
