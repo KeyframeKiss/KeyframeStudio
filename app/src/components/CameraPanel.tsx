@@ -3,6 +3,7 @@ import { Help } from './Help';
 import { bridge } from '../bridge/client';
 import { call, liveTime, refreshTimeline, seekNow, toast, useStore } from '../state/store';
 import { CameraMoves } from './CameraMoves';
+import { CameraToolsCards } from './CameraToolsCards';
 import { Slider } from './CharacterPanel';
 
 import { pressable } from '../lib/pressable';
@@ -178,6 +179,7 @@ export function CameraPanel() {
       )}
 
       {st.timeline && <CameraMoves onDone={load} />}
+      <CameraToolsCards />
     </div>
   );
 }

@@ -39,6 +39,7 @@ namespace StudioEX.Bridge
             _port = Config.Bind("Connection", "Port", 47615, "Local WebSocket port the Keyframe Studio app connects to (127.0.0.1 only).");
 
             gameObject.AddComponent<ViewportTools>();
+            gameObject.AddComponent<CameraTools>();
             ViewportTools.Register(_router);
             gameObject.AddComponent<FaceBaker>();
             gameObject.AddComponent<PoseThumbs>();
@@ -69,6 +70,7 @@ namespace StudioEX.Bridge
             StudioUiApi.Register(_router);
             FxApi.Register(_router);
             XukmiFx.Register(_router);
+            CameraTools.Register(_router);
             SceneApi.Register(_router);
             TimelineApi.Register(_router);
             CharaApi.Register(_router);
