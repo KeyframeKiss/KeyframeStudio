@@ -126,6 +126,29 @@ export default async function (t) {
     check('remove one clip', g.clips.length === 2 && !g.clips.some((x) => x.id === c.id));
   });
 
+  await t.step('balance, speed, fades, trims', async () => {
+    const id = (await ok('audio.get')).clips[1].id;
+    let g = await ok('audio.set', { id, pan: -0.5, speed: 2, fadeIn: 0.2, fadeOut: 0.3, trimIn: 0.5, trimOut: 0.5 });
+    let c = g.clips[1];
+    check('set', near(c.pan, -0.5) && near(c.speed, 2) && near(c.fadeIn, 0.2) && near(c.fadeOut, 0.3) && near(c.trimIn, 0.5) && near(c.trimOut, 0.5), JSON.stringify(c));
+    check('it plays (3 s − 1 s of trims) ÷ 2 = 1 s on the timeline', near(c.span, 1, 0.01), String(c.span));
+    g = await ok('audio.set', { id, pan: 5, speed: 99, trimIn: 2.9, trimOut: 2.9 });
+    c = g.clips[1];
+    check('kept in range (balance ±1, speed ≤ 4, trims leave some sound)', near(c.pan, 1) && near(c.speed, 4) && c.trimIn + c.trimOut <= 2.951 && c.span > 0, JSON.stringify(c));
+    await ok('audio.set', { id, pan: -0.5, speed: 2, trimIn: 0.5, trimOut: 0.5, fadeIn: 0.2, fadeOut: 0.3 });
+    // plays at the trimmed, faster place: 0.25 s into its span = 0.5 s trim + 0.25 × 2
+    await ok('timeline.seek', { t: 4.25 });
+    await ok('timeline.play');
+    await sleep(150);
+    g = await ok('audio.get');
+    check('plays inside its span', g.clips[1].playing === true);
+    await ok('timeline.seek', { t: 5.2 });
+    await sleep(200);
+    g = await ok('audio.get');
+    check('stops after its span (4 s + 1 s)', g.clips[1].playing === false);
+    await ok('timeline.stop');
+  });
+
   await t.step('saved with the scene', async () => {
     const sceneDir = path.join(t.paths.userData, 'studio', 'scene');
     const before = new Set(fs.readdirSync(sceneDir));
@@ -152,5 +175,7 @@ export default async function (t) {
     }
     check('loading the scene brings its audio back', g.loaded && g.file === 'StudioEX test tone.wav' && near(g.offset, 1.25), JSON.stringify(g));
     check('…every clip, with its start and volume', g.clips.length === 2 && near(g.clips[1].offset, 4) && near(g.clips[1].volume, 0.3), JSON.stringify(g.clips));
+    const c = g.clips[1];
+    check('…and its balance, speed, fades, trims', near(c.pan, -0.5) && near(c.speed, 2) && near(c.fadeIn, 0.2) && near(c.fadeOut, 0.3) && near(c.trimIn, 0.5) && near(c.trimOut, 0.5), JSON.stringify(c));
   });
 }

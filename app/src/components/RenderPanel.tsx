@@ -12,7 +12,7 @@ interface RenderStatus {
   progress: number;
   outputFolder: string;
   framesFolder: string;
-  settings: { fps: number; exportFps: number; limit: string; limitNumber: number; format: string; resize: boolean; width: number; height: number; autoEncode: boolean; deleteFrames: boolean; prewarm: number };
+  settings: { fps: number; exportFps: number; limit: string; limitNumber: number; format: string; resize: boolean; width: number; height: number; autoEncode: boolean; deleteFrames: boolean; prewarm: number; audio: boolean };
   limits: string[];
   formats: string[];
 }
@@ -22,8 +22,10 @@ interface QueueState {
   total?: number;
   shot?: string;
   error?: string | null;
-  /** "Warm-up 1 of 3" while physics settle before recording */
+  /** "Warm-up 1 of 3" while physics settle before recording, "Adding the audio" after */
   phase?: string | null;
+  /** why the audio couldn't be added to the last video */
+  audioError?: string | null;
 }
 
 const SIZES: { label: string; w?: number; h?: number; hint: string }[] = [
@@ -42,6 +44,7 @@ export function RenderPanel() {
   const status = useStore((s) => s.status);
   const hello = useStore((s) => s.hello);
   const tl = useStore((s) => s.tl);
+  const audioClips = useStore((s) => s.audio.length);
   const shots = useStore((s) => s.shots);
   const [st, setSt] = useState<RenderStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -126,6 +129,7 @@ export function RenderPanel() {
       if (!q.running) {
         window.clearInterval(qpoll.current);
         toast(q.error ? `Render stopped: ${q.error}` : q.shot === 'Timeline' ? 'Render finished' : `Rendered ${q.done} of ${q.total} shot${q.total === 1 ? '' : 's'}`);
+        if (q.audioError) toast(`The video is fine, but the audio couldn't be added: ${q.audioError}`, 'error');
       }
     }, 1000);
   };
@@ -171,7 +175,8 @@ export function RenderPanel() {
     what === 'shots' ? `${picked.length} shot${picked.length === 1 ? '' : 's'}, one video each` : s.limit === 'Timeline' ? 'the whole timeline' : `from ${from.toFixed(2)} s`,
     seconds != null ? `${seconds.toFixed(1)} s` : '',
     frames != null ? `${frames.toLocaleString()} frames` : '',
-    what === 'timeline' && s.limit === 'Timeline' && s.prewarm ? `${s.prewarm} warm-up play${s.prewarm > 1 ? 's' : ''}` : '',
+    s.prewarm ? `${s.prewarm} warm-up play${s.prewarm > 1 ? 's' : ''}` : '',
+    s.autoEncode && s.audio && audioClips > 0 && s.format !== 'GIF' ? `with audio (${audioClips} clip${audioClips > 1 ? 's' : ''})` : '',
   ].filter(Boolean);
 
   return (
@@ -242,19 +247,6 @@ export function RenderPanel() {
                     </span>
                   </div>
                 )}
-                <div className="cleanup-row">
-                  <span>
-                    Warm-up
-                    <Help text="Plays the timeline this many times before recording, so hair and clothes physics have settled when recording starts (whole timeline only)." />
-                  </span>
-                  <div className="seg" title="Plays the timeline this many times before recording so hair and clothes physics settle (whole timeline only)">
-                    {[0, 1, 2, 3].map((n) => (
-                      <button key={n} className={s.prewarm === n ? 'on' : ''} disabled={running || s.limit !== 'Timeline'} onClick={() => set({ prewarm: n })}>
-                        {n}
-                      </button>
-                    ))}
-                  </div>
-                </div>
               </>
             ) : (
               <div className="render-shots">
@@ -277,6 +269,19 @@ export function RenderPanel() {
                 ))}
               </div>
             )}
+            <div className="cleanup-row" style={{ marginTop: 10 }}>
+              <span>
+                Warm-up
+                <Help text="Plays what's about to be recorded this many times first (in real time), so hair and clothes physics have settled when recording starts. For shots, each shot warms up on its own." />
+              </span>
+              <div className="seg" title="Plays it this many times before recording so hair and clothes physics settle">
+                {[0, 1, 2, 3].map((n) => (
+                  <button key={n} className={s.prewarm === n ? 'on' : ''} disabled={running || (what === 'timeline' && s.limit === 'Animation')} onClick={() => set({ prewarm: n })}>
+                    {n}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
 
@@ -344,6 +349,10 @@ export function RenderPanel() {
             </label>
             <label className="rigs-opt" style={{ marginTop: 0 }}>
               <input type="checkbox" checked={s.deleteFrames} disabled={running || !s.autoEncode} onChange={(e) => set({ deleteFrames: e.target.checked })} /> Delete the frame images afterwards
+            </label>
+            <label className="rigs-opt" style={{ marginTop: 0 }} title="The scene's audio clips are mixed into the finished video, each where it plays on the timeline, with its volume, balance, speed, fades and trims">
+              <input type="checkbox" checked={s.audio} disabled={running || !s.autoEncode || s.format === 'GIF'} onChange={(e) => set({ audio: e.target.checked })} /> Include the audio
+              {s.format === 'GIF' ? ' (GIFs have no sound)' : audioClips ? ` (${audioClips} clip${audioClips > 1 ? 's' : ''})` : ' (no audio in this scene)'}
             </label>
           </div>
         </div>

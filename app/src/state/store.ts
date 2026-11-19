@@ -30,8 +30,21 @@ export interface AudioClipInfo {
   offset: number;
   volume: number;
   muted: boolean;
+  /** Length of the file (seconds). */
   duration: number;
+  /** -1 left … 1 right */
+  pan: number;
+  /** Playback speed; the pitch follows. */
+  speed: number;
+  fadeIn: number;
+  fadeOut: number;
+  /** Seconds of the file skipped at its start / end. */
+  trimIn: number;
+  trimOut: number;
+  /** Seconds it plays on the timeline. */
+  span: number;
 }
+export type AudioPatch = Partial<Pick<AudioClipInfo, 'offset' | 'volume' | 'muted' | 'pan' | 'speed' | 'fadeIn' | 'fadeOut' | 'trimIn' | 'trimOut'>>;
 export interface AudioPeaks {
   perSecond: number;
   peaks: number[];
@@ -249,7 +262,7 @@ export async function pickAudio(offset = 0, replace?: number) {
   if (!p) return false;
   return replace != null ? replaceAudio(replace, p) : addAudio(p, offset);
 }
-export async function setAudio(id: number, patch: { offset?: number; volume?: number; muted?: boolean }) {
+export async function setAudio(id: number, patch: AudioPatch) {
   // optimistic: no jump back while the bridge answers
   set({ audio: get().audio.map((c) => (c.id === id ? { ...c, ...patch } : c)) });
   await call('audio.set', { id, ...patch });

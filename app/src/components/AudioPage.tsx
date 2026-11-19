@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Field, Page, Panel, Section } from './Page';
 import { addAudio, call, listenAudio, liveTime, pickAudio, refreshAudio, removeAudio, seekNow, setAudio, showTab, useStore, type AudioClipInfo } from '../state/store';
-import { laneRgb, loudest } from '../lib/audioLanes';
+import { clipSpan, fadeAt, fileTimeAt, laneRgb, loudest, timelineTimeAt } from '../lib/audioLanes';
 import { Slider } from './CharacterPanel';
 
 /**
@@ -91,11 +91,27 @@ export function AudioPage() {
   );
 }
 
-/** One clip: listen, where it starts, volume, mute, swap, remove. */
+/** A seconds box: typing commits on blur or Enter (so half-typed numbers don't jump the clip around). */
+function Secs({ value, onCommit, title, min = 0 }: { value: number; onCommit: (v: number) => void; title?: string; min?: number }) {
+  const [text, setText] = useState(String(Math.round(value * 1000) / 1000));
+  useEffect(() => setText(String(Math.round(value * 1000) / 1000)), [value]);
+  const commit = () => {
+    const v = Number(text);
+    if (Number.isFinite(v) && Math.abs(v - value) > 1e-4) onCommit(Math.max(min, v));
+    else setText(String(Math.round(value * 1000) / 1000));
+  };
+  return <input className="input mono" type="number" step={0.05} min={min} value={text} title={title} onChange={(e) => setText(e.target.value)} onBlur={commit} onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()} style={{ width: 70, flex: 'none' }} />;
+}
+
+const balanceLabel = (p: number) => (Math.abs(p) < 0.01 ? 'Centre' : `${p < 0 ? 'L' : 'R'} ${Math.round(Math.abs(p) * 100)}`);
+
+/** One clip: listen, where it starts, how it sounds (volume, balance, speed, fades, trims), swap, remove. */
 function ClipPanel({ clip: c, index }: { clip: AudioClipInfo; index: number }) {
   const listen = useStore((s) => (s.audioListen?.id === c.id ? s.audioListen.at : null));
   const tl = useStore((s) => s.tl);
-  const end = c.offset + c.duration;
+  const span = clipSpan(c);
+  const end = c.offset + span;
+  const set = (patch: Parameters<typeof setAudio>[1]) => setAudio(c.id, patch);
   return (
     <Panel
       className="audio-clip"
@@ -106,8 +122,8 @@ function ClipPanel({ clip: c, index }: { clip: AudioClipInfo; index: number }) {
       }
       actions={
         <>
-          <button className={`btn small ${listen != null ? 'on' : 'solid'}`} onClick={() => listenAudio(listen != null ? null : c.id, 0)} title="Studio plays this clip by itself (the animation doesn't move)">
-            {listen != null ? `■ ${listen.toFixed(1)} s` : '▶ Listen'}
+          <button className={`btn small ${listen != null ? 'on' : 'solid'}`} onClick={() => listenAudio(listen != null ? null : c.id, c.trimIn)} title="Studio plays this clip by itself, as it will sound (the animation doesn't move)">
+            {listen != null ? `■ ${((listen - c.trimIn) / c.speed).toFixed(1)} s` : '▶ Listen'}
           </button>
           {window.studioEx?.openAudio && (
             <button className="btn small" onClick={() => pickAudio(0, c.id)} title="Swap this clip's WAV, keeping where it starts">
@@ -121,22 +137,41 @@ function ClipPanel({ clip: c, index }: { clip: AudioClipInfo; index: number }) {
       }
     >
       <Field label="Starts at (s)">
-        <input className="input mono" type="number" step={0.05} value={c.offset} onChange={(e) => setAudio(c.id, { offset: Number(e.target.value) || 0 })} style={{ width: 76, flex: 'none' }} />
-        <button className="btn small solid" onClick={() => setAudio(c.id, { offset: Math.round(liveTime() * 1000) / 1000 })} title="Start this clip at the playhead">
+        <Secs value={c.offset} min={-600} onCommit={(v) => set({ offset: v })} title="Where on the timeline it starts" />
+        <button className="btn small solid" onClick={() => set({ offset: Math.round(liveTime() * 1000) / 1000 })} title="Start this clip at the playhead">
           At playhead
         </button>
-        <button className="btn small solid" onClick={() => setAudio(c.id, { offset: 0 })} title="Start this clip at 0 s">
+        <button className="btn small solid" onClick={() => set({ offset: 0 })} title="Start this clip at 0 s">
           At 0
         </button>
       </Field>
       <Field label="Volume">
-        <Slider value={c.volume} min={0} max={1} step={0.05} onChange={(v) => setAudio(c.id, { volume: v })} />
+        <Slider value={c.volume} min={0} max={1} step={0.05} onChange={(v) => set({ volume: v })} />
+      </Field>
+      <Field label={`Balance · ${balanceLabel(c.pan)}`}>
+        <Slider value={c.pan} min={-1} max={1} step={0.05} onChange={(v) => set({ pan: Math.abs(v) < 0.03 ? 0 : v })} />
+      </Field>
+      <Field label="Speed" help="Faster or slower — the pitch goes up or down with it, like a tape">
+        <Slider value={c.speed} min={0.25} max={4} step={0.05} onChange={(v) => set({ speed: v })} />
+        {Math.abs(c.speed - 1) > 0.001 && (
+          <button className="btn small solid" onClick={() => set({ speed: 1 })} title="Normal speed">
+            1×
+          </button>
+        )}
+      </Field>
+      <Field label="Fade in / out (s)">
+        <Secs value={c.fadeIn} onCommit={(v) => set({ fadeIn: v })} title="Seconds it takes to fade in" />
+        <Secs value={c.fadeOut} onCommit={(v) => set({ fadeOut: v })} title="Seconds it takes to fade out" />
+      </Field>
+      <Field label="Trim start / end (s)" help="Skip seconds of the file at its start or end — silence, a count-in, a tail">
+        <Secs value={c.trimIn} onCommit={(v) => set({ trimIn: v })} title="Seconds skipped at the start of the file" />
+        <Secs value={c.trimOut} onCommit={(v) => set({ trimOut: v })} title="Seconds skipped at the end of the file" />
       </Field>
       <label className="rigs-opt" style={{ margin: 0 }}>
-        <input type="checkbox" checked={c.muted} onChange={(e) => setAudio(c.id, { muted: e.target.checked })} /> Mute while animating
+        <input type="checkbox" checked={c.muted} onChange={(e) => set({ muted: e.target.checked })} /> Mute while animating (still in renders)
       </label>
       <div className="pn-note">
-        {c.duration.toFixed(1)} s long, plays {c.offset.toFixed(2)}–{end.toFixed(2)} s.
+        Plays {c.offset.toFixed(2)}–{end.toFixed(2)} s ({span.toFixed(1)} s{Math.abs(span - c.duration) > 0.01 ? ` of a ${c.duration.toFixed(1)} s file` : ''}).
         {tl && end > tl.duration + 0.01 ? ` The timeline is ${tl.duration.toFixed(1)} s — make it longer to hear the end.` : ''}
       </div>
     </Panel>
@@ -170,7 +205,7 @@ function Overview() {
       const y0 = li * rowH;
       const rgb = laneRgb(li);
       const x0 = (clip.offset / duration) * w,
-        x1 = ((clip.offset + clip.duration) / duration) * w;
+        x1 = ((clip.offset + clipSpan(clip)) / duration) * w;
       g.fillStyle = `rgba(${rgb},${clip.muted ? 0.04 : 0.1})`;
       g.fillRect(x0, y0 + 2, Math.max(1, x1 - x0), rowH - 4);
       if (!pk) return;
@@ -178,11 +213,12 @@ function Overview() {
       const mid = y0 + rowH / 2,
         half = (rowH / 2 - 4) / loudest(pk);
       for (let x = Math.max(0, Math.floor(x0)); x < Math.min(w, x1); x++) {
-        const t0 = ((x / w) * duration - clip.offset) * pk.perSecond,
-          t1 = (((x + 1) / w) * duration - clip.offset) * pk.perSecond;
+        const tx = (x / w) * duration;
+        const t0 = fileTimeAt(clip, tx) * pk.perSecond,
+          t1 = fileTimeAt(clip, ((x + 1) / w) * duration) * pk.perSecond;
         let p = 0;
         for (let i = Math.max(0, Math.floor(t0)); i < Math.min(pk.peaks.length, Math.ceil(t1)); i++) p = Math.max(p, pk.peaks[i]);
-        const a = Math.max(0.5, p * half);
+        const a = Math.max(0.5, p * half * fadeAt(clip, tx));
         g.fillRect(x, mid - a, 1, a * 2);
       }
     });
@@ -206,7 +242,7 @@ function Overview() {
     >
       <canvas ref={ref} />
       <span className="waveform-playhead" style={{ left: `${(time / duration) * 100}%` }} />
-      {listen && listening && <span className="waveform-listen" style={{ left: `${(Math.min(duration, listening.offset + listen.at) / duration) * 100}%` }} />}
+      {listen && listening && <span className="waveform-listen" style={{ left: `${(Math.min(duration, timelineTimeAt(listening, listen.at)) / duration) * 100}%` }} />}
       <span className="waveform-scale">
         <span>0 s</span>
         <span>{duration.toFixed(1)} s</span>

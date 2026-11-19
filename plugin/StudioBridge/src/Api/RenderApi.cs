@@ -1,5 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
+using System.Linq;
 using System.Reflection;
 using BepInEx.Bootstrap;
 using HarmonyLib;
@@ -41,6 +44,11 @@ namespace StudioEX.Bridge.Api
             return missing.Count == 0 ? null : "missing " + string.Join(", ", missing.ToArray());
         }
 
+        /// <summary>Mix the scene's audio clips into rendered videos (Keyframe Studio's own; this session).</summary>
+        public static bool WithAudio = true;
+
+        public static int Warmups() => Plugin == null ? 0 : (int)Get("_prewarmLoopCount");
+
         public static void Register(CommandRouter r)
         {
             r.Add("render.status", a => Status());
@@ -62,13 +70,13 @@ namespace StudioEX.Bridge.Api
                     float n = Convert.ToSingle(Get("_limitDurationNumber"));
                     if (mode == "Timeline")
                     {
-                        ShotApi.StartRange(0f, dur, (int)Get("_prewarmLoopCount"));
+                        ShotApi.StartRange(0f, dur, Warmups());
                         return Status();
                     }
                     float start = a.Has("from") ? a.GetFloat("from") : TimelineApi.PlaybackTime();
                     if (start >= dur - 0.01f) start = 0f; // at the end: from the start
                     float secs = mode == "Seconds" ? n : mode == "Frames" ? n / Math.Max(1, (int)Get("_fps")) : dur - start;
-                    ShotApi.StartRange(start, secs);
+                    ShotApi.StartRange(start, secs, Warmups());
                     return Status();
                 }
                 AccessTools.Method(T, "RecordVideo").Invoke(Plugin, null);
@@ -92,6 +100,86 @@ namespace StudioEX.Bridge.Api
             if (Busy()) return "VideoExport is busy";
             Apply(new Dictionary<string, object> { { "limit", "Seconds" }, { "limitNumber", (double)seconds } });
             AccessTools.Method(T, "RecordVideo").Invoke(Plugin, null);
+            return null;
+        }
+
+        /// <summary>The video VideoExport wrote since `since` (null when it only kept the frames).</summary>
+        public static string NewestVideo(DateTime since)
+        {
+            if (Plugin == null || !(bool)Get("_autoGenerateVideo")) return null;
+            var dir = Get("_outputFolder") as string;
+            if (string.IsNullOrEmpty(dir) || !Directory.Exists(dir)) return null;
+            return new DirectoryInfo(dir).GetFiles()
+                .Where(f => f.LastWriteTime >= since.AddSeconds(-2) && new[] { ".mp4", ".webm", ".avi" }.Contains(f.Extension.ToLowerInvariant()))
+                .OrderByDescending(f => f.LastWriteTime)
+                .Select(f => f.FullName)
+                .FirstOrDefault();
+        }
+
+        /// <summary>VideoExport's own ffmpeg.</summary>
+        private static string Ffmpeg()
+        {
+            // VideoExport.dll sits in plugins (or its own folder); its ffmpeg is in VideoExport/ffmpeg
+            var dir = Path.GetDirectoryName(T.Assembly.Location);
+            string name = IntPtr.Size == 8 ? "ffmpeg-64.exe" : "ffmpeg.exe";
+            foreach (var d in new[] { Path.Combine(dir, "ffmpeg"), Path.Combine(Path.Combine(dir, "VideoExport"), "ffmpeg"), Path.Combine(Path.Combine(BepInEx.Paths.PluginPath, "VideoExport"), "ffmpeg") })
+            {
+                var exe = Path.Combine(d, name);
+                if (File.Exists(exe)) return exe;
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// Mix the clips into the video (in place): each clip where it plays on the timeline relative to the render's
+        /// start, at its volume, cut to the video's length. Runs ffmpeg (call it off the main thread). Null when done,
+        /// else why not.
+        /// </summary>
+        public static string MixAudio(string video, List<AudioTrack.RenderClip> clips, float start, float seconds)
+        {
+            var ffmpeg = Ffmpeg();
+            if (ffmpeg == null) return "VideoExport's ffmpeg wasn't found";
+            string ext = Path.GetExtension(video).ToLowerInvariant();
+            string codec = ext == ".webm" ? "libopus -b:a 160k" : ext == ".avi" ? "libmp3lame -b:a 192k" : "aac -b:a 192k";
+            var inv = System.Globalization.CultureInfo.InvariantCulture;
+            var args = new System.Text.StringBuilder("-y -hide_banner -loglevel error -i \"" + video + "\"");
+            var filter = new System.Text.StringBuilder();
+            for (int i = 0; i < clips.Count; i++)
+            {
+                var c = clips[i];
+                args.Append(" -i \"" + c.Path + "\"");
+                float rel = c.Offset - start; // where the clip starts in the video
+                filter.Append("[" + (i + 1) + ":a]");
+                // the clip as it plays: trims, speed (pitch follows, as in Studio), balance, fades
+                filter.Append("atrim=start=" + c.TrimIn.ToString("0.###", inv) + ":end=" + (c.Length - c.TrimOut).ToString("0.###", inv) + ",asetpts=PTS-STARTPTS,");
+                if (Math.Abs(c.Speed - 1f) > 0.001f) filter.Append("asetrate=" + Math.Round(c.Rate * c.Speed).ToString(inv) + ",aresample=" + c.Rate.ToString(inv) + ",");
+                float l = c.Pan > 0 ? 1f - c.Pan : 1f, r = c.Pan < 0 ? 1f + c.Pan : 1f;
+                filter.Append("aformat=channel_layouts=stereo,pan=stereo|c0=" + l.ToString("0.###", inv) + "*c0|c1=" + r.ToString("0.###", inv) + "*c1,");
+                if (c.FadeIn > 0.001f) filter.Append("afade=t=in:st=0:d=" + c.FadeIn.ToString("0.###", inv) + ",");
+                if (c.FadeOut > 0.001f) filter.Append("afade=t=out:st=" + Math.Max(0f, c.Span - c.FadeOut).ToString("0.###", inv) + ":d=" + c.FadeOut.ToString("0.###", inv) + ",");
+                if (rel >= 0) filter.Append("adelay=" + ((int)Math.Round(rel * 1000)).ToString(inv) + ":all=1,");
+                else filter.Append("atrim=start=" + (-rel).ToString("0.###", inv) + ",asetpts=PTS-STARTPTS,");
+                filter.Append("volume=" + c.Volume.ToString("0.###", inv) + "[a" + i + "];");
+            }
+            for (int i = 0; i < clips.Count; i++) filter.Append("[a" + i + "]");
+            filter.Append(clips.Count > 1 ? "amix=inputs=" + clips.Count + ":normalize=0:dropout_transition=0," : "anull,");
+            filter.Append("atrim=end=" + seconds.ToString("0.###", inv) + "[aout]");
+            var tmp = Path.Combine(Path.GetDirectoryName(video), Path.GetFileNameWithoutExtension(video) + ".with-audio" + ext);
+            args.Append(" -filter_complex \"" + filter + "\" -map 0:v -map \"[aout]\" -c:v copy -c:a " + codec + " \"" + tmp + "\"");
+            var psi = new ProcessStartInfo(ffmpeg, args.ToString()) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardError = true, RedirectStandardOutput = true };
+            using (var p = Process.Start(psi))
+            {
+                p.StandardOutput.ReadToEnd();
+                string errText = p.StandardError.ReadToEnd();
+                if (!p.WaitForExit(300000)) { try { p.Kill(); } catch { } return "ffmpeg took too long"; }
+                if (p.ExitCode != 0 || !File.Exists(tmp))
+                {
+                    if (File.Exists(tmp)) File.Delete(tmp);
+                    return "ffmpeg: " + (errText.Trim().Length > 0 ? errText.Trim() : "exit code " + p.ExitCode);
+                }
+            }
+            File.Delete(video);
+            File.Move(tmp, video);
             return null;
         }
 
@@ -137,6 +225,7 @@ namespace StudioEX.Bridge.Api
                         { "resize", Get("_resize") }, { "width", Get("_resizeX") }, { "height", Get("_resizeY") },
                         { "autoEncode", Get("_autoGenerateVideo") }, { "deleteFrames", Get("_autoDeleteImages") },
                         { "prewarm", Get("_prewarmLoopCount") },
+                        { "audio", WithAudio },
                     }
                 },
                 { "limits", EnumNames("_selectedLimitDuration") },
@@ -182,6 +271,7 @@ namespace StudioEX.Bridge.Api
             if (a.Has("autoEncode")) Set("_autoGenerateVideo", a.GetBool("autoEncode"));
             if (a.Has("deleteFrames")) Set("_autoDeleteImages", a.GetBool("deleteFrames"));
             if (a.Has("prewarm")) Set("_prewarmLoopCount", Math.Max(0, Math.Min(10, a.GetInt("prewarm"))));
+            if (a.Has("audio")) WithAudio = a.GetBool("audio");
         }
     }
 }

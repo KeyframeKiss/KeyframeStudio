@@ -45,7 +45,7 @@ import { createFolder, editTranslation, moveToFolder, renameFolder, setFolderExp
 import type { WireGroup } from '../bridge/types';
 
 import { pressable } from '../lib/pressable';
-import { laneRgb, loudest } from '../lib/audioLanes';
+import { clipSpan, fadeAt, fileTimeAt, laneRgb, loudest, timelineTimeAt } from '../lib/audioLanes';
 import { perfRecord } from '../lib/perf';
 // Row height is user-adjustable (S/M/L); module-level so the rAF draw loop always reads the latest.
 const ROW_SIZES = { S: 18, M: 24, L: 32 } as const;
@@ -546,8 +546,9 @@ export function DopeSheet() {
         const ia = inter.current;
         const dragging = ia.mode === 'audio' && ia.id === au.id;
         const off = dragging ? ia.offset : au.offset;
+        const at = { ...au, offset: off };
         const xa = xOf(off),
-          xb = xOf(off + au.duration);
+          xb = xOf(off + clipSpan(at));
         if (xb > 0 && xa < w) {
           const dim = au.muted;
           ctx.fillStyle = `rgba(${rgb},${dim ? 0.05 : 0.14})`;
@@ -565,11 +566,12 @@ export function DopeSheet() {
               mid = y0 + 23,
               half = 8 / loudest(wave);
             for (let x = Math.max(0, Math.floor(xa) + 1); x < Math.min(w, xb - 1); x++) {
-              const i0 = Math.max(0, Math.floor((tOf(x) - off) * ps)),
-                i1 = Math.min(pk.length - 1, Math.floor((tOf(x + 1) - off) * ps));
+              // trims and speed: which part of the file is under this pixel; fades shrink it
+              const i0 = Math.max(0, Math.floor(fileTimeAt(at, tOf(x)) * ps)),
+                i1 = Math.min(pk.length - 1, Math.floor(fileTimeAt(at, tOf(x + 1)) * ps));
               let p = 0;
               for (let i = i0; i <= i1; i++) if (pk[i] > p) p = pk[i];
-              const bh = Math.max(0.5, p * half);
+              const bh = Math.max(0.5, p * half * fadeAt(at, tOf(x)));
               ctx.fillRect(x, mid - bh, 1, bh * 2);
             }
           }
@@ -587,7 +589,7 @@ export function DopeSheet() {
         }
         // where Listen is
         if (st.audioListen?.id === au.id) {
-          const lx = Math.round(xOf(au.offset + st.audioListen.at));
+          const lx = Math.round(xOf(timelineTimeAt(au, st.audioListen.at)));
           ctx.fillStyle = colors.accent;
           ctx.fillRect(lx - 1, y0, 2, AUDIO_H);
         }
@@ -746,7 +748,7 @@ export function DopeSheet() {
     if (lane) {
       // on the clip: drag it (a plain click moves the playhead there); off it: scrub
       const au = lane.clip;
-      if (x >= xOf(au.offset) && x <= xOf(au.offset + au.duration)) inter.current = { mode: 'audio', id: au.id, startX: x, startOffset: au.offset, offset: au.offset, active: false };
+      if (x >= xOf(au.offset) && x <= xOf(au.offset + clipSpan(au))) inter.current = { mode: 'audio', id: au.id, startX: x, startOffset: au.offset, offset: au.offset, active: false };
       else {
         inter.current = { mode: 'scrub' };
         seek(snapT(tOf(x), e));
@@ -840,7 +842,7 @@ export function DopeSheet() {
     if (y < RULER_H) return;
     const lane = laneAt(y);
     if (lane) {
-      listenAudio(lane.clip.id, tOf(x) - lane.clip.offset);
+      listenAudio(lane.clip.id, fileTimeAt(lane.clip, tOf(x)));
       return;
     }
     const row = rowsRef.current[rowIndexAt(y)];
@@ -897,12 +899,12 @@ export function DopeSheet() {
     const au = st.audio.find((c) => c.id === id);
     if (!au) return [];
     const listening = st.audioListen?.id === id;
-    const inClip = at != null && at >= au.offset && at <= au.offset + au.duration;
+    const inClip = at != null && at >= au.offset && at <= au.offset + clipSpan(au);
     const items: MenuItem[] = [{ header: true, label: au.file }];
     if (listening) items.push({ label: 'Stop listening', action: () => listenAudio(null) });
     else {
-      items.push({ label: 'Listen', action: () => listenAudio(id, 0) });
-      if (inClip) items.push({ label: 'Listen from here', action: () => listenAudio(id, at! - au.offset) });
+      items.push({ label: 'Listen', action: () => listenAudio(id, au.trimIn) });
+      if (inClip) items.push({ label: 'Listen from here', action: () => listenAudio(id, fileTimeAt(au, at!)) });
     }
     items.push({ sep: true });
     items.push({ label: 'Start at the playhead', action: () => setAudio(id, { offset: Math.round(liveTime() * 1000) / 1000 }) });
@@ -1145,9 +1147,9 @@ export function DopeSheet() {
                   e.preventDefault();
                   setMenu({ x: e.clientX, y: e.clientY, items: audioMenu(au.id, null) });
                 }}
-                title={`${au.file}\n${au.duration.toFixed(2)} s, starts at ${au.offset.toFixed(2)} s\nDrag the clip to move it \u00b7 double-click it to listen from there \u00b7 right-click for more`}
+                title={`${au.file}\n${clipSpan(au).toFixed(2)} s, starts at ${au.offset.toFixed(2)} s\nDrag the clip to move it \u00b7 double-click it to listen from there \u00b7 right-click for more`}
               >
-                <button className={`sheet-audio-btn ${listening ? 'on' : ''}`} onClick={() => listenAudio(listening ? null : au.id, 0)} title={listening ? 'Stop' : 'Listen \u2014 Studio plays this clip by itself'}>
+                <button className={`sheet-audio-btn ${listening ? 'on' : ''}`} onClick={() => listenAudio(listening ? null : au.id, au.trimIn)} title={listening ? 'Stop' : 'Listen \u2014 Studio plays this clip by itself'}>
                   {listening ? '\u25a0' : '\u25b6'}
                 </button>
                 <span className="name">{au.file.replace(/\.wav$/i, '')}</span>

@@ -4,6 +4,7 @@ import { blinkKeys, LIPSYNC_DEFAULTS, lipSyncKeys, type LipSyncOptions } from '.
 import { vowelKeys, vowelPatterns, vowelTrack, type Spectrum } from '../lib/vowels';
 import { call, displayName, editTimeline, liveTime, pickAudio, refreshAudio, selectedCharacters, toast, useStore } from '../state/store';
 import { Slider } from './CharacterPanel';
+import { clipSpan, timelineTimeAt } from '../lib/audioLanes';
 
 const FACE_MODELS = ['characterEyes', 'characterEyesOpen', 'characterEyebrows', 'characterMouth', 'characterMouthOpen', 'characterNeck'];
 
@@ -63,21 +64,25 @@ export function AudioPanel({ parts = ['track', 'lipsync', 'face'] }: { parts?: A
     try {
       const env = await call<{ id: number; rate: number; max: number; values: number[]; offset: number; duration: number }>('audio.envelope', { id: voice.id, rate: 60 });
       if (!env) return;
-      const end = Math.min(tl?.duration ?? 10, env.offset + env.duration);
+      // the voice as it plays: only between its trims, moved by its speed
+      const begin = Math.max(0, voice.offset);
+      const end = Math.min(tl?.duration ?? 10, voice.offset + clipSpan(voice));
+      const inPlay = (ft: number) => ft >= voice.trimIn && ft <= voice.duration - voice.trimOut;
       const keys = lipSyncKeys(env.values, env.rate, env.max, opts)
-        .map((k) => ({ t: Math.round((env.offset + k.t) * 1000) / 1000, v: k.v }))
-        .filter((k) => k.t >= 0 && k.t <= end);
+        .filter((k) => inPlay(k.t))
+        .map((k) => ({ t: Math.round(timelineTimeAt(voice, k.t) * 1000) / 1000, v: k.v }))
+        .filter((k) => k.t >= begin && k.t <= end);
       const track = await trackFor(chars[0], 'characterMouthOpen');
       if (track == null) return;
       const n = await editTimeline<number>('timeline.writeKeys', {
         track,
         keys: keys.map((k) => ({ t: k.t, value: { value: k.v } })),
-        clear: [Math.max(0, env.offset), end],
+        clear: [begin, end],
         curve: 'linear',
         label: 'Lip-sync',
       });
       let shapes = 0;
-      if (vowels) shapes = await vowelShapes(env, end);
+      if (vowels) shapes = await vowelShapes(env, begin, end);
       if (n) toast(`Lip-sync: ${n} mouth keys${shapes ? ` and ${shapes} vowel shapes` : ''} for ${who} — press Space to watch. Ctrl+Z to undo`);
     } finally {
       setBusy(false);
@@ -85,7 +90,7 @@ export function AudioPanel({ parts = ['track', 'lipsync', 'face'] }: { parts?: A
   };
 
   /** A / I / U / E / O mouth patterns on the Mouth track, from the voice's formants. Returns how many keys. */
-  const vowelShapes = async (env: { id: number; rate: number; values: number[]; offset: number }, end: number) => {
+  const vowelShapes = async (env: { id: number; rate: number; values: number[]; offset: number }, begin: number, end: number) => {
     const [spec, patterns, chara] = await Promise.all([
       call<Spectrum>('audio.spectrum', { id: env.id, rate: env.rate }),
       call<{ ptn: number; open: string; close: string }[]>('face.mouthPatterns', { id: chars[0] }),
@@ -99,9 +104,11 @@ export function AudioPanel({ parts = ['track', 'lipsync', 'face'] }: { parts?: A
     }
     const rest = chara.face.mouthPtn;
     const labels = vowelTrack(spec, env.values);
+    const v = voice!;
     const keys = vowelKeys(labels, spec.rate)
-      .map((k) => ({ t: Math.round((env.offset + k.t) * 1000) / 1000, v: k.v ? map[k.v] ?? rest : rest }))
-      .filter((k) => k.t >= 0 && k.t <= end);
+      .filter((k) => k.t >= v.trimIn && k.t <= v.duration - v.trimOut)
+      .map((k) => ({ t: Math.round(timelineTimeAt(v, k.t) * 1000) / 1000, v: k.v ? map[k.v] ?? rest : rest }))
+      .filter((k) => k.t >= begin && k.t <= end);
     if (!keys.length) return 0;
     const track = await trackFor(chars[0], 'characterMouth');
     if (track == null) return 0;
@@ -109,7 +116,7 @@ export function AudioPanel({ parts = ['track', 'lipsync', 'face'] }: { parts?: A
       (await editTimeline<number>('timeline.writeKeys', {
         track,
         keys: keys.map((k) => ({ t: k.t, value: { value: k.v } })),
-        clear: [Math.max(0, env.offset), end],
+        clear: [begin, end],
         curve: 'step',
         label: 'Lip-sync vowels',
       })) ?? 0

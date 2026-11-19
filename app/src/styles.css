@@ -5726,3 +5726,6 @@ html.frameless .tooltip {
   padding-left: 8px;
   box-shadow: inset 3px 0 0 var(--lane);
 }
+.audio-clip .pn-field {
+  grid-template-columns: 128px minmax(0, 1fr);
+}

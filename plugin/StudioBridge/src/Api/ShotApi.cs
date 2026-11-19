@@ -130,7 +130,7 @@ namespace StudioEX.Bridge.Api
             if (TimelineApi.Pending() > 0) throw new BridgeException("Key or reset your unkeyed changes first — rendering plays the timeline");
             // VideoExport must be usable before we start moving the playhead around
             if (RenderApi.Probe() != null) throw new BridgeException("Render needs VideoExport");
-            _queue = _i.StartCoroutine(_i.RunQueue(shots));
+            _queue = _i.StartCoroutine(_i.RunQueue(shots, RenderApi.Warmups()));
             return QueueState;
         }
 
@@ -143,8 +143,8 @@ namespace StudioEX.Bridge.Api
             if (TimelineApi.Pending() > 0) throw new BridgeException("Key or reset your unkeyed changes first — rendering plays the timeline");
             if (RenderApi.Probe() != null) throw new BridgeException("Render needs VideoExport");
             if (seconds <= 0.01f) throw new BridgeException("Nothing to render: the playhead is at the end of the timeline");
-            var range = new Dictionary<string, object> { { "name", "Timeline" }, { "start", (double)start }, { "end", (double)(start + seconds) }, { "warmups", warmups } };
-            _queue = _i.StartCoroutine(_i.RunQueue(new List<Dictionary<string, object>> { range }));
+            var range = new Dictionary<string, object> { { "name", "Timeline" }, { "start", (double)start }, { "end", (double)(start + seconds) } };
+            _queue = _i.StartCoroutine(_i.RunQueue(new List<Dictionary<string, object>> { range }, warmups));
             return QueueState;
         }
 
@@ -155,7 +155,10 @@ namespace StudioEX.Bridge.Api
             RenderApi.Stop();
         }
 
-        private IEnumerator RunQueue(List<Dictionary<string, object>> shots)
+        /// <summary>Record each range as its own video: warm-up plays, then record while the timeline plays, then mix the
+        /// scene's audio into the finished video. The audio stays silent the whole time (VideoExport slows the game
+        /// clock while it records, so playing along would stutter and repeat).</summary>
+        private IEnumerator RunQueue(List<Dictionary<string, object>> shots, int warmups)
         {
             QueueState["running"] = true;
             QueueState["cancel"] = false;
@@ -163,6 +166,8 @@ namespace StudioEX.Bridge.Api
             QueueState["done"] = 0;
             QueueState["error"] = null;
             QueueState["phase"] = null;
+            QueueState["audioError"] = null;
+            AudioTrack.Silenced = true;
             var limit = RenderApi.SaveLimit(); // each shot is recorded in Seconds mode; the user's own mode comes back after
             try
             {
@@ -174,7 +179,6 @@ namespace StudioEX.Bridge.Api
                     QueueState["shot"] = s.GetString("name");
                     float start = s.GetFloat("start"), end = s.GetFloat("end");
                     // warm-up: play the range first (in real time) so hair and clothes physics have settled
-                    int warmups = s.GetInt("warmups", 0);
                     for (int w = 0; w < warmups && !(bool)QueueState["cancel"]; w++)
                     {
                         QueueState["phase"] = "Warm-up " + (w + 1) + " of " + warmups;
@@ -189,6 +193,7 @@ namespace StudioEX.Bridge.Api
                     TimelineApi.PauseAt(start);
                     yield return null;
                     yield return new WaitForEndOfFrame();
+                    var startedAt = DateTime.Now;
                     string err = RenderApi.StartSeconds(end - start);
                     if (err != null) { QueueState["error"] = err; break; }
                     TimelineApi.Play();
@@ -196,11 +201,35 @@ namespace StudioEX.Bridge.Api
                     yield return null;
                     while (RenderApi.Busy()) yield return null;
                     TimelineApi.PauseAt(start);
+                    // the scene's audio, mixed into the finished video (ffmpeg on a worker thread)
+                    var clips = RenderApi.WithAudio ? AudioTrack.ForRender(start, end) : null;
+                    var video = clips != null && clips.Count > 0 && !(bool)QueueState["cancel"] ? RenderApi.NewestVideo(startedAt) : null;
+                    if (video != null)
+                    {
+                        QueueState["phase"] = "Adding the audio";
+                        string audioErr = null;
+                        bool mixed = false;
+                        var worker = new System.Threading.Thread(() =>
+                        {
+                            try { audioErr = RenderApi.MixAudio(video, clips, start, end - start); }
+                            catch (Exception e) { audioErr = e.Message; }
+                            mixed = true;
+                        }) { IsBackground = true };
+                        worker.Start();
+                        while (!mixed) yield return null;
+                        QueueState["phase"] = null;
+                        if (audioErr != null)
+                        {
+                            QueueState["audioError"] = audioErr;
+                            StudioBridgePlugin.Logger.LogWarning("Render: the audio wasn't added to " + video + ": " + audioErr);
+                        }
+                    }
                     QueueState["done"] = i + 1;
                 }
             }
             finally
             {
+                AudioTrack.Silenced = false;
                 RenderApi.RestoreLimit(limit);
                 QueueState["running"] = false;
                 _queue = null;

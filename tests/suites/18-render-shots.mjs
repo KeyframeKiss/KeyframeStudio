@@ -1,5 +1,29 @@
+import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
+
+/** 16-bit mono WAV, a steady 330 Hz tone. */
+function makeTone(file, secs, rate = 22050) {
+  const n = Math.floor(secs * rate);
+  const data = Buffer.alloc(n * 2);
+  for (let i = 0; i < n; i++) data.writeInt16LE(Math.round(Math.sin((2 * Math.PI * 330 * i) / rate) * 12000), i * 2);
+  const h = Buffer.alloc(44);
+  h.write('RIFF', 0);
+  h.writeUInt32LE(36 + data.length, 4);
+  h.write('WAVE', 8);
+  h.write('fmt ', 12);
+  h.writeUInt32LE(16, 16);
+  h.writeUInt16LE(1, 20);
+  h.writeUInt16LE(1, 22);
+  h.writeUInt32LE(rate, 24);
+  h.writeUInt32LE(rate * 2, 28);
+  h.writeUInt16LE(2, 32);
+  h.writeUInt16LE(16, 34);
+  h.write('data', 36);
+  h.writeUInt32LE(data.length, 40);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, Buffer.concat([h, data]));
+}
 
 export const name = 'Render (VideoExport) and shot sequencer';
 
@@ -90,6 +114,46 @@ export default async function (t) {
       check('"all of it": warm-up first, then the whole timeline plays while recording', warmed && frames3 === 10 && times3.length > 0 && Math.min(...times3) < 0.3 && Math.max(...times3) > 0.5, `${frames3} frames, warm-up ${warmed}, ${times3.map((x) => x.toFixed(2)).join(' ')}`);
       await ok('timeline.setSettings', { duration: tl.duration });
       await ok('render.set', { limit: 'Seconds', limitNumber: 0.3, prewarm: 0 });
+
+      // audio: silent while recording, then mixed into the finished video
+      const wav = path.join(t.paths.userData, 'audio', 'StudioEX render tone.wav');
+      makeTone(wav, 2);
+      t.defer(() => fs.existsSync(wav) && fs.unlinkSync(wav));
+      await ok('audio.clear');
+      t.defer(() => req('audio.clear'));
+      await ok('audio.add', { file: 'StudioEX render tone.wav', offset: 0 });
+      await ok('render.set', { limit: 'Seconds', limitNumber: 1, prewarm: 1, autoEncode: true, deleteFrames: true, format: 'MP4', audio: true });
+      const outDir = (await ok('render.status')).outputFolder;
+      const outBefore = new Set(fs.existsSync(outDir) ? fs.readdirSync(outDir) : []);
+      await ok('timeline.seek', { t: 0.2 });
+      await sleep(300);
+      let heard = false,
+        warmed4 = false;
+      await framesMadeBy(async () => {
+        await ok('render.start', {});
+        for (let i = 0; i < 300; i++) {
+          const st = await ok('render.status');
+          const q = await ok('render.queueStatus');
+          if (q.phase && /Warm/.test(q.phase)) warmed4 = true;
+          if ((await ok('audio.get')).clips.some((c) => c.playing)) heard = true;
+          if (!st.recording && !st.encoding && !q.running) break;
+          await sleep(50);
+        }
+      });
+      const q4 = await ok('render.queueStatus');
+      const videos = (fs.existsSync(outDir) ? fs.readdirSync(outDir) : []).filter((f) => !outBefore.has(f) && /\.mp4$/.test(f));
+      t.defer(() => videos.forEach((f) => fs.rmSync(path.join(outDir, f), { force: true })));
+      check('warm-up works for "from the playhead" too', warmed4);
+      check('the audio stays silent while rendering', !heard);
+      let info = '';
+      if (videos.length) {
+        const ffmpeg = path.join(path.dirname(t.paths.userData), 'BepInEx', 'plugins', 'VideoExport', 'ffmpeg', 'ffmpeg-64.exe');
+        const r = spawnSync(ffmpeg, ['-hide_banner', '-i', path.join(outDir, videos[0])], { encoding: 'utf8' });
+        info = r.stderr ?? '';
+      }
+      check('the video has the audio in it', videos.length === 1 && /Audio: aac/.test(info) && /Video: h264/.test(info) && !q4.audioError, `${videos.join()} ${q4.audioError ?? ''} ${info.split('\n').filter((l) => /Stream|Duration/.test(l)).join(' | ')}`);
+      const dur = /Duration: (\d+):(\d+):([\d.]+)/.exec(info);
+      check('…as long as the render', !!dur && Math.abs(Number(dur[3]) - 1) < 0.15, dur?.[0]);
       const bad = await req('render.set', { format: 'MOV' });
       check('unknown format refused', !bad.ok);
     });

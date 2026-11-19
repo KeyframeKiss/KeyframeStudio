@@ -29,6 +29,24 @@ namespace StudioEX.Bridge.Api
             public string File;
             public float Offset, Volume = 1f;
             public bool Muted;
+            /// <summary>-1 left … 1 right.</summary>
+            public float Pan;
+            /// <summary>Playback speed (the pitch follows, like a tape).</summary>
+            public float Speed = 1f;
+            /// <summary>Seconds of the timeline over which it fades in / out.</summary>
+            public float FadeIn, FadeOut;
+            /// <summary>Seconds of the file skipped at its start / end.</summary>
+            public float TrimIn, TrimOut;
+            /// <summary>How long it plays on the timeline.</summary>
+            public float Span => Mathf.Max(0.01f, Audio.length - TrimIn - TrimOut) / Speed;
+            /// <summary>Loudness at `local` seconds into its span: volume with the fades.</summary>
+            public float Gain(float local)
+            {
+                float g = Volume;
+                if (FadeIn > 0.001f) g *= Mathf.Clamp01(local / FadeIn);
+                if (FadeOut > 0.001f) g *= Mathf.Clamp01((Span - local) / FadeOut);
+                return g;
+            }
             public AudioClip Audio;
             public AudioSource Src;
             public float[] Mono;
@@ -42,6 +60,27 @@ namespace StudioEX.Bridge.Api
         private static Clip _preview;
 
         private static string AudioDir => Path.GetFullPath(UserData.Create("audio"));
+
+        /// <summary>Set while a render runs: no clip plays (the audio is mixed into the video afterwards).</summary>
+        public static bool Silenced;
+
+        /// <summary>A clip to mix into a rendered video.</summary>
+        public sealed class RenderClip
+        {
+            public string Path;
+            public float Offset, Volume, Length, Pan, Speed, FadeIn, FadeOut, TrimIn, TrimOut, Span;
+            public int Rate;
+        }
+
+        /// <summary>The clips that sound somewhere in [start, end] of the timeline, for mixing into a render.</summary>
+        public static List<RenderClip> ForRender(float start, float end) =>
+            Clips.Where(c => c.Offset < end && c.Offset + c.Span > start && c.Volume > 0.001f)
+                .Select(c => new RenderClip
+                {
+                    Path = System.IO.Path.Combine(AudioDir, c.File), Offset = c.Offset, Volume = c.Volume, Length = c.Audio.length, Rate = c.Rate,
+                    Pan = c.Pan, Speed = c.Speed, FadeIn = c.FadeIn, FadeOut = c.FadeOut, TrimIn = c.TrimIn, TrimOut = c.TrimOut, Span = c.Span,
+                })
+                .ToList();
 
         private void Awake() => _i = this;
 
@@ -66,6 +105,7 @@ namespace StudioEX.Bridge.Api
                 if (a.Has("offset")) c.Offset = a.GetFloat("offset");
                 if (a.Has("volume")) c.Volume = Mathf.Clamp01(a.GetFloat("volume"));
                 if (a.Has("muted")) c.Muted = a.GetBool("muted");
+                Shape(c, a);
                 return Changed();
             });
             r.Add("audio.remove", a => { Remove(Find(a)); return Changed(); });
@@ -79,8 +119,11 @@ namespace StudioEX.Bridge.Api
                 {
                     var c = Find(a);
                     _preview = c;
-                    c.Src.volume = c.Volume;
-                    c.Src.time = Mathf.Clamp(a.GetFloat("from", 0f), 0f, c.Audio.length - 0.01f);
+                    c.Src.pitch = c.Speed;
+                    c.Src.panStereo = c.Pan;
+                    // "from" is seconds into the file; it plays only the part between the trims
+                    c.Src.time = Mathf.Clamp(a.GetFloat("from", c.TrimIn), c.TrimIn, c.Audio.length - c.TrimOut - 0.01f);
+                    c.Src.volume = c.Gain((c.Src.time - c.TrimIn) / c.Speed);
                     c.Src.Play();
                 }
                 return Get();
@@ -94,6 +137,21 @@ namespace StudioEX.Bridge.Api
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         private static void RegisterSceneData() => StudioSaveLoadApi.RegisterExtraBehaviour<AudioSceneData>(StudioBridgePlugin.GUID + ".audio");
+
+        /// <summary>Balance, speed, fades and trims from a command's args (clamped to what makes sense for the file).</summary>
+        private static void Shape(Clip c, Dictionary<string, object> a)
+        {
+            float len = c.Audio.length;
+            if (a.Has("pan")) c.Pan = Mathf.Clamp(a.GetFloat("pan"), -1f, 1f);
+            if (a.Has("speed")) c.Speed = Mathf.Clamp(a.GetFloat("speed"), 0.25f, 4f);
+            if (a.Has("trimIn")) c.TrimIn = Mathf.Clamp(a.GetFloat("trimIn"), 0f, len - 0.05f);
+            if (a.Has("trimOut")) c.TrimOut = Mathf.Clamp(a.GetFloat("trimOut"), 0f, len - 0.05f);
+            if (c.TrimIn + c.TrimOut > len - 0.05f) c.TrimOut = Mathf.Max(0f, len - 0.05f - c.TrimIn);
+            if (a.Has("fadeIn")) c.FadeIn = Mathf.Max(0f, a.GetFloat("fadeIn"));
+            if (a.Has("fadeOut")) c.FadeOut = Mathf.Max(0f, a.GetFloat("fadeOut"));
+            c.FadeIn = Mathf.Min(c.FadeIn, c.Span);
+            c.FadeOut = Mathf.Min(c.FadeOut, c.Span);
+        }
 
         /// <summary>Tells the app the clips changed (whoever changed them: a template, a script, a scene load); returns them.</summary>
         private static object Changed()
@@ -126,6 +184,8 @@ namespace StudioEX.Bridge.Api
         {
             { "id", c.Id }, { "file", c.File }, { "offset", (double)c.Offset }, { "volume", (double)c.Volume }, { "muted", c.Muted },
             { "duration", (double)c.Audio.length }, { "playing", c.Src.isPlaying },
+            { "pan", (double)c.Pan }, { "speed", (double)c.Speed }, { "fadeIn", (double)c.FadeIn }, { "fadeOut", (double)c.FadeOut },
+            { "trimIn", (double)c.TrimIn }, { "trimOut", (double)c.TrimOut }, { "span", (double)c.Span },
         };
 
         /// <summary>Every clip, plus the first clip's values at the top level (what single-clip callers read).</summary>
@@ -225,6 +285,7 @@ namespace StudioEX.Bridge.Api
             Destroy(c.Audio);
             Fill(c, clip, file);
             c.Offset = offset;
+            c.TrimIn = c.TrimOut = 0f; // another file: its own length
         }
 
         private static void Remove(Clip c)
@@ -367,29 +428,41 @@ namespace StudioEX.Bridge.Api
 
         private void Update()
         {
+            // rendering (ours, or VideoExport recording on its own with its fixed frame clock): nothing plays
+            if (Silenced || Time.captureFramerate > 0)
+            {
+                if (_preview != null) { _preview.Src.Stop(); _preview = null; }
+                foreach (var c in Clips) if (c.Src.isPlaying) c.Src.Pause();
+                return;
+            }
             bool tlPlaying = TimelineApi.Playing();
             if (_preview != null)
             {
-                if (!_preview.Src.isPlaying || tlPlaying)
+                var pc = _preview;
+                if (!pc.Src.isPlaying || tlPlaying || pc.Src.time >= pc.Audio.length - pc.TrimOut - 0.01f)
                 {
-                    _preview.Src.Stop(); // finished, or the timeline took over
+                    pc.Src.Stop(); // finished (or reached the trim), or the timeline took over
                     _preview = null;
                 }
+                else pc.Src.volume = pc.Gain((pc.Src.time - pc.TrimIn) / pc.Speed);
             }
             float now = TimelineApi.PlaybackTime();
             foreach (var c in Clips)
             {
-                if (c == _preview) { c.Src.volume = c.Volume; continue; }
-                c.Src.volume = c.Volume;
-                float t = now - c.Offset;
-                if (tlPlaying && !c.Muted && t >= 0f && t < c.Audio.length)
+                if (c == _preview) continue;
+                float local = now - c.Offset; // timeline seconds into the clip's span
+                if (tlPlaying && !c.Muted && local >= 0f && local < c.Span)
                 {
+                    float at = Mathf.Clamp(c.TrimIn + local * c.Speed, 0f, c.Audio.length - 0.01f); // where in the file
+                    c.Src.pitch = c.Speed;
+                    c.Src.panStereo = c.Pan;
+                    c.Src.volume = c.Gain(local);
                     if (!c.Src.isPlaying)
                     {
-                        c.Src.time = Mathf.Clamp(t, 0f, c.Audio.length - 0.01f);
+                        c.Src.time = at;
                         c.Src.Play();
                     }
-                    else if (Mathf.Abs(c.Src.time - t) > 0.08f) c.Src.time = Mathf.Clamp(t, 0f, c.Audio.length - 0.01f); // seek, loop, drift
+                    else if (Mathf.Abs(c.Src.time - at) > 0.08f * Mathf.Max(1f, c.Speed)) c.Src.time = at; // seek, loop, drift
                 }
                 else if (c.Src.isPlaying) c.Src.Pause();
             }
@@ -418,6 +491,12 @@ namespace StudioEX.Bridge.Api
                         { "offsets", Clips.Select(c => c.Offset).ToArray() },
                         { "volumes", Clips.Select(c => c.Volume).ToArray() },
                         { "mutes", Clips.Select(c => c.Muted).ToArray() },
+                        { "pans", Clips.Select(c => c.Pan).ToArray() },
+                        { "speeds", Clips.Select(c => c.Speed).ToArray() },
+                        { "fadeIns", Clips.Select(c => c.FadeIn).ToArray() },
+                        { "fadeOuts", Clips.Select(c => c.FadeOut).ToArray() },
+                        { "trimIns", Clips.Select(c => c.TrimIn).ToArray() },
+                        { "trimOuts", Clips.Select(c => c.TrimOut).ToArray() },
                     },
                 });
             }
@@ -439,8 +518,15 @@ namespace StudioEX.Bridge.Api
                 var offsets = AsList(d.data, "offsets");
                 var volumes = AsList(d.data, "volumes");
                 var mutes = AsList(d.data, "mutes");
+                var shape = new[] { "pan", "speed", "fadeIn", "fadeOut", "trimIn", "trimOut" }.ToDictionary(k => k, k => AsList(d.data, k + "s"));
                 for (int i = 0; i < files.Count; i++)
+                {
                     LoadOne(files[i] as string, offsets != null && i < offsets.Count ? offsets[i] : 0f, volumes != null && i < volumes.Count ? volumes[i] : 1f, mutes != null && i < mutes.Count && Convert.ToBoolean(mutes[i]));
+                    if (Clips.Count == 0 || !(Clips[Clips.Count - 1].File == System.IO.Path.GetFileName(files[i] as string ?? ""))) continue;
+                    var args = new Dictionary<string, object>();
+                    foreach (var kv in shape) if (kv.Value != null && i < kv.Value.Count) args[kv.Key] = Convert.ToDouble(kv.Value[i]);
+                    Shape(Clips[Clips.Count - 1], args);
+                }
                 Changed();
             }
 
