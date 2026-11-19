@@ -108,7 +108,9 @@ namespace StudioEX.Bridge.Api
             if (inverse != null) to.Add(inverse);
             // The restored state is "what the user wants now": make it the change-detection baseline,
             // otherwise auto-key would key the undone pose (and wipe the redo history doing so).
-            EventPump.RequestRebase();
+            // ...unless there are unkeyed changes elsewhere: a rebase would quietly adopt them (and the next
+            // timeline edit would then re-apply the keys over them). They stay pending; the undone value shows as one too.
+            if (TimelineApi.Pending() == 0) EventPump.RequestRebase();
             return e.Label;
         }
     }

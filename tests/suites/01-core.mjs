@@ -71,7 +71,12 @@ export default async function (t) {
   });
 
   await t.step('animation catalog', async () => {
-    const cat = await ok('chara.animations');
+    // right after Studio starts its lists may still be loading (the plugin doesn't keep an empty answer)
+    let cat = await ok('chara.animations');
+    for (let i = 0; i < 20 && !cat.length; i++) {
+      await sleep(1000);
+      cat = await ok('chara.animations');
+    }
     const clips = cat.reduce((n, g) => n + g.categories.reduce((m, c) => m + c.clips.length, 0), 0);
     check('animation catalog', clips > 50, `${clips} clips`);
     const g = cat[0],

@@ -485,9 +485,13 @@ function ShotsAndCamera() {
     const up = () => {
       el.removeEventListener('pointermove', move);
       el.removeEventListener('pointerup', up);
+      el.removeEventListener('pointercancel', up);
+      el.removeEventListener('lostpointercapture', up);
     };
     el.addEventListener('pointermove', move);
     el.addEventListener('pointerup', up);
+    el.addEventListener('pointercancel', up);
+    el.addEventListener('lostpointercapture', up);
   };
   return (
     <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
@@ -612,9 +616,13 @@ function Splitters({ ws, right = true }: { ws: string; right?: boolean }) {
     const up = () => {
       el.removeEventListener('pointermove', move);
       el.removeEventListener('pointerup', up);
+      el.removeEventListener('pointercancel', up);
+      el.removeEventListener('lostpointercapture', up);
     };
     el.addEventListener('pointermove', move);
     el.addEventListener('pointerup', up);
+    el.addEventListener('pointercancel', up);
+    el.addEventListener('lostpointercapture', up);
   };
   return (
     <>

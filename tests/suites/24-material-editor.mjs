@@ -78,6 +78,7 @@ export default async function (t) {
     const tex = m.textures.find((x) => x.has);
     check('texture thumbnail', typeof tex.thumb === 'string' && tex.thumb.startsWith('data:image/jpeg;base64,'));
     const ex = await ok('me.textureExport', { ...tg, prop: tex.name });
+    t.defer(() => fs.rmSync(ex.path, { force: true }));
     check('export writes a PNG', fs.existsSync(ex.path) && fs.statSync(ex.path).size > 100, ex.path);
     let after = await ok('me.texture', { ...tg, prop: tex.name, path: ex.path });
     check('replace from an image file', after.textures.find((x) => x.name === tex.name).edited);

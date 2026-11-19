@@ -261,9 +261,10 @@ namespace StudioEX.Bridge.Api
             int n = 0;
             var targets = Targets(a).ToList();
             var undo = Begin(targets, "Load pose");
-            foreach (var c in targets) if (PauseCtrl.Load(c, path)) n++;
+            // keep the undo for whoever changed, even if a later character fails; nobody changed = back to before the preview
+            try { foreach (var c in targets) if (PauseCtrl.Load(c, path)) n++; }
+            finally { if (n > 0) UndoStack.Push(undo); else undo.Restore(); }
             if (n == 0) throw new BridgeException("Select one or more characters first");
-            UndoStack.Push(undo);
             if (path.StartsWith(Folder, StringComparison.OrdinalIgnoreCase))
             {
                 try { MetaFor(path, true)["lastUsed"] = (DateTime.UtcNow - new DateTime(1970, 1, 1)).TotalMilliseconds; SaveUserMeta(); } catch { }
@@ -278,13 +279,16 @@ namespace StudioEX.Bridge.Api
             int n = 0;
             var targets = Targets(a).Where(c => c != src).ToList();
             var undo = Begin(targets, "Copy pose");
-            foreach (var c in targets)
+            try
             {
-                pose.Apply(c);
-                n++;
+                foreach (var c in targets)
+                {
+                    pose.Apply(c);
+                    n++;
+                }
             }
+            finally { if (n > 0) UndoStack.Push(undo); else undo.Restore(); }
             if (n == 0) throw new BridgeException("Select the characters to copy the pose to");
-            UndoStack.Push(undo);
             return n;
         }
 

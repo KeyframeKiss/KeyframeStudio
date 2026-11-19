@@ -62,7 +62,9 @@ namespace StudioEX.Bridge.Api
             {
                 string e = a.GetString("effect");
                 var keys = e == null ? Defaults.Keys.ToList() : new List<string> { Known(e) };
-                foreach (var k in keys) Change(k, CloneOne(Defaults[k]), "reset");
+                UndoStack.BeginGroup();
+                try { foreach (var k in keys) Change(k, CloneOne(Defaults[k]), "reset|" + k); }
+                finally { UndoStack.EndGroup(e == null ? "Reset effects" : "Reset " + e); }
                 return State();
             });
             try { RegisterSceneData(); }
@@ -105,7 +107,9 @@ namespace StudioEX.Bridge.Api
                 foreach (var v in vals)
                 {
                     if (!Defaults[e.Key].TryGetValue(v.Key, out var def)) continue;
+                    if (e.Key == "dof" && v.Key == "chara") continue; // an object id from another scene
                     var target = Parse(def, v.Value);
+                    if (NotAnimated.Contains(e.Key + "." + v.Key)) { if (strength >= 0.5f) next[v.Key] = target; continue; }
                     if (target is float tf) next[v.Key] = Mathf.Lerp((float)next[v.Key], tf, strength);
                     else if (target is float[] tc) { var cur = (float[])next[v.Key]; next[v.Key] = Enumerable.Range(0, 4).Select(i => Mathf.Lerp(cur[i], tc[i], strength)).ToArray(); }
                     else if (strength >= 0.5f) next[v.Key] = target;
@@ -155,7 +159,7 @@ namespace StudioEX.Bridge.Api
             private readonly Dictionary<string, object> _values;
             public FxUndo(string effect, Dictionary<string, object> values, string key) { _effect = effect; _values = values; _key = key; }
             public string Label => "Effect: " + _effect;
-            public bool Absorbs(IUndoEntry newer) => newer is FxUndo n && n._key == _key;
+            public bool Absorbs(IUndoEntry newer) => newer is FxUndo n && n._effect == _effect && n._key == _key;
             public IUndoEntry Restore()
             {
                 var now = CloneOne(_fx[_effect]);
@@ -218,6 +222,8 @@ namespace StudioEX.Bridge.Api
 
         private static bool AnyOn => _fx.Values.Any(v => (bool)v["on"]);
 
+        private static Camera _addedDepth; // the camera we switched the depth texture on for
+
         /// <summary>Our component on Studio's camera while any effect is on (and only then).</summary>
         public static void Ensure()
         {
@@ -228,9 +234,11 @@ namespace StudioEX.Bridge.Api
             {
                 if (comp == null) comp = cam.gameObject.AddComponent<KfEffects>();
                 comp.enabled = true;
-                if ((bool)_fx["fog"]["on"] || (bool)_fx["dof"]["on"]) cam.depthTextureMode |= DepthTextureMode.Depth;
             }
             else if (comp != null) comp.enabled = false;
+            bool wantDepth = AnyOn && ((bool)_fx["fog"]["on"] || (bool)_fx["dof"]["on"]);
+            if (wantDepth && (cam.depthTextureMode & DepthTextureMode.Depth) == 0) { cam.depthTextureMode |= DepthTextureMode.Depth; _addedDepth = cam; }
+            else if (!wantDepth && _addedDepth == cam) { cam.depthTextureMode &= ~DepthTextureMode.Depth; _addedDepth = null; }
         }
 
         /// <summary>New scene (and before a load): effects off, starting values.</summary>
@@ -272,7 +280,9 @@ namespace StudioEX.Bridge.Api
                 if (id != _eyesOf || _eyes == null)
                 {
                     _eyesOf = id;
-                    var c = SceneApi.FindOci(id) as OCIChar;
+                    // no character chosen (or it's gone): the first one in the scene
+                    var c = SceneApi.FindOci(id) as OCIChar
+                        ?? Singleton<Studio.Studio>.Instance?.dicObjectCtrl.OrderBy(kv => kv.Key).Select(kv => kv.Value as OCIChar).FirstOrDefault(x => x != null);
                     _eyes = c?.charInfo != null ? c.charInfo.GetComponentsInChildren<Transform>(true).FirstOrDefault(t => t.name == "cf_J_Eye_tz") ?? c.charInfo.objHeadBone?.transform : null;
                 }
                 return _eyes != null ? _eyes.position : (Vector3?)null;
@@ -301,6 +311,9 @@ namespace StudioEX.Bridge.Api
                 RenderTexture.ReleaseTemporary(bokeh);
             }
 
+            /// <summary>Render pixels per window pixel: above 1 for supersampled stills, so per-pixel effects keep their look.</summary>
+            private static float PixelScale(RenderTexture src) => Mathf.Max(1f, (float)src.height / Mathf.Max(1, Screen.height));
+
             private void OnRenderImage(RenderTexture src, RenderTexture dst)
             {
                 if (!Ready()) { Graphics.Blit(src, dst); return; }
@@ -321,6 +334,7 @@ namespace StudioEX.Bridge.Api
                     if (B("sharpen", "on"))
                     {
                         _sharpen.SetFloat("_KfSharpness", F("sharpen", "amount"));
+                        _sharpen.SetFloat("_KfPixelScale", PixelScale(src));
                         passes.Add(_sharpen);
                     }
                     if (B("grade", "on"))
@@ -338,7 +352,7 @@ namespace StudioEX.Bridge.Api
                     {
                         _lens.SetVector("_KfLens", new Vector4(ca ? F("aberration", "amount") : 0, vig ? F("vignette", "intensity") : 0, F("vignette", "smoothness"), F("vignette", "roundness")));
                         _lens.SetVector("_KfVigColor", V("vignette", "color"));
-                        _lens.SetVector("_KfGrain", new Vector4(grain ? F("grain", "amount") : 0, F("grain", "size"), Time.frameCount % 997, 0));
+                        _lens.SetVector("_KfGrain", new Vector4(grain ? F("grain", "amount") : 0, F("grain", "size"), Time.frameCount % 997, PixelScale(src)));
                         passes.Add(_lens);
                     }
                 }

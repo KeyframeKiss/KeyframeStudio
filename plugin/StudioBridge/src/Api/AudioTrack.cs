@@ -80,6 +80,27 @@ namespace StudioEX.Bridge.Api
             { "playing", _i._src.isPlaying },
         };
 
+        private static bool SameFile(string a, string b)
+        {
+            var fa = new FileInfo(a);
+            var fb = new FileInfo(b);
+            if (fa.Length != fb.Length) return false;
+            using (var x = System.IO.File.OpenRead(a))
+            using (var y = System.IO.File.OpenRead(b))
+            {
+                var ba = new byte[65536];
+                var bb = new byte[65536];
+                int na;
+                while ((na = x.Read(ba, 0, ba.Length)) > 0)
+                {
+                    int nb = 0;
+                    while (nb < na) { int r = y.Read(bb, nb, na - nb); if (r <= 0) return false; nb += r; }
+                    for (int i = 0; i < na; i++) if (ba[i] != bb[i]) return false;
+                }
+            }
+            return true;
+        }
+
         /// <summary>A file in UserData/audio, or any .wav path (copied into UserData/audio so scenes can find it).</summary>
         public static void Load(string fileOrPath, float offset)
         {
@@ -89,8 +110,13 @@ namespace StudioEX.Bridge.Api
             if (!System.IO.File.Exists(full)) throw new BridgeException("Audio file not found: " + Path.GetFileName(full));
             if (!full.StartsWith(AudioDir, StringComparison.OrdinalIgnoreCase))
             {
-                var dest = Path.Combine(AudioDir, Path.GetFileName(full));
-                if (!System.IO.File.Exists(dest) || new FileInfo(dest).Length != new FileInfo(full).Length) System.IO.File.Copy(full, dest, true);
+                // never overwrite another scene's clip that happens to have the same name: same content is reused,
+                // different content gets "name (2).wav"
+                string stem = Path.GetFileNameWithoutExtension(full), ext = Path.GetExtension(full);
+                var dest = Path.Combine(AudioDir, stem + ext);
+                for (int n = 2; System.IO.File.Exists(dest) && !SameFile(dest, full); n++)
+                    dest = Path.Combine(AudioDir, stem + " (" + n + ")" + ext);
+                if (!System.IO.File.Exists(dest)) System.IO.File.Copy(full, dest, false);
                 full = dest;
             }
             var clip = ExternalAudioClip.Load(full);

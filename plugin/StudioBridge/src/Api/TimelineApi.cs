@@ -869,8 +869,10 @@ namespace StudioEX.Bridge.Api
                 var src = refs[i].Track;
                 var dest = src;
                 int ti = refs[i].Index; // original index: a skipped (stale) key must not shift the destinations
-                if (ti < toTracks.Count && toTracks[ti] != null && Interpolables.TryGetValue(Convert.ToInt32(toTracks[ti]), out var d))
+                if (ti < toTracks.Count && toTracks[ti] != null)
                 {
+                    // a destination that's gone (deleted object, reloaded scene) must not fall back onto the source track
+                    if (!Interpolables.TryGetValue(Convert.ToInt32(toTracks[ti]), out var d)) continue;
                     if (d.owner != src.owner || d.id != src.id) continue; // incompatible value types
                     dest = d;
                 }

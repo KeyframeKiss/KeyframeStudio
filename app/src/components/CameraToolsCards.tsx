@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { bridge } from '../bridge/client';
 import { displayName, toast, useStore } from '../state/store';
 import { Slider } from './CharacterPanel';
@@ -48,18 +48,51 @@ export function CameraToolsCards() {
     if (status === 'open') load();
   }, [status, load]);
 
-  const set = async (patch: Partial<{ [K in keyof Tools]: Partial<Tools[K]> }>) => {
-    try {
-      setT(await bridge.request<Tools>('camtools.set', patch));
-    } catch (e) {
-      toast((e as Error).message, 'error');
-    }
+  // shown at once, sent at most once a frame (sliders); replies only land when nothing newer is waiting
+  type Patch = Partial<{ [K in keyof Tools]: Partial<Tools[K]> }>;
+  const pending = useRef<Record<string, Record<string, unknown>>>({});
+  const frame = useRef(0);
+  const inflight = useRef(0);
+  useEffect(() => () => cancelAnimationFrame(frame.current), []);
+  const set = (patch: Patch) => {
+    setT((cur) => {
+      if (!cur) return cur;
+      const next = { ...cur } as Record<string, unknown>;
+      for (const [k, v] of Object.entries(patch)) next[k] = { ...(cur as unknown as Record<string, object>)[k], ...v };
+      return next as unknown as Tools;
+    });
+    for (const [k, v] of Object.entries(patch)) pending.current[k] = { ...(pending.current[k] ?? {}), ...(v as object) };
+    if (frame.current) return;
+    frame.current = requestAnimationFrame(async () => {
+      frame.current = 0;
+      const p = pending.current;
+      pending.current = {};
+      inflight.current++;
+      try {
+        const r = await bridge.request<Tools>('camtools.set', p);
+        if (--inflight.current === 0 && !frame.current) setT(r);
+      } catch (e) {
+        inflight.current--;
+        toast((e as Error).message, 'error');
+        load();
+      }
+    });
   };
 
   if (!t) return null;
   const who2 = (on: boolean) => (on ? { id: chara ?? -1 } : {});
-  const picker = (
-    <select className="input" value={chara ?? ''} onChange={(e) => setWho(Number(e.target.value))} title="The character the camera uses">
+  // while a tool is on, its picker shows (and changes) the character it actually uses
+  const picker = (kind: 'pov' | 'follow') => (
+    <select
+      className="input"
+      value={t[kind].on && nodes[t[kind].id] ? t[kind].id : (chara ?? '')}
+      onChange={(e) => {
+        const id = Number(e.target.value);
+        setWho(id);
+        if (t[kind].on) set({ [kind]: { id } } as Patch);
+      }}
+      title="The character the camera uses"
+    >
       {charas.map((c) => (
         <option key={c.id} value={c.id}>
           {displayName(c)}
@@ -83,7 +116,7 @@ export function CameraToolsCards() {
         <div className="look-card-body ct-body">
           <div className="ct-row">
             <label>Character</label>
-            {picker}
+            {picker('pov')}
           </div>
           <div className="ct-row">
             <label>Field of view</label>
@@ -122,7 +155,7 @@ export function CameraToolsCards() {
         <div className="look-card-body ct-body">
           <div className="ct-row">
             <label>Character</label>
-            {picker}
+            {picker('follow')}
           </div>
           <div className="ct-chips">
             {t.follow.bones.map((b) => (

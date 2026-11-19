@@ -31,9 +31,13 @@ namespace StudioEX.Bridge
             if (__result) Try(() => SetSceneFile(__instance, __0, false));
         }
 
+        [HarmonyPrefix, HarmonyPatch(typeof(Studio.SceneInfo), nameof(Studio.SceneInfo.Save), new[] { typeof(string) })]
+        private static void Saving() => Try(() => Api.CameraTools.Instance?.BeforeSave());
+
         [HarmonyPostfix, HarmonyPatch(typeof(Studio.SceneInfo), nameof(Studio.SceneInfo.Save), new[] { typeof(string) })]
         private static void Saved(Studio.SceneInfo __instance, string __0, bool __result)
         {
+            Try(() => Api.CameraTools.Instance?.AfterSave());
             if (__result) Try(() => SetSceneFile(__instance, __0, true));
         }
 

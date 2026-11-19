@@ -91,6 +91,7 @@ namespace StudioEX.Bridge.Api
                     if (on) PovOn(p.Has("id") ? p.GetInt("id") : _povId);
                     else PovOff();
                 }
+                else if (_pov && p.Has("id") && p.GetInt("id") != _povId) PovOn(p.GetInt("id"));
                 else if (_pov && p.Has("hideHead") && _povProvider == "Keyframe Studio") ApplyHead(true);
             }
             if (a.ContainsKey("follow") && a["follow"] is Dictionary<string, object> f)
@@ -108,7 +109,7 @@ namespace StudioEX.Bridge.Api
                     if (f.GetBool("on")) FollowOn(f.Has("id") ? f.GetInt("id") : _followId);
                     else FollowOff();
                 }
-                else if (_follow && f.Has("bone")) FollowOn(_followId); // re-target
+                else if (_follow && (f.Has("bone") || f.Has("id"))) FollowOn(f.Has("id") ? f.GetInt("id") : _followId); // re-target
             }
             if (a.ContainsKey("guides") && a["guides"] is Dictionary<string, object> g)
             {
@@ -289,6 +290,19 @@ namespace StudioEX.Bridge.Api
             PovOff();
             FollowOff();
         }
+
+        /// <summary>From the plugin's Update: with nobody connected, give Studio its camera back and drop the guides.</summary>
+        public void Tick(int clients)
+        {
+            if (clients > 0) return;
+            if (_pov || _follow) Clear();
+            _thirds = _center = _safe = false;
+            _aspect = 0;
+        }
+
+        // The hidden head is a ChaFile setting, which Studio saves with the character: show it while saving.
+        public void BeforeSave() { if (_pov && _povProvider == "Keyframe Studio") ApplyHead(false); }
+        public void AfterSave() { if (_pov && _povProvider == "Keyframe Studio") ApplyHead(true); }
 
         // ------------------------------------------------------------------ guides
 

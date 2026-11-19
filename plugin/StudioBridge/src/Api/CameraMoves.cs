@@ -36,6 +36,8 @@ namespace StudioEX.Bridge.Api
             var studio = Singleton<Studio.Studio>.Instance;
             var cc = studio.cameraCtrl;
             string preset = a.GetString("preset") ?? "orbit";
+            // check everything before any key is touched
+            if (Array.IndexOf(new[] { "orbit", "pan", "dolly", "zoom", "crane", "truck" }, preset) < 0) throw new BridgeException("Unknown camera move: " + preset);
             float amount = a.GetFloat("amount");
             float dur = a.GetFloat("duration", 2f);
             float t0 = Mathf.Clamp(a.Has("t0") ? a.GetFloat("t0") : TL.playbackTime, 0f, TL.duration);
@@ -103,9 +105,9 @@ namespace StudioEX.Bridge.Api
             int steps = preset == "orbit" || preset == "pan" ? Mathf.Clamp(Mathf.CeilToInt(Mathf.Abs(amount) / 45f), 1, 64) : 1;
             Func<float, float> ease = x => smooth ? x * x * (3f - 2f * x) : x;
 
-            var tracks = CameraTracks(true);
+            var tracks = CameraTracksForEdit(out var snap);
             if (tracks.Count == 0) throw new BridgeException("Timeline's camera tracks are unavailable");
-            History.Push(History.Capture(tracks), "Camera move: " + preset);
+            History.Push(snap, "Camera move: " + preset);
 
             int removed = 0;
             foreach (var ip in tracks)
@@ -149,9 +151,9 @@ namespace StudioEX.Bridge.Api
         public static object KeyShotCuts(List<KeyValuePair<float, Action>> cuts)
         {
             var cc = Singleton<Studio.Studio>.Instance.cameraCtrl;
-            var tracks = CameraTracks(true);
+            var tracks = CameraTracksForEdit(out var snap);
             if (tracks.Count == 0) throw new BridgeException("Timeline's camera tracks are unavailable");
-            History.Push(History.Capture(tracks), "Build camera cuts");
+            History.Push(snap, "Build camera cuts");
             var before = cc.Export();
             float fov = cc.fieldOfView;
             var hold = new AnimationCurve(new UnityEngine.Keyframe(0f, 0f, 0f, 0f), new UnityEngine.Keyframe(1f, 1f, float.PositiveInfinity, 0f));

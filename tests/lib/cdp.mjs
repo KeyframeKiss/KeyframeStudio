@@ -19,9 +19,17 @@ export async function connectRenderer(port) {
     }
   };
   const send = (method, params = {}) =>
-    new Promise((res) => {
+    new Promise((res, rej) => {
       const i = id++;
-      pending.set(i, res);
+      const timer = setTimeout(() => {
+        pending.delete(i);
+        rej(new Error(`${method}: no answer from the app`));
+      }, 30000);
+      pending.set(i, (m) => {
+        clearTimeout(timer);
+        if (m.error) rej(new Error(`${method}: ${m.error.message}`));
+        else res(m);
+      });
       ws.send(JSON.stringify({ id: i, method, params }));
     });
   return {

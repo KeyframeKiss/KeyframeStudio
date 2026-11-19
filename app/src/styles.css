@@ -5270,3 +5270,65 @@ html.frameless .tooltip {
   width: 24px;
   height: 24px;
 }
+
+/* ---------- narrow centre areas (the side panels decide how much room is left, not the window) ---------- */
+.ws-center {
+  container: center / inline-size;
+}
+.me-main {
+  container: me-main / inline-size;
+}
+@container center (max-width: 760px) {
+  .face-studio {
+    grid-template-columns: minmax(0, 1fr);
+    overflow-y: auto;
+  }
+  .face-studio > * {
+    min-height: 320px;
+  }
+  .face-anim-main {
+    grid-template-columns: minmax(0, 1fr);
+    overflow-y: auto;
+  }
+  .face-anim-main > * {
+    min-height: 260px;
+  }
+  .me {
+    grid-template-columns: minmax(170px, 36%) minmax(0, 1fr);
+  }
+}
+@container center (max-width: 520px) {
+  .face-parts {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.expr-stepper {
+  min-width: 0;
+  flex-wrap: wrap;
+}
+@container me-main (max-width: 560px) {
+  .me-view {
+    padding: 12px 10px 24px;
+  }
+  .me-row {
+    grid-template-columns: minmax(80px, 110px) minmax(0, 1fr) auto;
+    gap: 6px;
+  }
+  .me-color {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .me-alpha {
+    min-width: 0;
+    flex-basis: 100%;
+  }
+  .me-float .me-num {
+    width: 60px;
+  }
+  .me-head {
+    flex-wrap: wrap;
+  }
+  .me-cards {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

@@ -464,7 +464,7 @@ namespace StudioEX.Bridge.Api
             if (kind != "texture")
             {
                 var prev = Current(t, kind, prop);
-                if (prev != null) UndoStack.Push(new MeUndo(new Change { Target = t, Kind = kind, Prop = prop, Previous = prev }, "reset"));
+                if (prev != null) UndoStack.Push(new MeUndo(new Change { Target = t, Kind = kind, Prop = prop, Previous = prev }, string.Join("|", new[] { a.GetString("id"), a.GetString("part"), a.GetString("renderer"), a.GetString("material"), kind, prop, "reset" })));
             }
             Remove(t, kind, prop);
             return t.Mat != null ? Material(a) : true;

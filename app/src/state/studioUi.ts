@@ -44,9 +44,9 @@ export async function syncStudioUi() {
 }
 
 export async function setStudioUi(patch: Partial<Prefs>) {
-  savePrefs(patch);
   try {
     const ui = await bridge.request<StudioUi>('ui.set', patch);
+    savePrefs(patch);
     useStudioUi.setState({ ui });
     return ui;
   } catch (e) {

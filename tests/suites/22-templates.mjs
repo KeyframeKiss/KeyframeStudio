@@ -19,6 +19,10 @@ export default async function (t) {
   ] });
   await ok('look.set', { effects: { bloomIntensity: 1.7 } });
   const hasRender = (await t.req('render.status')).ok;
+  if (hasRender) {
+    const original = (await ok('render.status')).settings;
+    t.defer(() => t.req('render.set', { fps: original.fps, format: original.format }));
+  }
   if (hasRender) await ok('render.set', { fps: 30, format: 'WEBM' });
 
   const data = await gatherTemplate(req);
@@ -43,5 +47,4 @@ export default async function (t) {
   check('reported what it did', done.includes('timeline') && done.includes('shots') && done.includes('look'), JSON.stringify({ done, problems }));
   await ok('undo'); // the look is undoable like any look change
   check('look change undoable', near((await ok('look.get')).effects.bloomIntensity, before.effects.bloomIntensity));
-  if (hasRender) await ok('render.set', { fps: 60, format: 'MP4' });
 }

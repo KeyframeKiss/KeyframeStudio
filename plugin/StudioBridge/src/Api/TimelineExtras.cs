@@ -237,6 +237,17 @@ namespace StudioEX.Bridge.Api
 
         private static readonly string[] CameraModels = { "cameraOPos", "cameraORot", "cameraOZoom", "cameraFOV" };
 
+        /// <summary>The camera tracks (created if needed) and an undo snapshot that removes the ones just created.</summary>
+        private static List<Interpolable> CameraTracksForEdit(out List<TrackSnapshot> snap)
+        {
+            var existing = new HashSet<Interpolable>(CameraTracks(false));
+            var tracks = CameraTracks(true);
+            snap = History.Capture(tracks);
+            foreach (var s in snap)
+                if (!existing.Contains(s.Track)) { s.Present = false; s.Keys = new List<KeyValuePair<float, TLKeyframe>>(); }
+            return tracks;
+        }
+
         private static List<Interpolable> CameraTracks(bool create)
         {
             var list = new List<Interpolable>();
@@ -267,9 +278,8 @@ namespace StudioEX.Bridge.Api
         {
             t = Mathf.Clamp(t, 0f, TL.duration);
             int before = Interpolables.Count;
-            var tracks = CameraTracks(true);
+            var tracks = CameraTracksForEdit(out var snap);
             if (tracks.Count == 0) throw new BridgeException("Timeline's camera tracks are unavailable");
-            var snap = History.Capture(tracks);
             foreach (var ip in tracks)
             {
                 AddOrUpdateKey(ip, t);
@@ -480,6 +490,7 @@ namespace StudioEX.Bridge.Api
                 try { TrackBase[ip] = ValueString(ip); } catch { }
             }
             GoBase.Clear();
+            GoSeenAt.Clear();
             try
             {
                 foreach (var kv in GuideTargets())
@@ -487,6 +498,36 @@ namespace StudioEX.Bridge.Api
             }
             catch (Exception e) { StudioBridgePlugin.Logger.LogDebug("rebase: " + e.Message); }
             PendingCount = 0;
+        }
+
+        private static float _nextGuideScan;
+        // when an object was first seen this way: it isn't reported until it has been watched for a moment, so things
+        // that move by themselves (spinning effects, physics) get recognised as such first
+        private static readonly Dictionary<GuideObject, float> GoSeenAt = new Dictionary<GuideObject, float>();
+        private const float NewGuideGrace = 2f;
+
+        /// <summary>
+        /// Objects that appeared since the last rebase (a loaded scene, a new item, FK / IK switched on) get their
+        /// current state as their baseline the first time they're seen, so later edits to them count as changes.
+        /// Throttled: walking every guide object is the expensive part.
+        /// </summary>
+        private static void AddUnseenGuides()
+        {
+            if (Time.unscaledTime < _nextGuideScan) return;
+            _nextGuideScan = Time.unscaledTime + 1.5f;
+            try
+            {
+                foreach (var kv in GuideTargets())
+                    if (kv.Key != null && !GoBase.ContainsKey(kv.Key))
+                    {
+                        GoBase.Add(kv.Key, kv.Value);
+                        GoSeenAt[kv.Key] = Time.unscaledTime;
+                    }
+                var gone = GoBase.Keys.Where(g => g == null).ToList(); // destroyed with their objects
+                foreach (var g in gone) GoBase.Remove(g);
+                foreach (var g in GoSeenAt.Keys.Where(g => g == null || Time.unscaledTime - GoSeenAt[g] > NewGuideGrace).ToList()) GoSeenAt.Remove(g);
+            }
+            catch (Exception e) { StudioBridgePlugin.Logger.LogDebug("guide scan: " + e.Message); }
         }
 
         private static List<Change> Changes(bool includeNew, bool settledOnly = false)
@@ -511,11 +552,13 @@ namespace StudioEX.Bridge.Api
                 if (now != kv.Value) list.Add(new Change { Track = ip, Oci = ip.oci, Label = SafeName(ip) });
             }
 
+            if (includeNew) AddUnseenGuides();
             if (includeNew)
                 foreach (var kv in GoBase)
                 {
                     var go = kv.Key;
                     if (go == null || GoVolatile.Contains(go)) continue; // destroyed / moves by itself
+                    if (GoSeenAt.TryGetValue(go, out var seen) && Time.unscaledTime - seen < NewGuideGrace) continue; // just appeared
                     if (settledOnly && !Settled(go)) continue;
                     var st = kv.Value;
                     var ca = go.changeAmount;

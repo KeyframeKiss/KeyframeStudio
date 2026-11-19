@@ -12,7 +12,7 @@ export default async function (t) {
   const made = [];
   t.defer(() => {
     for (const f of made) fs.rmSync(f, { force: true });
-    return req('still.set', { useScreencap: true });
+    return req('still.set', { useScreencap: st.useScreencap });
   });
   const st = await ok('still.status');
 

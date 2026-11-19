@@ -164,7 +164,7 @@ export default async function (t) {
       metric('app: dope sheet draw while playing, p95', dope.p95);
       metric('app: frame interval while playing, p95 (16.7 = 60 fps)', frames.p95);
       check('dope sheet draws in under 12 ms (p95)', dope.n > 0 && dope.p95 < 12, JSON.stringify(dope));
-      check('app keeps 30+ fps while playing (p95 frame < 34 ms)', frames.p95 < 34, JSON.stringify(frames));
+      check('app keeps 30+ fps while playing (p95 frame < 34 ms)', frames.n > 0 && frames.p95 < 34, JSON.stringify(frames));
 
       // graph editor with every key selected
       await app.eval(`(() => { const b=[...document.querySelectorAll('.sheet-toolbar button')]; b.find(x=>x.textContent.trim()==='Graph')?.click(); })()`);

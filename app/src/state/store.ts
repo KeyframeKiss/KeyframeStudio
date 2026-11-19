@@ -484,6 +484,7 @@ export function initBridge() {
     set({ status: s as ConnectionStatus });
     // Offline: stop extrapolating the playhead (and the canvases redrawing every frame for it).
     if (s !== 'open') {
+      import('./studioUi').then((m) => m.useStudioUi.setState({ ui: null }));
       set({ workingShotId: null, frameFullTimeline: false, loopShot: false, renderShotIds: null, sceneName: null });
       const tl = get().tl;
       if (tl?.playing) set({ tl: { ...tl, playing: false, time: liveTime() } });

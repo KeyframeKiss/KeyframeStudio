@@ -91,9 +91,12 @@ fs.writeFileSync(
   ].join('\r\n'),
 );
 
-// 4. zip (Windows' own zip, nothing to install)
+// 4. zip with Windows' own bsdtar (nothing to install). Not PowerShell 5's Compress-Archive: it writes entry
+//    names with backslashes, which other unzip tools and mod managers turn into flat "BepInEx\plugins\…" files.
 const zip = path.join(out, `${name}.zip`);
 fs.rmSync(zip, { force: true });
-run(`powershell -NoProfile -Command "Compress-Archive -Path '${stage}\\*' -DestinationPath '${zip}' -CompressionLevel Optimal"`, root);
+const tar = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'tar.exe');
+console.log('> zip');
+execSync(`"${tar}" -a -c -f "${zip}" "BepInEx" "Keyframe Studio" "README.txt"`, { cwd: stage, stdio: 'inherit' });
 const mb = (fs.statSync(zip).size / 1048576).toFixed(1);
 console.log(`\n→ ${path.relative(root, zip)} (${mb} MB)`);

@@ -15,7 +15,9 @@ export default async function (t) {
     const before = studio.events.length;
     for (let i = 0; i < 60 && named < Math.min(cards.length, 5); i++) {
       await sleep(500);
-      named += studio.events.slice(before).filter((e) => e.event === 'cards.names').reduce((n, e) => n + Object.keys(e.data).length, 0);
+      const seen = new Set(cards.filter((c) => typeof c.name === 'string').map((c) => c.path));
+      for (const e of studio.events.slice(before)) if (e.event === 'cards.names') for (const k of Object.keys(e.data)) seen.add(k);
+      named = seen.size; // recounted each pass (an event must not count again)
     }
   }
   check('names read (cached or in the background)', named >= Math.min(cards.length, 5), `${named}/${cards.length}`);
@@ -36,6 +38,6 @@ export default async function (t) {
   await sleep(1500);
   const after = (await ok('scene.get')).nodes.find((n) => n.id === ch.id);
   check('still the same object, now another character', !!after && (after.name !== before || females[0].name === females[1].name), `${before} → ${after?.name}`);
-  const bad = await req('cards.add', { path: 'C:\Windows\win.ini' });
+  const bad = await req('cards.add', { path: String.raw`C:\Windows\win.ini` }); // a real file, outside UserData/chara
   check('only cards from UserData/chara', !bad.ok);
 }

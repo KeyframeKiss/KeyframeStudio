@@ -132,6 +132,7 @@ namespace StudioEX.Bridge
             // the app went away mid-preview: put the characters back in their own poses
             if (PoseApi.Previewing && ClientCount == 0) PoseApi.EndPreview();
             StudioUiApi.Tick(ClientCount);
+            CameraTools.Instance?.Tick(ClientCount);
             FxApi.Tick();
             // Handle a bounded number of requests per frame to keep Studio responsive. While ghosts are
             // baking the playhead is temporarily elsewhere: hold requests for those few frames.

@@ -73,7 +73,8 @@ Shader "Hidden/KeyframeStudio/Dof"
     fixed4 FragCombine(v2f i) : SV_Target
     {
         fixed4 src = tex2D(_MainTex, i.uv);
-        float4 dof = tex2D(_KfDofTex, i.uv);
+        // _KfDofTex was made by Blit (never flipped); the source may be (D3D + anti-aliasing): same as the depth texture
+        float4 dof = tex2D(_KfDofTex, i.uvDepth);
         float coc = CoC(i.uvDepth);
         float px = abs(_MainTex_TexelSize.y);
         float ffa = smoothstep(px * 2, px * 4, abs(coc));

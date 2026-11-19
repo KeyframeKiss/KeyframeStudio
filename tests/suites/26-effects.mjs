@@ -33,9 +33,13 @@ export default async function (t) {
       ['aberration', { on: true, amount: 1.5 }],
       ['grain', { on: true, amount: 0.6 }],
     ]) {
+      await ok('fx.reset');
+      await sleep(250);
+      const base = await snap();
       await ok('fx.set', { effect, values });
-      await sleep(200);
-      check(`${effect} renders`, (await snap()) !== plain);
+      await sleep(250);
+      const withIt = await snap();
+      check(`${effect} renders`, Math.abs(withIt - base) > base * 0.02, `${base} → ${withIt}`);
     }
     check('unknown values are refused', !(await req('fx.set', { effect: 'fog', values: { nope: 1 } })).ok);
     const r = await ok('fx.reset');

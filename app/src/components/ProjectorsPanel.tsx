@@ -326,10 +326,13 @@ export function AimLightsPanel() {
     if (status === 'open') load();
   }, [status, load, revision]);
   const set = async (args: Record<string, unknown>) => {
+    if (typeof args.id === 'number')
+      setSt((s) => s && { ...s, lights: s.lights.map((l) => (l.id === args.id ? ({ ...l, ...args } as AimLight) : l)) });
     try {
       setSt(await bridge.request<AimState>('aim.set', args));
     } catch (e) {
       toast((e as Error).message, 'error');
+      load();
     }
   };
   if (!st) return null;

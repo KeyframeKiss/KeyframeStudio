@@ -381,7 +381,7 @@ namespace StudioEX.Bridge.Api
                 grp["categories"] = cats;
                 groups.Add(grp);
             }
-            _catalog = groups;
+            if (groups.Count > 0) _catalog = groups; // Studio still loading its lists: don't remember "nothing"
             return groups;
         }
 

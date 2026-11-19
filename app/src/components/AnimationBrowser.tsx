@@ -199,7 +199,7 @@ export function AnimationBrowser({
             {!results.length && <div className="empty">No animations match “{query}”.</div>}
           </div>
         ) : (
-          <div style={{ flex: 1, display: 'grid', gridTemplateColumns: special ? '200px 1fr' : '200px 240px 1fr', minHeight: 0 }}>
+          <div style={{ flex: 1, display: 'grid', gridTemplateColumns: special ? 'minmax(140px, 200px) minmax(0, 1fr)' : 'minmax(140px, 200px) minmax(160px, 240px) minmax(0, 1fr)', minHeight: 0 }}>
             <div className="panel-body" style={{ borderRight: '1px solid var(--line)' }}>
               <div {...pressable} className={`tree-row ${group === FAV ? 'selected' : ''}`} style={{ paddingLeft: 10 }} onClick={() => setGroup(FAV)}>
                 <StarIcon filled size={12} />

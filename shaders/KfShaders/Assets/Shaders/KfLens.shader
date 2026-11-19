@@ -18,7 +18,7 @@ Shader "Hidden/KeyframeStudio/Lens"
 
             float4 _KfLens;     // x chromatic aberration (0..1), y vignette intensity (0..1), z vignette smoothness (0..1), w vignette roundness (0..1)
             float4 _KfVigColor; // rgb
-            float4 _KfGrain;    // x amount (0..1), y size (1..3), z time seed
+            float4 _KfGrain;    // x amount (0..1), y size (1..3), z time seed, w render pixels per screen pixel
 
             float Hash(float2 p) { return frac(sin(dot(p, float2(12.9898, 78.233))) * 43758.5453); }
 
@@ -48,7 +48,7 @@ Shader "Hidden/KeyframeStudio/Lens"
 
                 if (_KfGrain.x > 0)
                 {
-                    float2 g = floor(uv * _ScreenParams.xy / max(1, _KfGrain.y));
+                    float2 g = floor(uv * _ScreenParams.xy / max(1, _KfGrain.y * max(1, _KfGrain.w)));
                     float n = Hash(g + _KfGrain.z) - 0.5;
                     float l = Luma(c);
                     // strongest in the midtones, like film

@@ -84,6 +84,11 @@ namespace StudioEX.Bridge.Api
             var ip = Track(a["track"]);
             var keys = a.GetList("keys").OfType<Dictionary<string, object>>().ToList();
             if (keys.Count == 0) return 0;
+            var baseValue = ip.GetValue();
+            var parsed = new List<KeyValuePair<float, object>>();
+            foreach (var k in keys) // throws on a bad value before anything is changed
+                parsed.Add(new KeyValuePair<float, object>(Mathf.Clamp(k.GetFloat("t"), 0f, TL.duration),
+                    ip.ReadValueFromXml(PatchedValueXml(ip, baseValue, k.GetObject("value") ?? new Dictionary<string, object>()))));
             History.Push(History.Capture(new[] { ip }), a.GetString("label") ?? "Write keys");
             var clear = a.GetList("clear");
             if (clear.Count == 2)
@@ -95,12 +100,11 @@ namespace StudioEX.Bridge.Api
             Func<AnimationCurve> curve = () => mode == "step"
                 ? new AnimationCurve(new UnityEngine.Keyframe(0f, 0f, 0f, 0f), new UnityEngine.Keyframe(1f, 1f, float.PositiveInfinity, 0f))
                 : mode == "smooth" ? AnimationCurve.EaseInOut(0f, 0f, 1f, 1f) : AnimationCurve.Linear(0f, 0f, 1f, 1f);
-            var baseValue = ip.GetValue();
             int n = 0;
-            foreach (var k in keys)
+            foreach (var kv in parsed)
             {
-                float t = Mathf.Clamp(k.GetFloat("t"), 0f, TL.duration);
-                var value = ip.ReadValueFromXml(PatchedValueXml(ip, baseValue, k.GetObject("value") ?? new Dictionary<string, object>()));
+                float t = kv.Key;
+                var value = kv.Value;
                 if (FindKey(ip, t, out var exact)) { ip.keyframes[exact].value = value; ip.keyframes[exact].curve = curve(); }
                 else ip.keyframes[t] = new TLKeyframe(value, ip, curve());
                 n++;

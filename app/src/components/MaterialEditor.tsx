@@ -184,9 +184,15 @@ export function MaterialEditorPage() {
     setOpen({});
     loadTree();
   }, [id, loadTree]);
+  // stuck on an error (e.g. MaterialEditor not ready right after a load): try again when the window comes back
+  useEffect(() => {
+    if (!err) return;
+    window.addEventListener('focus', loadTree);
+    return () => window.removeEventListener('focus', loadTree);
+  }, [err, loadTree]);
 
   if (!target) return <Empty text="Select a character or an item in the scene to edit its materials." />;
-  if (err) return <Empty text={err} />;
+  if (err) return <Empty text={err} onRetry={loadTree} />;
   if (!tree) return <Empty text="Reading materials…" />;
 
   const parts = tidy(tree);
@@ -277,11 +283,16 @@ export function MaterialEditorPage() {
   );
 }
 
-function Empty({ text }: { text: string }) {
+function Empty({ text, onRetry }: { text: string; onRetry?: () => void }) {
   return (
     <div className="me-empty">
       <Icon name="look" size={22} />
       <span>{text}</span>
+      {onRetry && (
+        <button className="btn" onClick={onRetry}>
+          Try again
+        </button>
+      )}
     </div>
   );
 }
@@ -351,7 +362,7 @@ function MaterialView({ id, sel, onTreeChange }: { id: number; sel: Sel; onTreeC
       frame.current = 0;
       const batch = [...pending.current.values()];
       pending.current.clear();
-      for (const b of batch) send('me.set', b, kind === 'enabled' ? onTreeChange : undefined);
+      for (const b of batch) send('me.set', b, b.kind === 'enabled' ? onTreeChange : undefined);
     });
   };
   useEffect(() => () => cancelAnimationFrame(frame.current), []);
@@ -633,11 +644,19 @@ export function NumberBox({ value, step, min, max, onChange }: { value: number; 
   const fmt = (v: number) => (Number.isInteger(v) ? String(v) : String(Number(v.toFixed(4))));
   const [text, setText] = useState(fmt(value));
   const focused = useRef(false);
+  const cancelled = useRef(false);
   useEffect(() => {
     if (!focused.current) setText(fmt(value));
   }, [value]);
   const commit = () => {
+    if (cancelled.current) {
+      cancelled.current = false;
+      setText(fmt(value));
+      return;
+    }
     const v = Number(text);
+    // unchanged (or only re-typed the shown, rounded number): don't send, don't round the real value
+    if (text.trim() === fmt(value) || (Number.isFinite(v) && v === value)) return;
     if (Number.isFinite(v)) onChange(Math.min(max ?? Infinity, Math.max(min ?? -Infinity, v)));
     else setText(fmt(value));
   };
@@ -656,7 +675,7 @@ export function NumberBox({ value, step, min, max, onChange }: { value: number; 
       onKeyDown={(e) => {
         if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
         if (e.key === 'Escape') {
-          setText(fmt(value));
+          cancelled.current = true;
           (e.target as HTMLInputElement).blur();
         }
       }}

@@ -68,6 +68,11 @@ export class Studio {
         this.pending.delete(id);
         resolve({ ok: false, error: `${cmd}: no answer in ${timeoutMs / 1000}s` });
       }, timeoutMs);
+      if (this.ws.readyState !== 1) {
+        clearTimeout(timer);
+        resolve({ ok: false, error: `${cmd}: not connected to CharaStudio` });
+        return;
+      }
       this.pending.set(id, { resolve, timer });
       this.ws.send(JSON.stringify({ id, cmd, args }));
     });

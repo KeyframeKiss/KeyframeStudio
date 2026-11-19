@@ -86,16 +86,25 @@ namespace StudioEX.Bridge.Api
         {
             public ProjData Data = new ProjData();
             public OCIFolder Folder;
+            public string Id = Guid.NewGuid().ToString("N");
             private Projector _p;
             private Material _m;
 
             private void Awake()
             {
                 _p = gameObject.AddComponent<Projector>();
-                _m = new Material(FxApi.GetShader("Projector")) { hideFlags = HideFlags.DontSave };
-                _p.material = _m;
                 _p.nearClipPlane = 0.05f;
-                Apply();
+                try
+                {
+                    _m = new Material(FxApi.GetShader("Projector")) { hideFlags = HideFlags.DontSave };
+                    _p.material = _m;
+                    Apply();
+                }
+                catch (Exception e)
+                {
+                    _p.enabled = false;
+                    StudioBridgePlugin.Logger.LogWarning("Projector can't draw: " + e.Message);
+                }
             }
 
             private void OnDestroy() { if (_m != null) Destroy(_m); }
@@ -103,7 +112,7 @@ namespace StudioEX.Bridge.Api
             // Studio folders don't hide anything themselves: follow the folder's eye in the scene list
             private void LateUpdate()
             {
-                if (_p == null) return;
+                if (_p == null || _m == null) return;
                 bool on = Folder?.treeNodeObject == null || Folder.treeNodeObject.visible;
                 if (_p.enabled != on) _p.enabled = on;
                 if (on) _m.SetVector("_KfProjDir", transform.forward);
@@ -133,7 +142,7 @@ namespace StudioEX.Bridge.Api
 
             public void Apply()
             {
-                if (_p == null) return;
+                if (_p == null || _m == null) return;
                 _p.fieldOfView = Data.Angle;
                 _p.farClipPlane = Data.Range;
                 _p.aspectRatio = 1;
@@ -153,9 +162,23 @@ namespace StudioEX.Bridge.Api
             }
         }
 
-        private static KfProjector ProjectorOf(OCIFolder f) => f?.objectItem != null ? f.objectItem.GetComponentInChildren<KfProjector>(true) : null;
+        private static KfProjector ProjectorOf(OCIFolder f)
+        {
+            if (f?.objectItem == null) return null;
+            // folders inside this one are children too: the projector is a direct child carrying KfProjector
+            var t = f.objectItem.transform;
+            for (int i = 0; i < t.childCount; i++)
+            {
+                var p = t.GetChild(i).GetComponent<KfProjector>();
+                if (p != null) return p;
+            }
+            return null;
+        }
 
-        private static KfProjector Attach(OCIFolder f, ProjData d)
+        private static KfProjector ProjectorById(string id) =>
+            ProjectorFolders().Select(kv => ProjectorOf(kv.Value)).FirstOrDefault(p => p != null && p.Id == id);
+
+        private static KfProjector Attach(OCIFolder f, ProjData d, string id = null)
         {
             var existing = ProjectorOf(f);
             if (existing != null) { existing.Data = d.Copy(); existing.Apply(); return existing; }
@@ -163,6 +186,7 @@ namespace StudioEX.Bridge.Api
             go.transform.SetParent(f.objectItem.transform, false);
             var p = go.AddComponent<KfProjector>();
             p.Folder = f;
+            if (id != null) p.Id = id;
             p.Data = d.Copy();
             p.Apply();
             return p;
@@ -281,27 +305,28 @@ namespace StudioEX.Bridge.Api
             p.Apply();
             string oldTitle = Title(prev);
             if (f.name == oldTitle) f.name = Title(p.Data); // keep the automatic name in step (not a name the user gave)
-            UndoStack.Push(new ProjSetUndo(f, prev, f.objectInfo.dicKey + "|" + string.Join(",", v.Keys.OrderBy(k => k).ToArray())));
+            UndoStack.Push(new ProjSetUndo(p.Id, prev, p.Id + "|" + string.Join(",", v.Keys.OrderBy(k => k).ToArray())));
             return p.Data.Wire();
         }
 
         private sealed class ProjSetUndo : IUndoEntry
         {
-            private readonly OCIFolder _f;
+            private readonly string _id;
             private readonly ProjData _d;
             private readonly string _key;
-            public ProjSetUndo(OCIFolder f, ProjData d, string key) { _f = f; _d = d; _key = key; }
+            public ProjSetUndo(string id, ProjData d, string key) { _id = id; _d = d; _key = key; }
             public string Label => "Projector";
             public bool Absorbs(IUndoEntry newer) => newer is ProjSetUndo n && n._key == _key;
             public IUndoEntry Restore()
             {
-                var p = ProjectorOf(_f);
-                if (p == null) return new ProjSetUndo(_f, _d, _key);
+                var p = ProjectorById(_id);
+                if (p == null) return new ProjSetUndo(_id, _d, _key);
+                var f = p.Folder;
                 var now = p.Data.Copy();
-                if (_f.name == Title(now)) _f.name = Title(_d);
+                if (f != null && f.name == Title(now)) f.name = Title(_d);
                 p.Data = _d.Copy();
                 p.Apply();
-                return new ProjSetUndo(_f, now, _key + "|undo");
+                return new ProjSetUndo(_id, now, _key + "|undo");
             }
         }
 
@@ -316,9 +341,33 @@ namespace StudioEX.Bridge.Api
             {
                 var pos = _f.objectInfo.changeAmount.pos;
                 var rot = _f.objectInfo.changeAmount.rot;
-                var d = ProjectorOf(_f)?.Data.Copy() ?? _d;
+                var p = ProjectorOf(_f);
+                var d = p?.Data.Copy() ?? _d;
+                string id = p?.Id;
+                if (_f.treeNodeObject != null && _f.treeNodeObject.child.Count > 0)
+                {
+                    // the folder holds other things now: keep it, take only the projector off it
+                    if (p != null) UnityEngine.Object.DestroyImmediate(p.gameObject);
+                    return new ProjReattachUndo(_f, d, id);
+                }
                 if (_f.treeNodeObject != null) S.treeNodeCtrl.DeleteNode(_f.treeNodeObject);
-                return new ProjReAddUndo(d, pos, rot);
+                return new ProjReAddUndo(d, pos, rot, id);
+            }
+        }
+
+        private sealed class ProjReattachUndo : IUndoEntry
+        {
+            private readonly OCIFolder _f;
+            private readonly ProjData _d;
+            private readonly string _id;
+            public ProjReattachUndo(OCIFolder f, ProjData d, string id) { _f = f; _d = d; _id = id; }
+            public string Label => "Add projector";
+            public bool Absorbs(IUndoEntry newer) => false;
+            public IUndoEntry Restore()
+            {
+                if (_f?.objectItem == null) return null;
+                Attach(_f, _d, _id);
+                return new ProjAddUndo(_f, _d);
             }
         }
 
@@ -326,7 +375,8 @@ namespace StudioEX.Bridge.Api
         {
             private readonly ProjData _d;
             private readonly Vector3 _pos, _rot;
-            public ProjReAddUndo(ProjData d, Vector3 pos, Vector3 rot) { _d = d; _pos = pos; _rot = rot; }
+            private readonly string _id;
+            public ProjReAddUndo(ProjData d, Vector3 pos, Vector3 rot, string id) { _d = d; _pos = pos; _rot = rot; _id = id; }
             public string Label => "Add projector";
             public bool Absorbs(IUndoEntry newer) => false;
             public IUndoEntry Restore()
@@ -335,7 +385,7 @@ namespace StudioEX.Bridge.Api
                 f.name = Title(_d);
                 f.objectInfo.changeAmount.pos = _pos;
                 f.objectInfo.changeAmount.rot = _rot;
-                Attach(f, _d);
+                Attach(f, _d, _id);
                 return new ProjAddUndo(f, _d);
             }
         }
@@ -546,15 +596,22 @@ namespace StudioEX.Bridge.Api
                         foreach (var o in pl.OfType<Dictionary<string, object>>())
                             if (loadedItems.TryGetValue(Convert.ToInt32(o["id"]), out var oci) && oci is OCIFolder f && o["values"] is Dictionary<string, object> v)
                             {
-                                var pd = new ProjData();
-                                pd.Read(v);
-                                Attach(f, pd);
+                                try
+                                {
+                                    var pd = new ProjData();
+                                    pd.Read(v);
+                                    Attach(f, pd);
+                                }
+                                catch (Exception e) { StudioBridgePlugin.Logger.LogWarning("Couldn't restore a projector: " + e.Message); }
                             }
                     if (all.TryGetValue("aims", out var ai) && ai is List<object> al)
                         foreach (var o in al.OfType<Dictionary<string, object>>())
                             if (loadedItems.TryGetValue(Convert.ToInt32(o["id"]), out var oci) && oci is OCILight l
                                 && loadedItems.TryGetValue(Convert.ToInt32(o["target"]), out var t))
-                                ApplyAim(l, new AimState { Target = t.objectInfo.dicKey, Bone = Convert.ToString(o["bone"]), Speed = Convert.ToSingle(o["speed"], CultureInfo.InvariantCulture) });
+                            {
+                                try { ApplyAim(l, new AimState { Target = t.objectInfo.dicKey, Bone = Convert.ToString(o["bone"]), Speed = Convert.ToSingle(o["speed"], CultureInfo.InvariantCulture) }); }
+                                catch (Exception e) { StudioBridgePlugin.Logger.LogWarning("Couldn't restore an aimed light: " + e.Message); }
+                            }
                 }
                 catch (Exception e) { StudioBridgePlugin.Logger.LogWarning("Couldn't read the scene's projectors / aimed lights: " + e.Message); }
             }

@@ -398,7 +398,6 @@ function EffectCard({ def, values, onSet, onReset, doubles }: { def: EffectDef; 
 function ParamRow({ effect, p, v, onSet }: { effect: string; p: Param; v: Value; onSet: (v: Record<string, Value>) => void }) {
   const hasTimeline = useStore((s) => !!s.tl);
   const nodes = useStore((s) => s.nodes);
-  const selection = useStore((s) => s.studioSelection);
   const animate = async () => {
     try {
       await bridge.request('timeline.addTrack', { owner: 'Keyframe Studio', model: `fx.${effect}.${p.key}`, keyAt: liveTime() });
@@ -438,15 +437,13 @@ function ParamRow({ effect, p, v, onSet }: { effect: string; p: Param; v: Value;
     );
   if (p.kind === 'chara') {
     const charas = Object.values(nodes).filter((n) => n.type === 'Char');
-    const cur = v as number;
-    // nothing chosen yet: the selected character (or the first)
-    const fallback = selection.find((id) => nodes[id]?.type === 'Char') ?? charas[0]?.id ?? -1;
-    if (cur < 0 && fallback >= 0) setTimeout(() => onSet({ [p.key]: fallback }), 0);
+    // nothing picked (or that character is gone): the plugin focuses on the first character in the scene
+    const cur = charas.some((c) => c.id === (v as number)) ? (v as number) : -1;
     return (
       <div className="fx-row">
         <label>{p.label}</label>
         <select className="input" value={cur} onChange={(e) => onSet({ [p.key]: Number(e.target.value) })}>
-          {cur < 0 && <option value={-1}>—</option>}
+          {cur < 0 && <option value={-1}>{charas[0] ? `${displayName(charas[0])} (first)` : '—'}</option>}
           {charas.map((c) => (
             <option key={c.id} value={c.id}>
               {displayName(c)}

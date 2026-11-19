@@ -51,10 +51,11 @@ export default async function (t) {
   if (t.hello.commands.includes('still.capture'))
     await t.step('in stills', async () => {
       await ok('fx.set', { effect: 'dof', values: { autoFocus: 0, focus: 60, blur: 1, maxBlur: 0.03 } });
+      const was = (await ok('still.status')).useScreencap;
+      t.defer(() => req('still.set', { useScreencap: was }));
       await ok('still.set', { useScreencap: false });
       const r = await ok('still.capture', { width: 960, height: 540, supersample: 2 });
       check('a supersampled still with depth of field', fs.existsSync(r.path) && r.width === 960);
       fs.rmSync(r.path, { force: true });
-      await ok('still.set', { useScreencap: true });
     });
 }

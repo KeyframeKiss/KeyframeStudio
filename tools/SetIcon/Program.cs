@@ -122,7 +122,9 @@ internal static class Program
 
     private static byte[] VersionInfo(string version, string product, string description, string file)
     {
-        var parts = (version + ".0.0.0").Split('.');
+        // "0.2.0-beta.1" / "1.0.0+build": the numbers before any pre-release or build tag
+        var core = version.Split('-', '+')[0];
+        var parts = (core + ".0.0.0").Split('.');
         ushort P(int i) => ushort.TryParse(parts[i], out var n) ? n : (ushort)0;
         uint ms = (uint)(P(0) << 16 | P(1)), ls = (uint)(P(2) << 16 | P(3));
         var fixedInfo = new List<byte>();
