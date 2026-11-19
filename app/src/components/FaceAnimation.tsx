@@ -171,9 +171,7 @@ export function FaceAnimation() {
         <div className="face-anim-controls">
           <ExpressionControls ids={chars} onChanged={onChanged} watch={stepTime} badge={(f) => (keyedHere.has(f) ? <span className="key-badge" title="Keyed at the playhead">◆</span> : null)} />
 
-          <div className="face-card">
-            <AudioPanel parts={['lipsync', 'face']} />
-          </div>
+          <AudioPanel parts={['lipsync', 'face']} />
         </div>
       </div>
       <FaceLanes id={id} chars={chars} />

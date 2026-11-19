@@ -148,13 +148,13 @@ export function AudioPanel({ parts = ['track', 'lipsync', 'face'] }: { parts?: A
   const o = (patch: Partial<LipSyncOptions>) => setOpts((x) => ({ ...x, ...patch }));
 
   return (
-    <div className="panel-body audio-panel">
+    <div className="audio-panel">
       {parts.includes('lipsync') && (
-      <div className="section">
-        <h3>
-          Lip-sync
+      <div className="face-card">
+        <div className="face-card-head">
+          <strong>Lip-sync</strong>
           <Help text="The mouth opens with the audio's loudness and (with Vowels) takes the A / I / U / E / O shape of each sound. Rough but quick — refine the keys by hand afterwards. Replaces the character's mouth keys where the audio plays." />
-        </h3>
+        </div>
         {!clips.length && (
           <div className="hint" style={{ marginTop: 0 }}>
             Needs the voice as a WAV (it plays with the timeline and is saved with the scene).{' '}
@@ -224,11 +224,11 @@ export function AudioPanel({ parts = ['track', 'lipsync', 'face'] }: { parts?: A
       )}
 
       {parts.includes('face') && (
-      <div className="section">
-        <h3>
-          Blinks
+      <div className="face-card">
+        <div className="face-card-head">
+          <strong>Blinks &amp; face keys</strong>
           <Help text="Add blinks puts natural blinks over the whole timeline on the Eyes open track. Tip: turn off the character's automatic blinking (Blink, under Eyes) so it doesn't fight the keys." />
-        </h3>
+        </div>
         <button className="btn solid wide" disabled={!chars.length} onClick={keyFace} title="Keys eyes, eyelids, eyebrows, mouth, mouth open and neck direction at the playhead">
           Key face at playhead
         </button>

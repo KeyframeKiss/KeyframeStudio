@@ -5729,3 +5729,31 @@ html.frameless .tooltip {
 .audio-clip .pn-field {
   grid-template-columns: 128px minmax(0, 1fr);
 }
+
+/* Animate › Face: lip-sync and blinks are face cards like the ones above them */
+.audio-panel {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+}
+.audio-panel .face-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.audio-panel .face-card-head {
+  margin-bottom: 2px;
+}
+.audio-panel .face-card .hint {
+  margin: 0;
+}
+.audio-panel .cleanup-row {
+  margin: 0 !important;
+}
+.audio-panel .cleanup-row > span:first-child {
+  width: 70px;
+  flex: none;
+}
+.audio-panel .btn.wide {
+  margin-top: 2px;
+}
