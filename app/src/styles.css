@@ -5262,3 +5262,11 @@ html.frameless .tooltip {
 .attachment-targets span, .attachment-picker > button { overflow-wrap: anywhere; }
 .attachment-targets small { margin-left: auto; color: var(--text-2); }
 .attachment-empty { padding: 10px; color: var(--text-1); }
+
+.ct-row:has(.pj-key) {
+  grid-template-columns: 110px minmax(0, 1fr) 24px;
+}
+.pj-key.btn.icon {
+  width: 24px;
+  height: 24px;
+}

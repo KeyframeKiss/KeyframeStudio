@@ -35,6 +35,11 @@ namespace StudioEX.Bridge.Api
             r.Add("proj.debug", a => { foreach (var kv in ProjectorFolders()) ProjectorOf(kv.Value).Debug(a.GetFloat("mode")); return true; });
             r.Add("aim.list", a => AimList());
             r.Add("aim.set", SetAim);
+            if (TimelineApi.Available)
+            {
+                try { RegisterTracks(); }
+                catch (Exception e) { StudioBridgePlugin.Logger.LogWarning("Projectors can't be animated (Timeline): " + e.Message); }
+            }
             try { RegisterSceneData(); }
             catch (Exception e) { StudioBridgePlugin.Logger.LogWarning("Projectors / aimed lights won't be saved with scenes (KKAPI): " + e.Message); }
         }
@@ -333,6 +338,29 @@ namespace StudioEX.Bridge.Api
                 Attach(f, _d);
                 return new ProjAddUndo(f, _d);
             }
+        }
+
+        // ------------------------------------------------------------------ Timeline tracks (one per projector folder)
+
+        private static KfProjector Proj(ObjectCtrlInfo oci) => ProjectorOf(oci as OCIFolder);
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static void RegisterTracks()
+        {
+            Func<ObjectCtrlInfo, bool> fits = oci => Proj(oci) != null;
+            void F(string id, string name, Func<ProjData, float> get, Action<ProjData, float> set) =>
+                TimelineImpl.AddObjectFloatModel("Keyframe Studio", "proj." + id, "Projector " + name, fits,
+                    oci => get(Proj(oci).Data),
+                    (oci, v) => { var p = Proj(oci); set(p.Data, v); p.Apply(); });
+            F("angle", "size", d => d.Angle, (d, v) => d.Angle = Mathf.Clamp(v, 2, 120));
+            F("soft", "softness", d => d.Soft, (d, v) => d.Soft = Mathf.Clamp01(v));
+            F("spin", "turn", d => d.Spin, (d, v) => d.Spin = v);
+            F("count", "slats / points", d => d.Count, (d, v) => d.Count = Mathf.Clamp(v, 2, 24));
+            F("range", "reach", d => d.Range, (d, v) => d.Range = Mathf.Clamp(v, 0.5f, 100));
+            F("falloff", "distance fade", d => d.Falloff, (d, v) => d.Falloff = Mathf.Clamp01(v));
+            TimelineImpl.AddObjectColorModel("Keyframe Studio", "proj.color", "Projector colour", fits,
+                oci => { var c = Proj(oci).Data.Color; return new Vector4(c[0], c[1], c[2], c[3]); },
+                (oci, v) => { var p = Proj(oci); p.Data.Color = new[] { v.x, v.y, v.z, Mathf.Clamp01(v.w) }; p.Apply(); });
         }
 
         // ================================================================== aiming lights

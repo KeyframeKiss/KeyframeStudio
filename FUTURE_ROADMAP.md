@@ -457,7 +457,7 @@ They're saved with the scene and undoable, and every value is a Timeline track. 
 Look presets also carry the built-in effects, projectors (placed relative to the character) and xukmi FX items with their values. Applying a look is one undo step. **Done.**
 
 ### 8.6 Next
-- Projector and aimed-light settings as Timeline tracks (their position already animates).
+- Projector settings are Timeline tracks too (size, softness, turn, slats / points, reach, fade, colour and strength), as of 2026-11-19. Aimed-light speed is not.
 - Other plugins worth the same treatment, chosen from what users actually install.
 
 **Gotchas learned:** Unity skips a projector whose GameObject is on a layer the camera doesn't draw (Studio's camera leaves out Default). Unity's API updater rewrites `_Projector` to `unity_Projector` inside shader sources. Studio's one-argument `SelectSingle` toggles: it deselects an already selected node.

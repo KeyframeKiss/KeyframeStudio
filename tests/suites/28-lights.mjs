@@ -45,6 +45,25 @@ export default async function (t) {
     check('redo brings it back', l.length === n + 1 && l.some((x) => x.values.shape === 'star'));
   });
 
+  if (t.hello.timeline)
+    await t.step('projector tracks', async () => {
+      const models = await ok('timeline.models', { oci: id });
+      check('projector values are track types on its folder', ['proj.angle', 'proj.spin', 'proj.color'].every((m) => models.some((x) => x.owner === 'Keyframe Studio' && x.id === m)));
+      check('not offered on other objects', !(await ok('timeline.models', { oci: chara.id })).some((x) => x.id === 'proj.angle'));
+      await ok('timeline.setSettings', { duration: 10 });
+      await ok('timeline.seek', { t: 0 });
+      await ok('proj.set', { id, values: { angle: 20 } });
+      const tr = await ok('timeline.addTrack', { owner: 'Keyframe Studio', model: 'proj.angle', oci: id, keyAt: 0 });
+      await ok('proj.set', { id, values: { angle: 80 } });
+      await ok('timeline.addKeys', { tracks: [tr], t: 2 });
+      await ok('timeline.seek', { t: 1 });
+      await sleep(400);
+      const mid = (await ok('proj.list')).items.find((x) => x.id === id).values.angle;
+      check('animates between keys', mid > 35 && mid < 65, String(mid));
+      await ok('timeline.removeTracks', { tracks: [tr] });
+      await ok('timeline.seek', { t: 0 });
+    });
+
   let light;
   await t.step('aim lights (ours)', async () => {
     const st = await ok('aim.list');

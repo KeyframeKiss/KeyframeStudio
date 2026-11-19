@@ -1,6 +1,7 @@
 using System;
 using System.Globalization;
 using System.Xml;
+using Studio;
 using UnityEngine;
 using TL = Timeline.Timeline;
 using InterpolableModel = Timeline.InterpolableModel;
@@ -33,6 +34,29 @@ namespace StudioEX.Bridge.Api
                 (p, node) => new Vector4(ReadF(node, "r"), ReadF(node, "g"), ReadF(node, "b"), ReadF(node, "a")),
                 (p, w, o) => { var v = (Vector4)o; WriteF(w, "r", v.x); WriteF(w, "g", v.y); WriteF(w, "b", v.z); WriteF(w, "a", v.w); },
                 null, null, null, false));
+        }
+
+        /// <summary>A value of one object (e.g. a projector on a folder): a track per object, offered only where <paramref name="fits"/>.</summary>
+        public static void AddObjectFloatModel(string owner, string id, string name, Func<ObjectCtrlInfo, bool> fits, Func<ObjectCtrlInfo, float> get, Action<ObjectCtrlInfo, float> set)
+        {
+            TL.AddInterpolableModel(new InterpolableModel(owner, id, null, name,
+                (oci, p, l, r, f) => { if (oci != null && fits(oci)) set(oci, Mathf.LerpUnclamped((float)l, (float)r, f)); }, null,
+                oci => oci != null && fits(oci),
+                (oci, p) => get(oci),
+                (p, node) => ReadF(node, "value"),
+                (p, w, o) => WriteF(w, "value", (float)o),
+                null, null, null, true));
+        }
+
+        public static void AddObjectColorModel(string owner, string id, string name, Func<ObjectCtrlInfo, bool> fits, Func<ObjectCtrlInfo, Vector4> get, Action<ObjectCtrlInfo, Vector4> set)
+        {
+            TL.AddInterpolableModel(new InterpolableModel(owner, id, null, name,
+                (oci, p, l, r, f) => { if (oci != null && fits(oci)) set(oci, Vector4.LerpUnclamped((Vector4)l, (Vector4)r, f)); }, null,
+                oci => oci != null && fits(oci),
+                (oci, p) => get(oci),
+                (p, node) => new Vector4(ReadF(node, "r"), ReadF(node, "g"), ReadF(node, "b"), ReadF(node, "a")),
+                (p, w, o) => { var v = (Vector4)o; WriteF(w, "r", v.x); WriteF(w, "g", v.y); WriteF(w, "b", v.z); WriteF(w, "a", v.w); },
+                null, null, null, true));
         }
     }
 }

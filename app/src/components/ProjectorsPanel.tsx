@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { bridge } from '../bridge/client';
-import { call, displayName, setNodeVisible, toast, useStore } from '../state/store';
+import { call, displayName, liveTime, refreshTimeline, setNodeVisible, toast, useStore } from '../state/store';
 import { Slider } from './CharacterPanel';
 import { Help } from './Help';
 import { Icon } from './Icon';
@@ -174,6 +174,29 @@ export function ProjectorsPanel() {
   );
 }
 
+/** ◆ — a Timeline track for this projector value, keyed at the playhead. */
+function Anim({ id, model, what }: { id: number; model: string; what?: string }) {
+  const hasTimeline = useStore((s) => !!s.tl);
+  if (!hasTimeline) return <span />;
+  return (
+    <button
+      className="btn icon pj-key"
+      title={`Animate ${what ?? 'this'}: add a Timeline track for this projector, keyed at the playhead`}
+      onClick={async () => {
+        try {
+          await bridge.request('timeline.addTrack', { owner: 'Keyframe Studio', model: `proj.${model}`, oci: id, keyAt: liveTime() });
+          await refreshTimeline();
+          toast('Track added and keyed at the playhead — change the value later and key again (K)');
+        } catch (e) {
+          toast((e as Error).message, 'error');
+        }
+      }}
+    >
+      <Icon name="key" size={13} />
+    </button>
+  );
+}
+
 function Chips<T extends { id: string; label: string; help?: string }>({ list, value, onPick }: { list: T[]; value: string; onPick: (id: string) => void }) {
   return (
     <div className="ct-chips">
@@ -208,7 +231,7 @@ function ProjectorCard({ p, onSet }: { p: Proj; onSet: (v: Partial<ProjValues>) 
           <span>
             <ColorInput value={v.color} onChange={(c) => onSet({ color: [c[0], c[1], c[2], v.color[3]] })} />
           </span>
-          <span />
+          <Anim id={p.id} model="color" what="colour and strength" />
         </div>
         <div className="ct-row">
           <label>Strength</label>
@@ -220,20 +243,24 @@ function ProjectorCard({ p, onSet }: { p: Proj; onSet: (v: Partial<ProjValues>) 
             <Help text="The beam's angle: wider covers more" />
           </label>
           <Slider value={v.angle} min={2} max={120} step={1} onChange={(angle) => onSet({ angle })} />
+            <Anim id={p.id} model="angle" />
         </div>
         <div className="ct-row">
           <label>Softness</label>
           <Slider value={v.soft} min={0} max={1} step={0.01} onChange={(soft) => onSet({ soft })} />
+            <Anim id={p.id} model="soft" />
         </div>
         {COUNTED[v.shape] && (
           <div className="ct-row">
             <label>{COUNTED[v.shape]}</label>
             <Slider value={v.count} min={2} max={24} step={1} onChange={(count) => onSet({ count })} />
+            <Anim id={p.id} model="count" />
           </div>
         )}
         <div className="ct-row">
           <label>Turn</label>
           <Slider value={v.spin} min={-180} max={180} step={1} onChange={(spin) => onSet({ spin })} />
+            <Anim id={p.id} model="spin" />
         </div>
         <button className="fx-more" onClick={() => setMore((m) => !m)}>
           <Icon name={more ? 'chevronDown' : 'chevronRight'} size={12} /> More
@@ -248,6 +275,7 @@ function ProjectorCard({ p, onSet }: { p: Proj; onSet: (v: Partial<ProjValues>) 
                 <Help text="How far it shines (metres)" />
               </label>
               <Slider value={v.range} min={0.5} max={40} step={0.5} onChange={(range) => onSet({ range })} />
+            <Anim id={p.id} model="range" />
             </div>
             <div className="ct-row">
               <label>
@@ -255,6 +283,7 @@ function ProjectorCard({ p, onSet }: { p: Proj; onSet: (v: Partial<ProjValues>) 
                 <Help text="0 = as strong far away as close by" />
               </label>
               <Slider value={v.falloff} min={0} max={1} step={0.01} onChange={(falloff) => onSet({ falloff })} />
+            <Anim id={p.id} model="falloff" />
             </div>
           </>
         )}
