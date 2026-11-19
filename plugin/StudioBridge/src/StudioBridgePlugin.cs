@@ -50,6 +50,7 @@ namespace StudioEX.Bridge
             PresetStore.Register(_router);
             gameObject.AddComponent<AudioTrack>();
             AudioTrack.Register(_router);
+            SceneNotes.Register(_router);
             RenderApi.Register(_router);
             gameObject.AddComponent<ShotApi>();
             ShotApi.Register(_router);

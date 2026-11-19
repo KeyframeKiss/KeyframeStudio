@@ -92,7 +92,7 @@ export function AudioPage() {
 }
 
 /** A seconds box: typing commits on blur or Enter (so half-typed numbers don't jump the clip around). */
-function Secs({ value, onCommit, title, min = 0 }: { value: number; onCommit: (v: number) => void; title?: string; min?: number }) {
+export function Secs({ value, onCommit, title, min = 0 }: { value: number; onCommit: (v: number) => void; title?: string; min?: number }) {
   const [text, setText] = useState(String(Math.round(value * 1000) / 1000));
   useEffect(() => setText(String(Math.round(value * 1000) / 1000)), [value]);
   const commit = () => {
