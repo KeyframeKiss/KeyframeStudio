@@ -38,6 +38,10 @@ if (!fs.existsSync(path.join(runtime, 'electron.exe'))) throw new Error('Electro
 const appOut = path.join(stage, 'Keyframe Studio');
 fs.cpSync(runtime, appOut, { recursive: true });
 fs.renameSync(path.join(appOut, 'electron.exe'), path.join(appOut, 'Keyframe Studio.exe'));
+// our icon on the exe itself (Explorer, shortcuts), with our own small tool (tools/SetIcon, no downloads)
+const setIcon = path.join(root, 'tools', 'SetIcon');
+run(`dotnet build -c Release -o "${path.join(setIcon, 'bin', 'out')}"`, setIcon);
+run(`"${path.join(setIcon, 'bin', 'out', 'SetIcon.exe')}" "${path.join(appOut, 'Keyframe Studio.exe')}" "${path.join(appDir, 'build', 'icon.ico')}"`, root);
 fs.rmSync(path.join(appOut, 'resources', 'default_app.asar'), { force: true });
 
 // the app itself, in resources/app: the main process, the built UI, the icon

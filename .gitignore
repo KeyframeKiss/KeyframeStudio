@@ -25,3 +25,7 @@ shaders/KfShaders/obj/
 shaders/KfShaders/*.csproj
 shaders/KfShaders/*.sln
 shaders/KfShaders/build.log
+
+# small build tools
+tools/SetIcon/bin/
+tools/SetIcon/obj/
