@@ -12,8 +12,14 @@ export interface TemplateData {
   look?: Record<string, unknown>;
   rigs?: string[];
   render?: Record<string, unknown>;
-  audio?: { file: string; offset: number; volume: number; muted: boolean };
+  /** Older templates: the one audio clip. */
+  audio?: AudioClip;
+  /** Every audio clip. */
+  audioClips?: AudioClip[];
 }
+type AudioClip = { file: string; offset: number; volume: number; muted: boolean };
+/** A template's audio clips, old (one clip) or new. */
+const clipsOf = (d: TemplateData): AudioClip[] => d.audioClips ?? (d.audio ? [d.audio] : []);
 
 export const TEMPLATE_PARTS = [
   { id: 'timeline', label: 'Timeline length & frame rate' },
@@ -21,7 +27,7 @@ export const TEMPLATE_PARTS = [
   { id: 'look', label: 'Look (effects, toon, lights)' },
   { id: 'rigs', label: 'Lighting rigs (on the selected characters)' },
   { id: 'render', label: 'Render settings' },
-  { id: 'audio', label: 'Audio track' },
+  { id: 'audio', label: 'Audio clips' },
 ] as const;
 export type TemplatePart = (typeof TEMPLATE_PARTS)[number]['id'];
 export const ALL_PARTS = new Set<TemplatePart>(TEMPLATE_PARTS.map((p) => p.id));
@@ -35,7 +41,7 @@ export async function gatherTemplate(req: Request): Promise<TemplateData> {
     quiet<Record<string, unknown>>('look.get'),
     quiet<{ name: string }[]>('light.sceneRigs'),
     quiet<{ settings: Record<string, unknown> }>('render.status'),
-    quiet<{ file: string; offset: number; volume: number; muted: boolean; loaded: boolean }>('audio.get'),
+    quiet<{ clips?: AudioClip[] }>('audio.get'),
   ]);
   const data: TemplateData = { version: 1 };
   if (tl && tl.duration > 0) data.timeline = { duration: tl.duration, fps: tl.fps, speed: tl.speed ?? 1 };
@@ -43,7 +49,7 @@ export async function gatherTemplate(req: Request): Promise<TemplateData> {
   if (look) data.look = { effects: look.effects, toon: look.toon, lights: look.lights };
   if (rigs?.length) data.rigs = [...new Set(rigs.map((r) => r.name))];
   if (render?.settings) data.render = render.settings;
-  if (audio?.loaded && audio.file) data.audio = { file: audio.file, offset: audio.offset, volume: audio.volume, muted: audio.muted };
+  if (audio?.clips?.length) data.audioClips = audio.clips.map((c) => ({ file: c.file, offset: c.offset, volume: c.volume, muted: c.muted }));
   return data;
 }
 
@@ -67,13 +73,17 @@ export async function applyTemplate(req: Request, d: TemplateData, parts: Set<Te
     else for (const rig of d.rigs) for (const id of chars) await step('lighting rigs', () => req('light.applyRig', { id, rig }));
   }
   if (parts.has('render') && d.render) await step('render settings', () => req('render.set', d.render));
-  if (parts.has('audio') && d.audio) {
-    const a = d.audio;
+  const clips = clipsOf(d);
+  if (parts.has('audio') && clips.length)
     await step('audio', async () => {
-      await req('audio.load', { file: a.file, offset: a.offset });
-      await req('audio.set', { volume: a.volume, muted: a.muted });
+      // the template's clips replace the scene's
+      await req('audio.clear');
+      for (const a of clips) {
+        const r = await req<{ clips: { id: number }[] }>('audio.add', { file: a.file, offset: a.offset });
+        const id = r.clips[r.clips.length - 1].id;
+        await req('audio.set', { id, volume: a.volume, muted: a.muted });
+      }
     });
-  }
   return { done, problems };
 }
 
@@ -84,7 +94,7 @@ export const templateSummary = (d: TemplateData) =>
     d.look && 'look',
     d.rigs?.length && `${d.rigs.length} rig${d.rigs.length > 1 ? 's' : ''}`,
     d.render && 'render',
-    d.audio && 'audio',
+    clipsOf(d).length && (clipsOf(d).length > 1 ? `${clipsOf(d).length} audio clips` : 'audio'),
   ]
     .filter(Boolean)
     .join(' · ');

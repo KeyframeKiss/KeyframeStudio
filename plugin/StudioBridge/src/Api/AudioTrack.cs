@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -13,73 +14,105 @@ using UnityEngine;
 namespace StudioEX.Bridge.Api
 {
     /// <summary>
-    /// One audio track (dialogue, music) that plays in sync with Timeline: Studio's own outside-sound player can't
-    /// seek, so the WAV is loaded with Studio's loader and played on our own AudioSource, following the playhead
-    /// (play/pause/seek/loop, drift corrected). Files live in UserData/audio like Studio's outside sound; the
-    /// choice, offset and volume are saved with the scene. Also serves the waveform and the loudness envelope
-    /// the app uses to draw it and to suggest lip-sync keys.
+    /// The scene's audio clips (dialogue, music, effects) that play in sync with Timeline: Studio's own outside-sound
+    /// player can't seek, so each WAV is loaded with Studio's loader and played on its own AudioSource, following the
+    /// playhead (play/pause/seek/loop, drift corrected). Files live in UserData/audio like Studio's outside sound;
+    /// which clips, where they start and their volume are saved with the scene. Also serves each clip's waveform and
+    /// loudness envelope, which the app uses to draw it and to suggest lip-sync keys.
+    /// Commands without an "id" act on the first clip, so a scene with one clip works as it always did.
     /// </summary>
     internal sealed class AudioTrack : MonoBehaviour
     {
-        private static AudioTrack _i;
-        private AudioSource _src;
-        private AudioClip _clip;
-        private float[] _mono;
-        private int _rate;
+        private sealed class Clip
+        {
+            public int Id;
+            public string File;
+            public float Offset, Volume = 1f;
+            public bool Muted;
+            public AudioClip Audio;
+            public AudioSource Src;
+            public float[] Mono;
+            public int Rate;
+        }
 
-        public static string File { get; private set; }
-        public static float Offset, Volume = 1f;
-        public static bool Muted;
-        /// <summary>Playing the clip on its own (Listen), not following the timeline.</summary>
-        private static bool _preview;
+        private static AudioTrack _i;
+        private static readonly List<Clip> Clips = new List<Clip>();
+        private static int _nextId = 1;
+        /// <summary>The clip playing on its own (Listen), not following the timeline.</summary>
+        private static Clip _preview;
 
         private static string AudioDir => Path.GetFullPath(UserData.Create("audio"));
 
-        private void Awake()
-        {
-            _i = this;
-            _src = gameObject.AddComponent<AudioSource>();
-            _src.playOnAwake = false;
-            _src.loop = false;
-            _src.spatialBlend = 0f;
-        }
+        private void Awake() => _i = this;
 
         public static void Register(CommandRouter r)
         {
             r.Add("audio.files", a => Files());
-            r.Add("audio.load", a => { Load(a.GetString("file") ?? a.GetString("path"), a.Has("offset") ? a.GetFloat("offset") : 0f); return Get(); });
             r.Add("audio.get", a => Get());
+            // a new clip, on top of the ones there
+            r.Add("audio.add", a => { Add(a.GetString("file") ?? a.GetString("path"), a.GetFloat("offset", 0f)); return Changed(); });
+            // swap a clip's file (id; or the first clip, adding one when there is none) — keeps where it starts unless given
+            r.Add("audio.load", a =>
+            {
+                var path = a.GetString("file") ?? a.GetString("path");
+                var c = a.Has("id") ? Find(a) : Clips.FirstOrDefault();
+                if (c == null) Add(path, a.GetFloat("offset", 0f));
+                else Replace(c, path, a.Has("offset") ? a.GetFloat("offset") : c.Offset);
+                return Changed();
+            });
             r.Add("audio.set", a =>
             {
-                if (a.Has("offset")) Offset = a.GetFloat("offset");
-                if (a.Has("volume")) Volume = Mathf.Clamp01(a.GetFloat("volume"));
-                if (a.Has("muted")) Muted = a.GetBool("muted");
-                return Get();
+                var c = Find(a);
+                if (a.Has("offset")) c.Offset = a.GetFloat("offset");
+                if (a.Has("volume")) c.Volume = Mathf.Clamp01(a.GetFloat("volume"));
+                if (a.Has("muted")) c.Muted = a.GetBool("muted");
+                return Changed();
             });
-            r.Add("audio.clear", a => { Clear(); return Get(); });
-            // listen to the clip by itself: on (from a time in the clip) / off; it stops at the end or when the timeline plays
+            r.Add("audio.remove", a => { Remove(Find(a)); return Changed(); });
+            r.Add("audio.clear", a => { Clear(); return Changed(); });
+            // listen to one clip by itself: on (from a time in the clip) / off; it stops at the end or when the timeline plays
             r.Add("audio.preview", a =>
             {
-                if (_i._clip == null) throw new BridgeException("Load a WAV first");
-                _preview = a.GetBool("on", !_preview);
-                if (_preview)
+                bool on = a.GetBool("on", _preview == null);
+                if (_preview != null) { _preview.Src.Stop(); _preview = null; }
+                if (on)
                 {
-                    _i._src.volume = Volume;
-                    _i._src.time = Mathf.Clamp(a.GetFloat("from", 0f), 0f, _i._clip.length - 0.01f);
-                    _i._src.Play();
+                    var c = Find(a);
+                    _preview = c;
+                    c.Src.volume = c.Volume;
+                    c.Src.time = Mathf.Clamp(a.GetFloat("from", 0f), 0f, c.Audio.length - 0.01f);
+                    c.Src.Play();
                 }
-                else _i._src.Stop();
                 return Get();
             });
-            r.Add("audio.peaks", a => Peaks(Mathf.Clamp(a.GetInt("perSecond", 100), 10, 400)));
-            r.Add("audio.envelope", a => Envelope(Mathf.Clamp(a.GetInt("rate", 30), 5, 120)));
-            r.Add("audio.spectrum", a => Spectrum(Mathf.Clamp(a.GetInt("rate", 60), 10, 120)));
+            r.Add("audio.peaks", a => Peaks(Find(a), Mathf.Clamp(a.GetInt("perSecond", 100), 10, 400)));
+            r.Add("audio.envelope", a => Envelope(Find(a), Mathf.Clamp(a.GetInt("rate", 30), 5, 120)));
+            r.Add("audio.spectrum", a => Spectrum(Find(a), Mathf.Clamp(a.GetInt("rate", 60), 10, 120)));
             try { RegisterSceneData(); }
-            catch (Exception e) { StudioBridgePlugin.Logger.LogWarning("Audio track won't be saved with scenes (KKAPI): " + e.Message); }
+            catch (Exception e) { StudioBridgePlugin.Logger.LogWarning("Audio won't be saved with scenes (KKAPI): " + e.Message); }
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         private static void RegisterSceneData() => StudioSaveLoadApi.RegisterExtraBehaviour<AudioSceneData>(StudioBridgePlugin.GUID + ".audio");
+
+        /// <summary>Tells the app the clips changed (whoever changed them: a template, a script, a scene load); returns them.</summary>
+        private static object Changed()
+        {
+            var d = Get();
+            StudioBridgePlugin.Instance?.Broadcast("audio.changed", null);
+            return d;
+        }
+
+        /// <summary>The clip named by "id", or the first one.</summary>
+        private static Clip Find(Dictionary<string, object> a)
+        {
+            if (a.Has("id"))
+            {
+                int id = a.GetInt("id");
+                return Clips.FirstOrDefault(c => c.Id == id) ?? throw new BridgeException("That audio clip is gone");
+            }
+            return Clips.FirstOrDefault() ?? throw new BridgeException("Load a WAV first");
+        }
 
         private static object Files()
         {
@@ -89,13 +122,24 @@ namespace StudioEX.Bridge.Api
                 : new List<object>();
         }
 
-        private static object Get() => new Dictionary<string, object>
+        private static Dictionary<string, object> Info(Clip c) => new Dictionary<string, object>
         {
-            { "file", File }, { "offset", (double)Offset }, { "volume", (double)Volume }, { "muted", Muted },
-            { "duration", _i._clip != null ? (double)_i._clip.length : 0d }, { "loaded", _i._clip != null },
-            { "playing", _i._src.isPlaying },
-            { "previewing", _preview }, { "previewAt", _preview ? (double)_i._src.time : 0d },
+            { "id", c.Id }, { "file", c.File }, { "offset", (double)c.Offset }, { "volume", (double)c.Volume }, { "muted", c.Muted },
+            { "duration", (double)c.Audio.length }, { "playing", c.Src.isPlaying },
         };
+
+        /// <summary>Every clip, plus the first clip's values at the top level (what single-clip callers read).</summary>
+        private static object Get()
+        {
+            var first = Clips.FirstOrDefault();
+            var d = first != null ? Info(first) : new Dictionary<string, object> { { "file", null }, { "offset", 0d }, { "volume", 1d }, { "muted", false }, { "duration", 0d }, { "playing", false } };
+            d["loaded"] = first != null;
+            d["clips"] = Clips.Select(c => (object)Info(c)).ToList();
+            d["previewing"] = _preview != null;
+            d["previewId"] = _preview?.Id ?? 0;
+            d["previewAt"] = _preview != null ? (double)_preview.Src.time : 0d;
+            return d;
+        }
 
         private static bool SameFile(string a, string b)
         {
@@ -118,8 +162,8 @@ namespace StudioEX.Bridge.Api
             return true;
         }
 
-        /// <summary>A file in UserData/audio, or any .wav path (copied into UserData/audio so scenes can find it).</summary>
-        public static void Load(string fileOrPath, float offset)
+        /// <summary>A file in UserData/audio, or any .wav path (copied into UserData/audio so scenes can find it); returns the file name and the clip.</summary>
+        private static AudioClip Read(string fileOrPath, out string file)
         {
             if (string.IsNullOrEmpty(fileOrPath)) throw new BridgeException("Pick an audio file");
             string full = Path.IsPathRooted(fileOrPath) ? Path.GetFullPath(fileOrPath) : Path.GetFullPath(Path.Combine(AudioDir, Path.GetFileName(fileOrPath)));
@@ -138,13 +182,15 @@ namespace StudioEX.Bridge.Api
             }
             var clip = ExternalAudioClip.Load(full);
             if (clip == null) throw new BridgeException("Couldn't read that WAV — use uncompressed PCM (8/16/24/32-bit)");
-            _preview = false;
-            _i._src.Stop();
-            if (_i._clip != null) Destroy(_i._clip);
-            _i._clip = clip;
-            _i._src.clip = clip;
-            File = Path.GetFileName(full);
-            Offset = offset;
+            file = Path.GetFileName(full);
+            return clip;
+        }
+
+        private static void Fill(Clip c, AudioClip clip, string file)
+        {
+            c.Audio = clip;
+            c.Src.clip = clip;
+            c.File = file;
             // mono samples for the waveform and envelope
             var data = new float[clip.samples * clip.channels];
             clip.GetData(data, 0);
@@ -155,31 +201,53 @@ namespace StudioEX.Bridge.Api
                 for (int ch = 0; ch < clip.channels; ch++) sum += data[i * clip.channels + ch];
                 mono[i] = sum / clip.channels;
             }
-            _i._mono = mono;
-            _i._rate = clip.frequency;
+            c.Mono = mono;
+            c.Rate = clip.frequency;
+        }
+
+        public static void Add(string fileOrPath, float offset)
+        {
+            var clip = Read(fileOrPath, out var file);
+            var src = _i.gameObject.AddComponent<AudioSource>();
+            src.playOnAwake = false;
+            src.loop = false;
+            src.spatialBlend = 0f;
+            var c = new Clip { Id = _nextId++, Offset = offset, Src = src };
+            Fill(c, clip, file);
+            Clips.Add(c);
+        }
+
+        private static void Replace(Clip c, string fileOrPath, float offset)
+        {
+            var clip = Read(fileOrPath, out var file);
+            if (_preview == c) _preview = null;
+            c.Src.Stop();
+            Destroy(c.Audio);
+            Fill(c, clip, file);
+            c.Offset = offset;
+        }
+
+        private static void Remove(Clip c)
+        {
+            if (_preview == c) _preview = null;
+            c.Src.Stop();
+            Destroy(c.Src);
+            Destroy(c.Audio);
+            Clips.Remove(c);
         }
 
         public static void Clear()
         {
             if (_i == null) return;
-            _preview = false;
-            _i._src.Stop();
-            _i._src.clip = null;
-            if (_i._clip != null) Destroy(_i._clip);
-            _i._clip = null;
-            _i._mono = null;
-            File = null;
-            Offset = 0f;
-            Volume = 1f;
-            Muted = false;
+            foreach (var c in Clips.ToList()) Remove(c);
+            _preview = null;
         }
 
         /// <summary>Peak level per bin (0..1), perSecond bins per second of audio.</summary>
-        private static object Peaks(int perSecond)
+        private static object Peaks(Clip c, int perSecond)
         {
-            var m = _i._mono;
-            if (m == null) return null;
-            int bin = Mathf.Max(1, _i._rate / perSecond);
+            var m = c.Mono;
+            int bin = Mathf.Max(1, c.Rate / perSecond);
             int n = (m.Length + bin - 1) / bin;
             var peaks = new List<object>(n);
             for (int b = 0; b < n; b++)
@@ -188,15 +256,14 @@ namespace StudioEX.Bridge.Api
                 for (int i = b * bin, e = Mathf.Min(m.Length, i + bin); i < e; i++) { float v = Mathf.Abs(m[i]); if (v > p) p = v; }
                 peaks.Add(Math.Round(p, 3));
             }
-            return new Dictionary<string, object> { { "perSecond", perSecond }, { "duration", (double)_i._clip.length }, { "offset", (double)Offset }, { "peaks", peaks } };
+            return new Dictionary<string, object> { { "id", c.Id }, { "perSecond", perSecond }, { "duration", (double)c.Audio.length }, { "offset", (double)c.Offset }, { "peaks", peaks } };
         }
 
         /// <summary>Loudness (RMS) per window, `rate` windows per second, plus the maximum (for normalizing).</summary>
-        private static object Envelope(int rate)
+        private static object Envelope(Clip c, int rate)
         {
-            var m = _i._mono;
-            if (m == null) throw new BridgeException("Load an audio file first");
-            int win = Mathf.Max(1, _i._rate / rate);
+            var m = c.Mono;
+            int win = Mathf.Max(1, c.Rate / rate);
             int n = (m.Length + win - 1) / win;
             var env = new List<object>(n);
             double max = 0;
@@ -209,19 +276,18 @@ namespace StudioEX.Bridge.Api
                 if (rms > max) max = rms;
                 env.Add(Math.Round(rms, 4));
             }
-            return new Dictionary<string, object> { { "rate", rate }, { "offset", (double)Offset }, { "duration", (double)_i._clip.length }, { "max", Math.Round(max, 4) }, { "values", env } };
+            return new Dictionary<string, object> { { "id", c.Id }, { "rate", rate }, { "offset", (double)c.Offset }, { "duration", (double)c.Audio.length }, { "max", Math.Round(max, 4) }, { "values", env } };
         }
 
-/// <summary>
+        /// <summary>
         /// The voice's spectral envelope per window (`rate` per second), in dB at 40 points 80 Hz apart from 140 Hz:
         /// linear prediction (LPC) on the audio resampled to about 11 kHz, so the peaks are the resonances that
         /// tell vowels apart (formants), not the pitch's harmonics. Values are flat: window after window.
         /// </summary>
-        private static object Spectrum(int rate)
+        private static object Spectrum(Clip c, int rate)
         {
-            var m = _i._mono;
-            if (m == null) throw new BridgeException("Load an audio file first");
-            int sr = _i._rate;
+            var m = c.Mono;
+            int sr = c.Rate;
             int dec = Mathf.Max(1, Mathf.RoundToInt(sr / 11025f));
             float fs = (float)sr / dec;
             // low-pass (box average over the decimation step) and decimate
@@ -293,7 +359,7 @@ namespace StudioEX.Bridge.Api
             }
             return new Dictionary<string, object>
             {
-                { "rate", rate }, { "offset", (double)Offset }, { "bands", bands }, { "from", (double)from }, { "width", (double)width }, { "values", outv },
+                { "id", c.Id }, { "rate", rate }, { "offset", (double)c.Offset }, { "bands", bands }, { "from", (double)from }, { "width", (double)width }, { "values", outv },
             };
         }
 
@@ -301,36 +367,59 @@ namespace StudioEX.Bridge.Api
 
         private void Update()
         {
-            if (_clip == null) return;
-            _src.volume = Volume;
-            if (_preview)
+            bool tlPlaying = TimelineApi.Playing();
+            if (_preview != null)
             {
-                if (_src.isPlaying && !TimelineApi.Playing()) return;
-                _preview = false; // finished, or the timeline took over
-                _src.Stop();
-            }
-            bool playing = TimelineApi.Playing() && !Muted;
-            float t = TimelineApi.PlaybackTime() - Offset;
-            if (playing && t >= 0f && t < _clip.length)
-            {
-                if (!_src.isPlaying)
+                if (!_preview.Src.isPlaying || tlPlaying)
                 {
-                    _src.time = Mathf.Clamp(t, 0f, _clip.length - 0.01f);
-                    _src.Play();
+                    _preview.Src.Stop(); // finished, or the timeline took over
+                    _preview = null;
                 }
-                else if (Mathf.Abs(_src.time - t) > 0.08f) _src.time = Mathf.Clamp(t, 0f, _clip.length - 0.01f); // seek, loop, drift
             }
-            else if (_src.isPlaying) _src.Pause();
+            float now = TimelineApi.PlaybackTime();
+            foreach (var c in Clips)
+            {
+                if (c == _preview) { c.Src.volume = c.Volume; continue; }
+                c.Src.volume = c.Volume;
+                float t = now - c.Offset;
+                if (tlPlaying && !c.Muted && t >= 0f && t < c.Audio.length)
+                {
+                    if (!c.Src.isPlaying)
+                    {
+                        c.Src.time = Mathf.Clamp(t, 0f, c.Audio.length - 0.01f);
+                        c.Src.Play();
+                    }
+                    else if (Mathf.Abs(c.Src.time - t) > 0.08f) c.Src.time = Mathf.Clamp(t, 0f, c.Audio.length - 0.01f); // seek, loop, drift
+                }
+                else if (c.Src.isPlaying) c.Src.Pause();
+            }
         }
 
         // ---------------- saved with the scene ----------------
+
+        private static List<object> AsList(Dictionary<string, object> d, string key) =>
+            d.TryGetValue(key, out var v) && v is IEnumerable e && !(v is string) ? e.Cast<object>().ToList() : null;
 
         private sealed class AudioSceneData : SceneCustomFunctionController
         {
             protected override void OnSceneSave()
             {
-                if (File == null) { SetExtendedData(null); return; }
-                SetExtendedData(new PluginData { version = 1, data = new Dictionary<string, object> { { "file", File }, { "offset", Offset }, { "volume", Volume }, { "muted", Muted } } });
+                if (Clips.Count == 0) { SetExtendedData(null); return; }
+                var first = Clips[0];
+                // version 2: every clip as parallel arrays; the first clip is also kept in the version-1 fields,
+                // so an older Keyframe Studio still loads it
+                SetExtendedData(new PluginData
+                {
+                    version = 2,
+                    data = new Dictionary<string, object>
+                    {
+                        { "file", first.File }, { "offset", first.Offset }, { "volume", first.Volume }, { "muted", first.Muted },
+                        { "files", Clips.Select(c => c.File).ToArray() },
+                        { "offsets", Clips.Select(c => c.Offset).ToArray() },
+                        { "volumes", Clips.Select(c => c.Volume).ToArray() },
+                        { "mutes", Clips.Select(c => c.Muted).ToArray() },
+                    },
+                });
             }
 
             protected override void OnSceneLoad(SceneOperationKind operation, ReadOnlyDictionary<int, ObjectCtrlInfo> loadedItems)
@@ -338,14 +427,34 @@ namespace StudioEX.Bridge.Api
                 if (operation == SceneOperationKind.Import) return; // merging another scene keeps our audio
                 var d = GetExtendedData();
                 Clear();
-                if (d?.data == null || !d.data.TryGetValue("file", out var f) || !(f is string file)) return;
+                if (d?.data == null) return;
+                var files = AsList(d.data, "files");
+                if (files == null)
+                {
+                    if (!d.data.TryGetValue("file", out var f) || !(f is string one)) return;
+                    LoadOne(one, d.data.TryGetValue("offset", out var o) ? o : 0f, d.data.TryGetValue("volume", out var v) ? v : 1f, d.data.TryGetValue("muted", out var mu) && Convert.ToBoolean(mu));
+                    Changed();
+                    return;
+                }
+                var offsets = AsList(d.data, "offsets");
+                var volumes = AsList(d.data, "volumes");
+                var mutes = AsList(d.data, "mutes");
+                for (int i = 0; i < files.Count; i++)
+                    LoadOne(files[i] as string, offsets != null && i < offsets.Count ? offsets[i] : 0f, volumes != null && i < volumes.Count ? volumes[i] : 1f, mutes != null && i < mutes.Count && Convert.ToBoolean(mutes[i]));
+                Changed();
+            }
+
+            private static void LoadOne(string file, object offset, object volume, bool muted)
+            {
+                if (string.IsNullOrEmpty(file)) return;
                 try
                 {
-                    Load(file, d.data.TryGetValue("offset", out var o) ? Convert.ToSingle(o) : 0f);
-                    if (d.data.TryGetValue("volume", out var v)) Volume = Convert.ToSingle(v);
-                    if (d.data.TryGetValue("muted", out var mu)) Muted = Convert.ToBoolean(mu);
+                    Add(file, Convert.ToSingle(offset));
+                    var c = Clips[Clips.Count - 1];
+                    c.Volume = Convert.ToSingle(volume);
+                    c.Muted = muted;
                 }
-                catch (Exception e) { StudioBridgePlugin.Logger.LogWarning("Scene audio not loaded: " + e.Message); }
+                catch (Exception e) { StudioBridgePlugin.Logger.LogWarning("Scene audio \"" + file + "\" not loaded: " + e.Message); }
             }
         }
     }

@@ -5632,6 +5632,7 @@ html.frameless .tooltip {
 
 /* Timeline: the audio lane's row in the names column */
 .sheet-audio-row {
+  box-shadow: inset 3px 0 0 var(--lane, transparent);
   position: absolute;
   left: 0;
   right: 0;
@@ -5640,13 +5641,18 @@ html.frameless .tooltip {
   gap: 6px;
   padding: 0 8px 0 6px;
   background: var(--bg-1);
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid var(--line-soft);
   font-size: 12px;
   z-index: 1;
 }
 .sheet-audio-row .name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-weight: 600;
-  color: rgb(120, 185, 255);
+  color: var(--lane, rgb(120, 185, 255));
 }
 .sheet-audio-row .sub {
   flex: 1;
@@ -5702,4 +5708,21 @@ html.frameless .tooltip {
 .sheet.dropping {
   outline: 2px dashed rgb(120, 185, 255);
   outline-offset: -2px;
+}
+
+/* Shoot › Audio: one panel per clip */
+.audio-clips {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
+  gap: 12px;
+}
+.audio-clip-name {
+  display: inline-block;
+  max-width: 190px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+  padding-left: 8px;
+  box-shadow: inset 3px 0 0 var(--lane);
 }

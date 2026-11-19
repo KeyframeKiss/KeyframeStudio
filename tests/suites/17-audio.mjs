@@ -104,6 +104,28 @@ export default async function (t) {
     check('undo restores', (await ok('timeline.keyValues', { tracks: [T] }))[String(T)].length === 4);
   });
 
+  await t.step('several clips', async () => {
+    let g = await ok('audio.add', { file: 'StudioEX test tone.wav', offset: 4 });
+    const [a, b] = g.clips;
+    check('a second clip', g.clips.length === 2 && a.id !== b.id && near(b.offset, 4) && near(a.offset, 0.5), JSON.stringify(g.clips));
+    g = await ok('audio.set', { id: b.id, volume: 0.3 });
+    check('set by id leaves the other clip alone', near(g.clips[1].volume, 0.3) && near(g.clips[0].volume, 1));
+    const p = await ok('audio.peaks', { id: b.id, perSecond: 100 });
+    check('waveform per clip', p.id === b.id && Math.abs(p.peaks.length - 300) <= 1);
+    await ok('timeline.seek', { t: 4.3 });
+    await ok('timeline.play');
+    await sleep(300);
+    g = await ok('audio.get');
+    check('each clip follows the playhead on its own (only the second is under it)', g.clips[1].playing === true && g.clips[0].playing === false, JSON.stringify(g.clips.map((c) => c.playing)));
+    await ok('timeline.stop');
+    g = await ok('audio.preview', { on: true, id: b.id, from: 0.5 });
+    check('listen to one clip', g.previewing && g.previewId === b.id && g.clips[1].playing && !g.clips[0].playing);
+    await ok('audio.preview', { on: false });
+    const c = (await ok('audio.add', { file: 'StudioEX test tone.wav', offset: 7 })).clips[2];
+    g = await ok('audio.remove', { id: c.id });
+    check('remove one clip', g.clips.length === 2 && !g.clips.some((x) => x.id === c.id));
+  });
+
   await t.step('saved with the scene', async () => {
     const sceneDir = path.join(t.paths.userData, 'studio', 'scene');
     const before = new Set(fs.readdirSync(sceneDir));
@@ -126,8 +148,9 @@ export default async function (t) {
     for (let i = 0; i < 20; i++) {
       await sleep(700);
       g = await ok('audio.get');
-      if (g.loaded) break;
+      if (g.loaded && g.clips.length === 2) break;
     }
     check('loading the scene brings its audio back', g.loaded && g.file === 'StudioEX test tone.wav' && near(g.offset, 1.25), JSON.stringify(g));
+    check('…every clip, with its start and volume', g.clips.length === 2 && near(g.clips[1].offset, 4) && near(g.clips[1].volume, 0.3), JSON.stringify(g.clips));
   });
 }

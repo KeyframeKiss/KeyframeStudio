@@ -23,13 +23,18 @@ export interface Shot {
   thumb?: string;
 }
 
-export interface AudioInfo {
-  file: string | null;
+/** One audio clip on the timeline (the scene can have several). */
+export interface AudioClipInfo {
+  id: number;
+  file: string;
   offset: number;
   volume: number;
   muted: boolean;
   duration: number;
-  loaded: boolean;
+}
+export interface AudioPeaks {
+  perSecond: number;
+  peaks: number[];
 }
 
 export interface Toast {
@@ -75,7 +80,8 @@ export interface AppState {
   /** Changes in Studio since the last seek/key that aren't keyed yet. */
   pending: number;
   /** The scene's audio track (dialogue/music synced to Timeline) and its waveform, if any. */
-  audio: AudioInfo | null;
+  /** The scene's audio clips, in the order they were added. */
+  audio: AudioClipInfo[];
   /** Shot sequencer: the scene's shots (time ranges with their own camera). */
   shots: Shot[];
   workingShotId: string | null;
@@ -84,9 +90,10 @@ export interface AppState {
   renderShotIds: string[] | null;
   sceneName: string | null;
   sceneFilter: 'all' | 'fav' | 'recent';
-  audioPeaks: { perSecond: number; peaks: number[] } | null;
-  /** While Studio plays the audio by itself (Listen): seconds into the clip; null otherwise. */
-  audioListen: number | null;
+  /** Waveform per clip id. */
+  audioPeaks: Record<number, AudioPeaks>;
+  /** While Studio plays one clip by itself (Listen): which, and seconds into it; null otherwise. */
+  audioListen: { id: number; at: number } | null;
   /** Key edits were made but Studio held them back to protect the unkeyed changes (the pose doesn't show them yet). */
   poseStale: boolean;
   groupMode: 'objects' | 'folders';
@@ -161,8 +168,8 @@ export const useStore = create<AppState>(() => ({
   autoKeyNew: lsGet('studioex.autoKeyNew') !== '0',
   pending: 0,
   poseStale: false,
-  audio: null,
-  audioPeaks: null,
+  audio: [],
+  audioPeaks: {},
   audioListen: null,
   shots: [], workingShotId: null, frameFullTimeline: false, loopShot: false, renderShotIds: null, sceneName: null, sceneFilter: 'all',
   groupMode: (lsGet('studioex.groupMode') as 'objects' | 'folders') || 'objects',
@@ -202,64 +209,78 @@ export async function refreshShots() {
   set({ shots: s ?? [] });
 }
 
-/** Re-read the audio track (and its waveform when the file changed). */
+type AudioGet = { clips: AudioClipInfo[]; previewing: boolean; previewId: number; previewAt: number };
 let listenTimer = 0;
-/** Listen: Studio plays the audio by itself (the animation doesn't move), from `from` seconds into the clip. */
-export async function listenAudio(on: boolean, from = 0) {
+const stopListenTimer = () => {
   window.clearInterval(listenTimer);
   listenTimer = 0;
-  const r = await call<{ previewing: boolean; previewAt: number }>('audio.preview', { on, from: Math.max(0, from) });
-  const at = r?.previewing ? r.previewAt : null;
-  set({ audioListen: at });
-  if (at == null) return;
+};
+/** Listen: Studio plays one clip by itself (the animation doesn't move), from `from` seconds into it; null stops. */
+export async function listenAudio(id: number | null, from = 0) {
+  stopListenTimer();
+  const r = await call<AudioGet>('audio.preview', id == null ? { on: false } : { on: true, id, from: Math.max(0, from) });
+  const now = r?.previewing ? { id: r.previewId, at: r.previewAt } : null;
+  set({ audioListen: now });
+  if (!now) return;
   listenTimer = window.setInterval(async () => {
-    const s = await bridge.request<{ previewing: boolean; previewAt: number }>('audio.get').catch(() => null);
-    const a = s?.previewing ? s.previewAt : null;
-    set({ audioListen: a });
-    if (a == null) {
-      window.clearInterval(listenTimer);
-      listenTimer = 0;
-    }
+    const g = await bridge.request<AudioGet>('audio.get').catch(() => null);
+    set({ audioListen: g?.previewing ? { id: g.previewId, at: g.previewAt } : null });
+    if (!g?.previewing) stopListenTimer();
   }, 100);
 }
 
-/** Put a WAV on the timeline (a file in UserData/audio, or any path — Studio copies it there). */
-export async function loadAudio(fileOrPath: string, offset?: number) {
-  const r = await call('audio.load', { file: fileOrPath, offset: offset ?? get().audio?.offset ?? 0 });
+/** Add a WAV to the timeline (a file in UserData/audio, or any path — Studio copies it there). */
+export async function addAudio(fileOrPath: string, offset = 0) {
+  const r = await call('audio.add', { file: fileOrPath, offset });
   if (!r) return false;
-  set({ audioListen: null });
   await refreshAudio();
   toast('Audio added — it plays with the timeline and is saved with the scene');
   return true;
 }
-/** Pick a WAV with the file dialog and put it on the timeline. */
-export async function pickAudio(offset?: number) {
-  const p = await window.studioEx?.openAudio?.();
-  return p ? loadAudio(p, offset) : false;
+/** Swap one clip's file, keeping where it starts. */
+export async function replaceAudio(id: number, fileOrPath: string) {
+  const r = await call('audio.load', { id, file: fileOrPath });
+  if (r) await refreshAudio();
+  return !!r;
 }
-export async function setAudio(patch: { offset?: number; volume?: number; muted?: boolean }) {
-  const a = get().audio;
-  if (a) set({ audio: { ...a, ...patch } }); // optimistic: no jump back while the bridge answers
-  await call('audio.set', patch);
+/** Pick a WAV with the file dialog: add it (at `offset`), or swap clip `replace`'s file. */
+export async function pickAudio(offset = 0, replace?: number) {
+  const p = await window.studioEx?.openAudio?.();
+  if (!p) return false;
+  return replace != null ? replaceAudio(replace, p) : addAudio(p, offset);
+}
+export async function setAudio(id: number, patch: { offset?: number; volume?: number; muted?: boolean }) {
+  // optimistic: no jump back while the bridge answers
+  set({ audio: get().audio.map((c) => (c.id === id ? { ...c, ...patch } : c)) });
+  await call('audio.set', { id, ...patch });
   await refreshAudio();
 }
-export async function removeAudio() {
-  window.clearInterval(listenTimer);
-  set({ audioListen: null });
-  await call('audio.clear');
+export async function removeAudio(id: number) {
+  if (get().audioListen?.id === id) stopListenTimer();
+  await call('audio.remove', { id });
   await refreshAudio();
 }
 
+/** Which file each clip's waveform was read from, so a swapped file is read again. */
+const peaksFile = new Map<number, string>();
+/** Re-read the scene's audio clips (and the waveform of any clip that's new or changed file). */
 export async function refreshAudio() {
-  const a = await bridge.request<AudioInfo>('audio.get').catch(() => null);
-  if (!a) return set({ audio: null, audioPeaks: null });
-  const before = get().audio;
-  set({ audio: a.loaded ? a : null });
-  if (!a.loaded) return set({ audioPeaks: null });
-  if (before?.file !== a.file || !get().audioPeaks) {
-    const p = await bridge.request<{ perSecond: number; peaks: number[] }>('audio.peaks', { perSecond: 100 }).catch(() => null);
-    set({ audioPeaks: p ? { perSecond: p.perSecond, peaks: p.peaks } : null });
+  const a = await bridge.request<AudioGet>('audio.get').catch(() => null);
+  const clips = a?.clips ?? [];
+  const listen = a?.previewing ? { id: a.previewId, at: a.previewAt } : null;
+  if (!listen) stopListenTimer();
+  set({ audio: clips, audioListen: listen });
+  const peaks = { ...get().audioPeaks };
+  for (const id of Object.keys(peaks).map(Number)) if (!clips.some((c) => c.id === id)) delete peaks[id];
+  for (const c of clips) {
+    if (peaks[c.id] && peaksFile.get(c.id) === c.file) continue;
+    const p = await bridge.request<AudioPeaks>('audio.peaks', { id: c.id, perSecond: 100 }).catch(() => null);
+    if (p) {
+      peaks[c.id] = { perSecond: p.perSecond, peaks: p.peaks };
+      peaksFile.set(c.id, c.file);
+    }
   }
+  set({ audioPeaks: peaks });
 }
 
 /** Throw away the unkeyed changes in Studio: the pose goes back to the keys (and shows held-back key edits). */
@@ -579,6 +600,12 @@ export function initBridge() {
   });
   bridge.on('timeline.changed', scheduleTimelineRefresh);
   bridge.on('scene.changed', scheduleSceneRefresh);
+  // clips added, swapped or removed anywhere (a template, a scene load, another window)
+  let audioTimer = 0;
+  bridge.on('audio.changed', () => {
+    window.clearTimeout(audioTimer);
+    audioTimer = window.setTimeout(refreshAudio, 80);
+  });
   bridge.on('scene.file', (name) => set({ sceneName: typeof name === 'string' ? name : null }));
   bridge.on('scene.reset', () => {
     set({ workingShotId: null, frameFullTimeline: false, loopShot: false, renderShotIds: null, sceneName: null, shots: [] });

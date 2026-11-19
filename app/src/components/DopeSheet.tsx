@@ -27,7 +27,7 @@ import {
   useStore,
   visibleTracks,
   listenAudio,
-  loadAudio,
+  addAudio,
   pickAudio,
   removeAudio,
   setAudio,
@@ -45,6 +45,7 @@ import { createFolder, editTranslation, moveToFolder, renameFolder, setFolderExp
 import type { WireGroup } from '../bridge/types';
 
 import { pressable } from '../lib/pressable';
+import { laneRgb, loudest } from '../lib/audioLanes';
 import { perfRecord } from '../lib/perf';
 // Row height is user-adjustable (S/M/L); module-level so the rAF draw loop always reads the latest.
 const ROW_SIZES = { S: 18, M: 24, L: 32 } as const;
@@ -60,20 +61,15 @@ let rowSize: RowSize = ((): RowSize => {
 let ROW_H: number = ROW_SIZES[rowSize];
 let followPlayhead = true;
 const RULER_H = 28;
-/** The audio lane, under the ruler, when the scene has audio. */
-const AUDIO_H = 40;
-/** Top of the track rows: the ruler, plus the audio lane when there is one. */
-const headH = () => RULER_H + (useStore.getState().audio ? AUDIO_H : 0);
-/** Loudest peak per waveform, so quiet files still fill the lane. */
-const peakMax = new WeakMap<object, number>();
-const loudest = (w: { peaks: number[] }) => {
-  let m = peakMax.get(w);
-  if (m == null) {
-    m = 0.05;
-    for (const p of w.peaks) if (p > m) m = p;
-    peakMax.set(w, m);
-  }
-  return m;
+/** One audio lane per clip, under the ruler. */
+const AUDIO_H = 36;
+/** Top of the track rows: the ruler, plus the audio lanes. */
+const headH = () => RULER_H + useStore.getState().audio.length * AUDIO_H;
+/** The clip whose lane is at y (canvas or names column), if any. */
+const laneAt = (y: number) => {
+  const clips = useStore.getState().audio;
+  const i = Math.floor((y - RULER_H) / AUDIO_H);
+  return y >= RULER_H && i >= 0 && i < clips.length ? { clip: clips[i], index: i } : null;
 };
 const PAD = 14;
 const KEY_HIT = 7;
@@ -118,7 +114,7 @@ type Interaction =
   | { mode: 'pan'; startX: number; startT0: number }
   | { mode: 'box'; x0: number; y0: number; x1: number; y1: number; additive: boolean; toggle: boolean }
   | { mode: 'drag'; startX: number; grabT: number; dt: number; active: boolean; clickedId: KeyId; collapseOnClick: boolean }
-  | { mode: 'audio'; startX: number; startOffset: number; offset: number; active: boolean };
+  | { mode: 'audio'; id: number; startX: number; startOffset: number; offset: number; active: boolean };
 
 /**
  * Timeline's own folder tree. Folders that contain no visible track (after the Selected/search filter)
@@ -201,7 +197,7 @@ export function DopeSheet() {
   useEffect(() => {
     dirty.current = true;
   }, [audioPeaks, audioInfo, shotsList, audioListen]);
-  const HEAD = RULER_H + (audioInfo ? AUDIO_H : 0);
+  const HEAD = RULER_H + audioInfo.length * AUDIO_H;
   const fitted = useRef(false);
   const lastAnchor = useRef<number | null>(null);
 
@@ -541,32 +537,33 @@ export function DopeSheet() {
         }
       }
 
-      // audio lane: the clip with its waveform; drag it to move where the audio starts
-      const au = st.audio;
-      if (au) {
-        const y0 = RULER_H;
+      // audio lanes: one per clip, with its waveform; drag a clip to move where it starts
+      st.audio.forEach((au, li) => {
+        const y0 = RULER_H + li * AUDIO_H;
+        const rgb = laneRgb(li);
         ctx.fillStyle = colors.bg1;
         ctx.fillRect(0, y0, w, AUDIO_H);
         const ia = inter.current;
-        const off = ia.mode === 'audio' ? ia.offset : au.offset;
+        const dragging = ia.mode === 'audio' && ia.id === au.id;
+        const off = dragging ? ia.offset : au.offset;
         const xa = xOf(off),
           xb = xOf(off + au.duration);
         if (xb > 0 && xa < w) {
           const dim = au.muted;
-          ctx.fillStyle = dim ? 'rgba(90,169,255,0.05)' : 'rgba(90,169,255,0.14)';
-          ctx.strokeStyle = ia.mode === 'audio' ? colors.accent2 : 'rgba(90,169,255,0.45)';
+          ctx.fillStyle = `rgba(${rgb},${dim ? 0.05 : 0.14})`;
+          ctx.strokeStyle = dragging ? colors.accent2 : `rgba(${rgb},0.5)`;
           ctx.lineWidth = 1;
           ctx.beginPath();
           ctx.roundRect(Math.round(xa) + 0.5, y0 + 3.5, Math.max(2, xb - xa - 1), AUDIO_H - 7, 4);
           ctx.fill();
           ctx.stroke();
-          const wave = st.audioPeaks;
+          const wave = st.audioPeaks[au.id];
           if (wave && wave.peaks.length) {
-            ctx.fillStyle = dim ? 'rgba(120,185,255,0.3)' : 'rgba(120,185,255,0.85)';
+            ctx.fillStyle = `rgba(${rgb},${dim ? 0.3 : 0.9})`;
             const ps = wave.perSecond,
               pk = wave.peaks,
-              mid = y0 + 26,
-              half = 9 / loudest(wave);
+              mid = y0 + 23,
+              half = 8 / loudest(wave);
             for (let x = Math.max(0, Math.floor(xa) + 1); x < Math.min(w, xb - 1); x++) {
               const i0 = Math.max(0, Math.floor((tOf(x) - off) * ps)),
                 i1 = Math.min(pk.length - 1, Math.floor((tOf(x + 1) - off) * ps));
@@ -579,25 +576,24 @@ export function DopeSheet() {
           // name at the clip's start (kept on screen while it scrolls)
           ctx.font = '600 10px Segoe UI, system-ui, sans-serif';
           ctx.textBaseline = 'top';
-          const label = `♪ ${au.file ?? 'Audio'}${au.muted ? '  (muted)' : ''}`;
-          const lx = Math.max(xa + 6, 6);
+          const label = `\u266a ${au.file}${au.muted ? '  (muted)' : ''}`;
           ctx.save();
           ctx.beginPath();
           ctx.rect(xa + 2, y0, Math.max(0, xb - xa - 6), AUDIO_H);
           ctx.clip();
           ctx.fillStyle = dim ? colors.text3 : colors.text1;
-          ctx.fillText(label, lx, y0 + 6);
+          ctx.fillText(label, Math.max(xa + 6, 6), y0 + 5);
           ctx.restore();
         }
         // where Listen is
-        if (st.audioListen != null) {
-          const lx = Math.round(xOf(au.offset + st.audioListen));
+        if (st.audioListen?.id === au.id) {
+          const lx = Math.round(xOf(au.offset + st.audioListen.at));
           ctx.fillStyle = colors.accent;
           ctx.fillRect(lx - 1, y0, 2, AUDIO_H);
         }
-        ctx.fillStyle = colors.line;
+        ctx.fillStyle = colors.lineSoft;
         ctx.fillRect(0, y0 + AUDIO_H - 1, w, 1);
-      }
+      });
 
       // ruler
       ctx.fillStyle = colors.bg1;
@@ -746,10 +742,11 @@ export function DopeSheet() {
       seek(snapT(tOf(x), e));
       return;
     }
-    const au = useStore.getState().audio;
-    if (au && y < headH()) {
+    const lane = laneAt(y);
+    if (lane) {
       // on the clip: drag it (a plain click moves the playhead there); off it: scrub
-      if (x >= xOf(au.offset) && x <= xOf(au.offset + au.duration)) inter.current = { mode: 'audio', startX: x, startOffset: au.offset, offset: au.offset, active: false };
+      const au = lane.clip;
+      if (x >= xOf(au.offset) && x <= xOf(au.offset + au.duration)) inter.current = { mode: 'audio', id: au.id, startX: x, startOffset: au.offset, offset: au.offset, active: false };
       else {
         inter.current = { mode: 'scrub' };
         seek(snapT(tOf(x), e));
@@ -815,7 +812,7 @@ export function DopeSheet() {
       /* not captured */
     }
     if (it.mode === 'audio') {
-      if (it.active && Math.abs(it.offset - it.startOffset) > 1e-6) setAudio({ offset: it.offset });
+      if (it.active && Math.abs(it.offset - it.startOffset) > 1e-6) setAudio(it.id, { offset: it.offset });
       else if (!it.active) seek(snapT(tOf(it.startX), e));
     } else if (it.mode === 'drag') {
       if (it.active && Math.abs(it.dt) > 1e-6) moveSelectedKeys(it.dt);
@@ -841,9 +838,9 @@ export function DopeSheet() {
     const x = e.clientX - r.left;
     const y = e.clientY - r.top;
     if (y < RULER_H) return;
-    const au = useStore.getState().audio;
-    if (au && y < headH()) {
-      listenAudio(true, tOf(x) - au.offset);
+    const lane = laneAt(y);
+    if (lane) {
+      listenAudio(lane.clip.id, tOf(x) - lane.clip.offset);
       return;
     }
     const row = rowsRef.current[rowIndexAt(y)];
@@ -860,8 +857,9 @@ export function DopeSheet() {
     const x = e.clientX - r.left;
     const y = e.clientY - r.top;
     const st = useStore.getState();
-    if (st.audio && y >= RULER_H && y < headH()) {
-      setMenu({ x: e.clientX, y: e.clientY, items: audioMenu(tOf(x)) });
+    const lane = laneAt(y);
+    if (lane) {
+      setMenu({ x: e.clientX, y: e.clientY, items: audioMenu(lane.clip.id, tOf(x)) });
       return;
     }
     const hasSel = st.selKeys.size > 0;
@@ -893,31 +891,34 @@ export function DopeSheet() {
     setMenu({ x: e.clientX, y: e.clientY, items });
   };
 
-  /** The audio lane's menu (canvas and names column); `at` is a timeline time, or null for none. */
-  const audioMenu = (at: number | null): MenuItem[] => {
+  /** A clip's lane menu (canvas and names column); `at` is a timeline time, or null for none. */
+  const audioMenu = (id: number, at: number | null): MenuItem[] => {
     const st = useStore.getState();
-    const au = st.audio;
+    const au = st.audio.find((c) => c.id === id);
     if (!au) return [];
-    const listening = st.audioListen != null;
+    const listening = st.audioListen?.id === id;
     const inClip = at != null && at >= au.offset && at <= au.offset + au.duration;
-    const items: MenuItem[] = [{ header: true, label: au.file ?? 'Audio' }];
-    if (listening) items.push({ label: 'Stop listening', action: () => listenAudio(false) });
+    const items: MenuItem[] = [{ header: true, label: au.file }];
+    if (listening) items.push({ label: 'Stop listening', action: () => listenAudio(null) });
     else {
-      items.push({ label: 'Listen', action: () => listenAudio(true, 0) });
-      if (inClip) items.push({ label: 'Listen from here', action: () => listenAudio(true, at! - au.offset) });
+      items.push({ label: 'Listen', action: () => listenAudio(id, 0) });
+      if (inClip) items.push({ label: 'Listen from here', action: () => listenAudio(id, at! - au.offset) });
     }
     items.push({ sep: true });
-    items.push({ label: 'Start at the playhead', action: () => setAudio({ offset: Math.round(liveTime() * 1000) / 1000 }) });
-    items.push({ label: 'Start at 0', action: () => setAudio({ offset: 0 }) });
-    items.push({ label: au.muted ? 'Unmute' : 'Mute while animating', action: () => setAudio({ muted: !au.muted }) });
+    items.push({ label: 'Start at the playhead', action: () => setAudio(id, { offset: Math.round(liveTime() * 1000) / 1000 }) });
+    items.push({ label: 'Start at 0', action: () => setAudio(id, { offset: 0 }) });
+    items.push({ label: au.muted ? 'Unmute' : 'Mute while animating', action: () => setAudio(id, { muted: !au.muted }) });
     items.push({ sep: true });
-    if (window.studioEx?.openAudio) items.push({ label: 'Replace with another WAV…', action: () => pickAudio(au.offset) });
-    items.push({ label: 'Volume, lip-sync…', action: () => showTab('shoot', 'audio') });
-    items.push({ label: 'Remove audio', danger: true, action: removeAudio });
+    if (window.studioEx?.openAudio) {
+      items.push({ label: 'Replace with another WAV\u2026', action: () => pickAudio(0, id) });
+      items.push({ label: 'Add another WAV\u2026', action: () => pickAudio(Math.round(liveTime() * 1000) / 1000) });
+    }
+    items.push({ label: 'Volume, lip-sync\u2026', action: () => showTab('shoot', 'audio') });
+    items.push({ label: 'Remove this audio', danger: true, action: () => removeAudio(id) });
     return items;
   };
 
-  // drop a WAV anywhere on the timeline: it starts where it's dropped (or at 0 over the names)
+  // drop a WAV anywhere on the timeline: a new clip that starts where it's dropped (or at 0 over the names)
   const [dropping, setDropping] = useState(false);
   const hasFiles = (e: React.DragEvent) => [...e.dataTransfer.types].includes('Files');
   const onDragOver = (e: React.DragEvent) => {
@@ -937,7 +938,7 @@ export function DopeSheet() {
     if (!path) return toast("Couldn't tell where that file is — use + Audio instead", 'error');
     const c = canvasRef.current!.getBoundingClientRect();
     const t = e.clientX >= c.left ? Math.max(0, snapT(tOf(e.clientX - c.left), e)) : 0;
-    loadAudio(path, Math.round(t * 1000) / 1000);
+    addAudio(path, Math.round(t * 1000) / 1000);
   };
 
   // wheel: needs a non-passive listener to preventDefault
@@ -1127,32 +1128,35 @@ export function DopeSheet() {
         <div className="sheet-names" style={{ width: nameW }} onWheel={onNameWheel}>
           <div className="sheet-names-header" style={{ height: RULER_H }}>
             <span style={{ flex: 1 }}>Tracks</span>
-            {!audioInfo && window.studioEx?.openAudio && (
-              <button className="sheet-add-audio" onClick={() => pickAudio(0)} title="Add a WAV to the timeline (or drop one onto it)">
+            {window.studioEx?.openAudio && (
+              <button className="sheet-add-audio" onClick={() => pickAudio(Math.round(liveTime() * 1000) / 1000)} title="Add a WAV at the playhead (or drop one onto the timeline where it should start)">
                 + Audio
               </button>
             )}
           </div>
-          {audioInfo && (
-            <div
-              className="sheet-audio-row"
-              style={{ top: RULER_H, height: AUDIO_H }}
-              onContextMenu={(e) => {
-                e.preventDefault();
-                setMenu({ x: e.clientX, y: e.clientY, items: audioMenu(null) });
-              }}
-              title={`${audioInfo.file}\n${audioInfo.duration.toFixed(2)} s, starts at ${audioInfo.offset.toFixed(2)} s\nDrag the clip to move it · double-click it to listen from there · right-click for more`}
-            >
-              <button className={`sheet-audio-btn ${audioListen != null ? 'on' : ''}`} onClick={() => listenAudio(audioListen == null, 0)} title={audioListen != null ? 'Stop' : 'Listen — Studio plays the audio by itself'}>
-                {audioListen != null ? '■' : '▶'}
-              </button>
-              <span className="name">Audio</span>
-              <span className="sub">{audioInfo.file}</span>
-              <button className={`sheet-audio-btn ${audioInfo.muted ? 'off' : ''}`} onClick={() => setAudio({ muted: !audioInfo.muted })} title={audioInfo.muted ? 'Unmute' : 'Mute while animating'}>
-                <Icon name={audioInfo.muted ? 'eyeOff' : 'eye'} size={13} />
-              </button>
-            </div>
-          )}
+          {audioInfo.map((au, li) => {
+            const listening = audioListen?.id === au.id;
+            return (
+              <div
+                key={au.id}
+                className="sheet-audio-row"
+                style={{ top: RULER_H + li * AUDIO_H, height: AUDIO_H, ['--lane' as string]: `rgb(${laneRgb(li)})` }}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  setMenu({ x: e.clientX, y: e.clientY, items: audioMenu(au.id, null) });
+                }}
+                title={`${au.file}\n${au.duration.toFixed(2)} s, starts at ${au.offset.toFixed(2)} s\nDrag the clip to move it \u00b7 double-click it to listen from there \u00b7 right-click for more`}
+              >
+                <button className={`sheet-audio-btn ${listening ? 'on' : ''}`} onClick={() => listenAudio(listening ? null : au.id, 0)} title={listening ? 'Stop' : 'Listen \u2014 Studio plays this clip by itself'}>
+                  {listening ? '\u25a0' : '\u25b6'}
+                </button>
+                <span className="name">{au.file.replace(/\.wav$/i, '')}</span>
+                <button className={`sheet-audio-btn ${au.muted ? 'off' : ''}`} onClick={() => setAudio(au.id, { muted: !au.muted })} title={au.muted ? 'Unmute' : 'Mute while animating'}>
+                  <Icon name={au.muted ? 'eyeOff' : 'eye'} size={13} />
+                </button>
+              </div>
+            );
+          })}
           <div style={{ position: 'absolute', inset: `${HEAD}px 0 0 0`, overflow: 'hidden' }}>
             {visibleRows.map(({ row, i }) => {
               const top = i * ROW_H - scrollY;
