@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 contextBridge.exposeInMainWorld('studioEx', {
   isElectron: true,
@@ -15,6 +15,8 @@ contextBridge.exposeInMainWorld('studioEx', {
   },
   appInfo: () => ipcRenderer.invoke('app:info'),
   openAudio: () => ipcRenderer.invoke('dialog:openAudio'),
+  // the full path of a file dropped onto the window (Studio reads and copies it itself)
+  pathForFile: (f) => webUtils.getPathForFile(f),
   openImage: () => ipcRenderer.invoke('dialog:openImage'),
   openFolder: (p) => ipcRenderer.invoke('shell:openFolder', p),
   translate: {

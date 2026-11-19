@@ -30,6 +30,8 @@ namespace StudioEX.Bridge.Api
         public static string File { get; private set; }
         public static float Offset, Volume = 1f;
         public static bool Muted;
+        /// <summary>Playing the clip on its own (Listen), not following the timeline.</summary>
+        private static bool _preview;
 
         private static string AudioDir => Path.GetFullPath(UserData.Create("audio"));
 
@@ -55,6 +57,20 @@ namespace StudioEX.Bridge.Api
                 return Get();
             });
             r.Add("audio.clear", a => { Clear(); return Get(); });
+            // listen to the clip by itself: on (from a time in the clip) / off; it stops at the end or when the timeline plays
+            r.Add("audio.preview", a =>
+            {
+                if (_i._clip == null) throw new BridgeException("Load a WAV first");
+                _preview = a.GetBool("on", !_preview);
+                if (_preview)
+                {
+                    _i._src.volume = Volume;
+                    _i._src.time = Mathf.Clamp(a.GetFloat("from", 0f), 0f, _i._clip.length - 0.01f);
+                    _i._src.Play();
+                }
+                else _i._src.Stop();
+                return Get();
+            });
             r.Add("audio.peaks", a => Peaks(Mathf.Clamp(a.GetInt("perSecond", 100), 10, 400)));
             r.Add("audio.envelope", a => Envelope(Mathf.Clamp(a.GetInt("rate", 30), 5, 120)));
             r.Add("audio.spectrum", a => Spectrum(Mathf.Clamp(a.GetInt("rate", 60), 10, 120)));
@@ -78,6 +94,7 @@ namespace StudioEX.Bridge.Api
             { "file", File }, { "offset", (double)Offset }, { "volume", (double)Volume }, { "muted", Muted },
             { "duration", _i._clip != null ? (double)_i._clip.length : 0d }, { "loaded", _i._clip != null },
             { "playing", _i._src.isPlaying },
+            { "previewing", _preview }, { "previewAt", _preview ? (double)_i._src.time : 0d },
         };
 
         private static bool SameFile(string a, string b)
@@ -121,6 +138,7 @@ namespace StudioEX.Bridge.Api
             }
             var clip = ExternalAudioClip.Load(full);
             if (clip == null) throw new BridgeException("Couldn't read that WAV — use uncompressed PCM (8/16/24/32-bit)");
+            _preview = false;
             _i._src.Stop();
             if (_i._clip != null) Destroy(_i._clip);
             _i._clip = clip;
@@ -144,6 +162,7 @@ namespace StudioEX.Bridge.Api
         public static void Clear()
         {
             if (_i == null) return;
+            _preview = false;
             _i._src.Stop();
             _i._src.clip = null;
             if (_i._clip != null) Destroy(_i._clip);
@@ -284,6 +303,12 @@ namespace StudioEX.Bridge.Api
         {
             if (_clip == null) return;
             _src.volume = Volume;
+            if (_preview)
+            {
+                if (_src.isPlaying && !TimelineApi.Playing()) return;
+                _preview = false; // finished, or the timeline took over
+                _src.Stop();
+            }
             bool playing = TimelineApi.Playing() && !Muted;
             float t = TimelineApi.PlaybackTime() - Offset;
             if (playing && t >= 0f && t < _clip.length)

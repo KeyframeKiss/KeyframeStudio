@@ -71,6 +71,26 @@ export default async function (t) {
     await ok('audio.set', { muted: false, volume: 1 });
   });
 
+  await t.step('listen (plays by itself)', async () => {
+    let g = await ok('audio.preview', { on: true, from: 1 });
+    check('starts where asked, timeline still', g.previewing === true && g.playing === true && near(g.previewAt, 1, 0.05));
+    await sleep(400);
+    g = await ok('audio.get');
+    check('moves on', g.previewing && g.previewAt > 1.2, String(g.previewAt));
+    g = await ok('audio.preview', { on: false });
+    check('stops', !g.previewing && !g.playing);
+    await ok('audio.preview', { on: true, from: 2.7 });
+    await sleep(700);
+    g = await ok('audio.get');
+    check('stops by itself at the end', !g.previewing && !g.playing);
+    await ok('audio.preview', { on: true, from: 0 });
+    await ok('timeline.seek', { t: 0 });
+    await ok('timeline.play');
+    await sleep(200);
+    check('playing the timeline takes over', (await ok('audio.get')).previewing === false);
+    await ok('timeline.stop');
+  });
+
   await t.step('write keys (lip-sync, blinks)', async () => {
     const T = await ok('timeline.addTrack', { owner: 'Timeline', model: 'characterMouthOpen', oci: chara.id });
     const keys = [0.5, 0.6, 0.7, 0.8].map((x, i) => ({ t: x, value: { value: [0, 0.8, 0.2, 0][i] } }));

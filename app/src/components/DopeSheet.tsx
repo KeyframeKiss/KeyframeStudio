@@ -26,6 +26,11 @@ import {
   workingShot,
   useStore,
   visibleTracks,
+  listenAudio,
+  loadAudio,
+  pickAudio,
+  removeAudio,
+  setAudio,
   type KeyId,
 } from '../state/store';
 import { Icon, TypeIcon } from './Icon';
@@ -55,6 +60,21 @@ let rowSize: RowSize = ((): RowSize => {
 let ROW_H: number = ROW_SIZES[rowSize];
 let followPlayhead = true;
 const RULER_H = 28;
+/** The audio lane, under the ruler, when the scene has audio. */
+const AUDIO_H = 40;
+/** Top of the track rows: the ruler, plus the audio lane when there is one. */
+const headH = () => RULER_H + (useStore.getState().audio ? AUDIO_H : 0);
+/** Loudest peak per waveform, so quiet files still fill the lane. */
+const peakMax = new WeakMap<object, number>();
+const loudest = (w: { peaks: number[] }) => {
+  let m = peakMax.get(w);
+  if (m == null) {
+    m = 0.05;
+    for (const p of w.peaks) if (p > m) m = p;
+    peakMax.set(w, m);
+  }
+  return m;
+};
 const PAD = 14;
 const KEY_HIT = 7;
 
@@ -97,7 +117,8 @@ type Interaction =
   | { mode: 'scrub' }
   | { mode: 'pan'; startX: number; startT0: number }
   | { mode: 'box'; x0: number; y0: number; x1: number; y1: number; additive: boolean; toggle: boolean }
-  | { mode: 'drag'; startX: number; grabT: number; dt: number; active: boolean; clickedId: KeyId; collapseOnClick: boolean };
+  | { mode: 'drag'; startX: number; grabT: number; dt: number; active: boolean; clickedId: KeyId; collapseOnClick: boolean }
+  | { mode: 'audio'; startX: number; startOffset: number; offset: number; active: boolean };
 
 /**
  * Timeline's own folder tree. Folders that contain no visible track (after the Selected/search filter)
@@ -176,9 +197,11 @@ export function DopeSheet() {
   const audioPeaks = useStore((s) => s.audioPeaks);
   const audioInfo = useStore((s) => s.audio);
   const shotsList = useStore((s) => s.shots);
+  const audioListen = useStore((s) => s.audioListen);
   useEffect(() => {
     dirty.current = true;
-  }, [audioPeaks, audioInfo, shotsList]);
+  }, [audioPeaks, audioInfo, shotsList, audioListen]);
+  const HEAD = RULER_H + (audioInfo ? AUDIO_H : 0);
   const fitted = useRef(false);
   const lastAnchor = useRef<number | null>(null);
 
@@ -212,14 +235,14 @@ export function DopeSheet() {
   const rowsRef = useRef(rows);
   rowsRef.current = rows;
   const contentH = rows.length * ROW_H;
-  const maxScroll = Math.max(0, contentH - (viewH - RULER_H) + ROW_H);
+  const maxScroll = Math.max(0, contentH - (viewH - HEAD) + ROW_H);
 
   useEffect(() => {
     dirty.current = true;
   });
 
   const clampScroll = useCallback(
-    (y: number) => Math.max(0, Math.min(Math.max(0, rowsRef.current.length * ROW_H - (size.current.h - RULER_H - HSCROLL_H) + ROW_H), y)),
+    (y: number) => Math.max(0, Math.min(Math.max(0, rowsRef.current.length * ROW_H - (size.current.h - headH() - HSCROLL_H) + ROW_H), y)),
     [],
   );
 
@@ -272,7 +295,7 @@ export function DopeSheet() {
   // ---------------- coordinate helpers ----------------
   const xOf = (t: number) => PAD + (t - view.current.t0) * view.current.pps;
   const tOf = (x: number) => view.current.t0 + (x - PAD) / view.current.pps;
-  const rowIndexAt = (y: number) => Math.floor((y - RULER_H + scrollRef.current) / ROW_H);
+  const rowIndexAt = (y: number) => Math.floor((y - headH() + scrollRef.current) / ROW_H);
 
   /** True until the user zooms/pans; while true the view auto-fits on resize. */
   const autoView = useRef(true);
@@ -393,8 +416,9 @@ export function DopeSheet() {
 
       const rowsNow = rowsRef.current;
       const sy = scrollRef.current;
+      const head = headH();
       const first = Math.max(0, Math.floor(sy / ROW_H));
-      const last = Math.min(rowsNow.length - 1, Math.ceil((sy + h - RULER_H) / ROW_H));
+      const last = Math.min(rowsNow.length - 1, Math.ceil((sy + h - head) / ROW_H));
       const selKeys = st.selKeys;
       const selTr = st.selTracks;
       const drag = inter.current.mode === 'drag' && inter.current.active ? inter.current.dt : 0;
@@ -402,7 +426,7 @@ export function DopeSheet() {
       // rows background
       for (let i = first; i <= last; i++) {
         const row = rowsNow[i];
-        const y = RULER_H + i * ROW_H - sy;
+        const y = head + i * ROW_H - sy;
         if (row.kind !== 'track') {
           ctx.fillStyle = colors.bg2;
           ctx.fillRect(0, y, w, ROW_H);
@@ -466,7 +490,7 @@ export function DopeSheet() {
         tHi = tOf(w + 10) + Math.abs(drag);
       for (let i = first; i <= last; i++) {
         const row = rowsNow[i];
-        const cy = RULER_H + i * ROW_H - sy + ROW_H / 2;
+        const cy = head + i * ROW_H - sy + ROW_H / 2;
         if (row.kind === 'track') {
           const tr = row.track;
           const keys = tr.keys;
@@ -517,6 +541,64 @@ export function DopeSheet() {
         }
       }
 
+      // audio lane: the clip with its waveform; drag it to move where the audio starts
+      const au = st.audio;
+      if (au) {
+        const y0 = RULER_H;
+        ctx.fillStyle = colors.bg1;
+        ctx.fillRect(0, y0, w, AUDIO_H);
+        const ia = inter.current;
+        const off = ia.mode === 'audio' ? ia.offset : au.offset;
+        const xa = xOf(off),
+          xb = xOf(off + au.duration);
+        if (xb > 0 && xa < w) {
+          const dim = au.muted;
+          ctx.fillStyle = dim ? 'rgba(90,169,255,0.05)' : 'rgba(90,169,255,0.14)';
+          ctx.strokeStyle = ia.mode === 'audio' ? colors.accent2 : 'rgba(90,169,255,0.45)';
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.roundRect(Math.round(xa) + 0.5, y0 + 3.5, Math.max(2, xb - xa - 1), AUDIO_H - 7, 4);
+          ctx.fill();
+          ctx.stroke();
+          const wave = st.audioPeaks;
+          if (wave && wave.peaks.length) {
+            ctx.fillStyle = dim ? 'rgba(120,185,255,0.3)' : 'rgba(120,185,255,0.85)';
+            const ps = wave.perSecond,
+              pk = wave.peaks,
+              mid = y0 + 26,
+              half = 9 / loudest(wave);
+            for (let x = Math.max(0, Math.floor(xa) + 1); x < Math.min(w, xb - 1); x++) {
+              const i0 = Math.max(0, Math.floor((tOf(x) - off) * ps)),
+                i1 = Math.min(pk.length - 1, Math.floor((tOf(x + 1) - off) * ps));
+              let p = 0;
+              for (let i = i0; i <= i1; i++) if (pk[i] > p) p = pk[i];
+              const bh = Math.max(0.5, p * half);
+              ctx.fillRect(x, mid - bh, 1, bh * 2);
+            }
+          }
+          // name at the clip's start (kept on screen while it scrolls)
+          ctx.font = '600 10px Segoe UI, system-ui, sans-serif';
+          ctx.textBaseline = 'top';
+          const label = `♪ ${au.file ?? 'Audio'}${au.muted ? '  (muted)' : ''}`;
+          const lx = Math.max(xa + 6, 6);
+          ctx.save();
+          ctx.beginPath();
+          ctx.rect(xa + 2, y0, Math.max(0, xb - xa - 6), AUDIO_H);
+          ctx.clip();
+          ctx.fillStyle = dim ? colors.text3 : colors.text1;
+          ctx.fillText(label, lx, y0 + 6);
+          ctx.restore();
+        }
+        // where Listen is
+        if (st.audioListen != null) {
+          const lx = Math.round(xOf(au.offset + st.audioListen));
+          ctx.fillStyle = colors.accent;
+          ctx.fillRect(lx - 1, y0, 2, AUDIO_H);
+        }
+        ctx.fillStyle = colors.line;
+        ctx.fillRect(0, y0 + AUDIO_H - 1, w, 1);
+      }
+
       // ruler
       ctx.fillStyle = colors.bg1;
       ctx.fillRect(0, 0, w, RULER_H);
@@ -528,24 +610,6 @@ export function DopeSheet() {
         ctx.fillStyle = i % 2 ? 'rgba(255,159,46,0.75)' : 'rgba(139,123,255,0.8)';
         ctx.fillRect(x0 + 1, 0, Math.max(1, x1 - x0 - 2), 3);
       });
-      // the audio track's waveform, behind the tick labels (aligned with the keys)
-      const au = st.audio,
-        wave = st.audioPeaks;
-      if (au && wave && wave.peaks.length) {
-        ctx.fillStyle = 'rgba(90,169,255,0.32)';
-        const ps = wave.perSecond,
-          pk = wave.peaks,
-          hMax = RULER_H - 3;
-        for (let x = Math.max(PAD, Math.floor(xOf(au.offset))); x < Math.min(w, xOf(au.offset + au.duration)); x++) {
-          const i0 = Math.max(0, Math.floor((tOf(x) - au.offset) * ps)),
-            i1 = Math.min(pk.length - 1, Math.floor((tOf(x + 1) - au.offset) * ps));
-          let p = 0;
-          for (let i = i0; i <= i1; i++) if (pk[i] > p) p = pk[i];
-          if (p <= 0.004) continue;
-          const bh = Math.max(1, p * hMax);
-          ctx.fillRect(x, RULER_H - 1 - bh, 1, bh);
-        }
-      }
       ctx.fillStyle = colors.line;
       ctx.fillRect(0, RULER_H - 1, w, 1);
       ctx.font = '10px Segoe UI, system-ui, sans-serif';
@@ -616,7 +680,7 @@ export function DopeSheet() {
   const keysAt = (x: number, y: number): KeyId[] => {
     const idx = rowIndexAt(y);
     const row = rowsRef.current[idx];
-    if (!row || y < RULER_H) return [];
+    if (!row || y < headH()) return [];
     const list = row.kind === 'track' ? [row.track] : row.tracks;
     let bestDx = KEY_HIT + 1;
     let bestT: number | null = null;
@@ -639,7 +703,7 @@ export function DopeSheet() {
     const [ya, yb] = [Math.min(y0, y1), Math.max(y0, y1)];
     const ids: KeyId[] = [];
     rowsRef.current.forEach((row, i) => {
-      const cy = RULER_H + i * ROW_H - scrollRef.current + ROW_H / 2;
+      const cy = headH() + i * ROW_H - scrollRef.current + ROW_H / 2;
       if (cy < ya - 4 || cy > yb + 4) return;
       const list = row.kind === 'track' ? [row.track] : row.tracks;
       for (const tr of list)
@@ -682,6 +746,17 @@ export function DopeSheet() {
       seek(snapT(tOf(x), e));
       return;
     }
+    const au = useStore.getState().audio;
+    if (au && y < headH()) {
+      // on the clip: drag it (a plain click moves the playhead there); off it: scrub
+      if (x >= xOf(au.offset) && x <= xOf(au.offset + au.duration)) inter.current = { mode: 'audio', startX: x, startOffset: au.offset, offset: au.offset, active: false };
+      else {
+        inter.current = { mode: 'scrub' };
+        seek(snapT(tOf(x), e));
+      }
+      dirty.current = true;
+      return;
+    }
 
     const hit = keysAt(x, y);
     const st = useStore.getState();
@@ -709,7 +784,10 @@ export function DopeSheet() {
     const x = e.clientX - r.left;
     const y = e.clientY - r.top;
     if (it.mode === 'scrub') seek(snapT(tOf(x), e));
-    else if (it.mode === 'pan') view.current.t0 = it.startT0 - (x - it.startX) / view.current.pps;
+    else if (it.mode === 'audio') {
+      if (!it.active && Math.abs(x - it.startX) > 3) it.active = true;
+      if (it.active) it.offset = Math.round(snapT(it.startOffset + (x - it.startX) / view.current.pps, e) * 1000) / 1000;
+    } else if (it.mode === 'pan') view.current.t0 = it.startT0 - (x - it.startX) / view.current.pps;
     else if (it.mode === 'box') {
       it.x1 = x;
       it.y1 = y;
@@ -736,7 +814,10 @@ export function DopeSheet() {
     } catch {
       /* not captured */
     }
-    if (it.mode === 'drag') {
+    if (it.mode === 'audio') {
+      if (it.active && Math.abs(it.offset - it.startOffset) > 1e-6) setAudio({ offset: it.offset });
+      else if (!it.active) seek(snapT(tOf(it.startX), e));
+    } else if (it.mode === 'drag') {
       if (it.active && Math.abs(it.dt) > 1e-6) moveSelectedKeys(it.dt);
       else if (!it.active && it.collapseOnClick) {
         const r = canvasRef.current!.getBoundingClientRect();
@@ -760,6 +841,11 @@ export function DopeSheet() {
     const x = e.clientX - r.left;
     const y = e.clientY - r.top;
     if (y < RULER_H) return;
+    const au = useStore.getState().audio;
+    if (au && y < headH()) {
+      listenAudio(true, tOf(x) - au.offset);
+      return;
+    }
     const row = rowsRef.current[rowIndexAt(y)];
     if (!row) return;
     const t = Math.max(0, snapT(tOf(x), e));
@@ -774,6 +860,10 @@ export function DopeSheet() {
     const x = e.clientX - r.left;
     const y = e.clientY - r.top;
     const st = useStore.getState();
+    if (st.audio && y >= RULER_H && y < headH()) {
+      setMenu({ x: e.clientX, y: e.clientY, items: audioMenu(tOf(x)) });
+      return;
+    }
     const hasSel = st.selKeys.size > 0;
     const row = rowsRef.current[rowIndexAt(y)];
     const t = Math.max(0, snapT(tOf(x), e));
@@ -801,6 +891,53 @@ export function DopeSheet() {
     if (st.clipboard) items.push({ label: 'Paste at playhead', kbd: 'Ctrl+V', action: pasteAtPlayhead });
     items.push({ label: 'Frame all', kbd: 'F', action: frameAll });
     setMenu({ x: e.clientX, y: e.clientY, items });
+  };
+
+  /** The audio lane's menu (canvas and names column); `at` is a timeline time, or null for none. */
+  const audioMenu = (at: number | null): MenuItem[] => {
+    const st = useStore.getState();
+    const au = st.audio;
+    if (!au) return [];
+    const listening = st.audioListen != null;
+    const inClip = at != null && at >= au.offset && at <= au.offset + au.duration;
+    const items: MenuItem[] = [{ header: true, label: au.file ?? 'Audio' }];
+    if (listening) items.push({ label: 'Stop listening', action: () => listenAudio(false) });
+    else {
+      items.push({ label: 'Listen', action: () => listenAudio(true, 0) });
+      if (inClip) items.push({ label: 'Listen from here', action: () => listenAudio(true, at! - au.offset) });
+    }
+    items.push({ sep: true });
+    items.push({ label: 'Start at the playhead', action: () => setAudio({ offset: Math.round(liveTime() * 1000) / 1000 }) });
+    items.push({ label: 'Start at 0', action: () => setAudio({ offset: 0 }) });
+    items.push({ label: au.muted ? 'Unmute' : 'Mute while animating', action: () => setAudio({ muted: !au.muted }) });
+    items.push({ sep: true });
+    if (window.studioEx?.openAudio) items.push({ label: 'Replace with another WAV…', action: () => pickAudio(au.offset) });
+    items.push({ label: 'Volume, lip-sync…', action: () => showTab('shoot', 'audio') });
+    items.push({ label: 'Remove audio', danger: true, action: removeAudio });
+    return items;
+  };
+
+  // drop a WAV anywhere on the timeline: it starts where it's dropped (or at 0 over the names)
+  const [dropping, setDropping] = useState(false);
+  const hasFiles = (e: React.DragEvent) => [...e.dataTransfer.types].includes('Files');
+  const onDragOver = (e: React.DragEvent) => {
+    if (!hasFiles(e)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+    if (!dropping) setDropping(true);
+  };
+  const onDrop = (e: React.DragEvent) => {
+    if (!hasFiles(e)) return;
+    e.preventDefault();
+    setDropping(false);
+    const f = e.dataTransfer.files[0];
+    if (!f) return;
+    if (!/\.wav$/i.test(f.name)) return toast('Drop a .wav file — Studio plays WAV only', 'error');
+    const path = window.studioEx?.pathForFile?.(f);
+    if (!path) return toast("Couldn't tell where that file is — use + Audio instead", 'error');
+    const c = canvasRef.current!.getBoundingClientRect();
+    const t = e.clientX >= c.left ? Math.max(0, snapT(tOf(e.clientX - c.left), e)) : 0;
+    loadAudio(path, Math.round(t * 1000) / 1000);
   };
 
   // wheel: needs a non-passive listener to preventDefault
@@ -980,12 +1117,43 @@ export function DopeSheet() {
       />
       <SelectionBar />
       {centerView === 'graph' && <GraphEditor />}
-      <div className="sheet" style={centerView === 'graph' ? { display: 'none' } : undefined}>
+      <div
+        className={`sheet ${dropping ? 'dropping' : ''}`}
+        style={centerView === 'graph' ? { display: 'none' } : undefined}
+        onDragOver={onDragOver}
+        onDragLeave={(e) => !e.currentTarget.contains(e.relatedTarget as Node) && setDropping(false)}
+        onDrop={onDrop}
+      >
         <div className="sheet-names" style={{ width: nameW }} onWheel={onNameWheel}>
           <div className="sheet-names-header" style={{ height: RULER_H }}>
-            Tracks
+            <span style={{ flex: 1 }}>Tracks</span>
+            {!audioInfo && window.studioEx?.openAudio && (
+              <button className="sheet-add-audio" onClick={() => pickAudio(0)} title="Add a WAV to the timeline (or drop one onto it)">
+                + Audio
+              </button>
+            )}
           </div>
-          <div style={{ position: 'absolute', inset: `${RULER_H}px 0 0 0`, overflow: 'hidden' }}>
+          {audioInfo && (
+            <div
+              className="sheet-audio-row"
+              style={{ top: RULER_H, height: AUDIO_H }}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                setMenu({ x: e.clientX, y: e.clientY, items: audioMenu(null) });
+              }}
+              title={`${audioInfo.file}\n${audioInfo.duration.toFixed(2)} s, starts at ${audioInfo.offset.toFixed(2)} s\nDrag the clip to move it · double-click it to listen from there · right-click for more`}
+            >
+              <button className={`sheet-audio-btn ${audioListen != null ? 'on' : ''}`} onClick={() => listenAudio(audioListen == null, 0)} title={audioListen != null ? 'Stop' : 'Listen — Studio plays the audio by itself'}>
+                {audioListen != null ? '■' : '▶'}
+              </button>
+              <span className="name">Audio</span>
+              <span className="sub">{audioInfo.file}</span>
+              <button className={`sheet-audio-btn ${audioInfo.muted ? 'off' : ''}`} onClick={() => setAudio({ muted: !audioInfo.muted })} title={audioInfo.muted ? 'Unmute' : 'Mute while animating'}>
+                <Icon name={audioInfo.muted ? 'eyeOff' : 'eye'} size={13} />
+              </button>
+            </div>
+          )}
+          <div style={{ position: 'absolute', inset: `${HEAD}px 0 0 0`, overflow: 'hidden' }}>
             {visibleRows.map(({ row, i }) => {
               const top = i * ROW_H - scrollY;
               if (row.kind === 'obj') {
@@ -1130,7 +1298,7 @@ export function DopeSheet() {
           />
           {rows.length === 0 && <EmptySheet hasTracks={totalTracks > 0} />}
           {maxScroll > 0 && (
-            <VScrollbar contentH={contentH + ROW_H + HSCROLL_H} viewH={Math.max(0, viewH - RULER_H - HSCROLL_H)} scrollY={scrollY} onScroll={(y) => setScrollY(clampScroll(y))} top={RULER_H} />
+            <VScrollbar contentH={contentH + ROW_H + HSCROLL_H} viewH={Math.max(0, viewH - HEAD - HSCROLL_H)} scrollY={scrollY} onScroll={(y) => setScrollY(clampScroll(y))} top={HEAD} />
           )}
           <TimeScrollbar
             pad={PAD}
@@ -1152,7 +1320,7 @@ export function DopeSheet() {
 function EmptySheet({ hasTracks }: { hasTracks: boolean }) {
   const filter = useStore((s) => s.filter);
   return (
-    <div className="empty" style={{ position: 'absolute', inset: `${RULER_H + 30}px 0 auto 0`, pointerEvents: 'none' }}>
+    <div className="empty" style={{ position: 'absolute', inset: `${headH() + 30}px 0 auto 0`, pointerEvents: 'none' }}>
       {hasTracks ? (
         <>
           <strong>No tracks for this selection</strong>

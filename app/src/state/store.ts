@@ -85,6 +85,8 @@ export interface AppState {
   sceneName: string | null;
   sceneFilter: 'all' | 'fav' | 'recent';
   audioPeaks: { perSecond: number; peaks: number[] } | null;
+  /** While Studio plays the audio by itself (Listen): seconds into the clip; null otherwise. */
+  audioListen: number | null;
   /** Key edits were made but Studio held them back to protect the unkeyed changes (the pose doesn't show them yet). */
   poseStale: boolean;
   groupMode: 'objects' | 'folders';
@@ -161,6 +163,7 @@ export const useStore = create<AppState>(() => ({
   poseStale: false,
   audio: null,
   audioPeaks: null,
+  audioListen: null,
   shots: [], workingShotId: null, frameFullTimeline: false, loopShot: false, renderShotIds: null, sceneName: null, sceneFilter: 'all',
   groupMode: (lsGet('studioex.groupMode') as 'objects' | 'folders') || 'objects',
   settingsOpen: false,
@@ -200,6 +203,53 @@ export async function refreshShots() {
 }
 
 /** Re-read the audio track (and its waveform when the file changed). */
+let listenTimer = 0;
+/** Listen: Studio plays the audio by itself (the animation doesn't move), from `from` seconds into the clip. */
+export async function listenAudio(on: boolean, from = 0) {
+  window.clearInterval(listenTimer);
+  listenTimer = 0;
+  const r = await call<{ previewing: boolean; previewAt: number }>('audio.preview', { on, from: Math.max(0, from) });
+  const at = r?.previewing ? r.previewAt : null;
+  set({ audioListen: at });
+  if (at == null) return;
+  listenTimer = window.setInterval(async () => {
+    const s = await bridge.request<{ previewing: boolean; previewAt: number }>('audio.get').catch(() => null);
+    const a = s?.previewing ? s.previewAt : null;
+    set({ audioListen: a });
+    if (a == null) {
+      window.clearInterval(listenTimer);
+      listenTimer = 0;
+    }
+  }, 100);
+}
+
+/** Put a WAV on the timeline (a file in UserData/audio, or any path — Studio copies it there). */
+export async function loadAudio(fileOrPath: string, offset?: number) {
+  const r = await call('audio.load', { file: fileOrPath, offset: offset ?? get().audio?.offset ?? 0 });
+  if (!r) return false;
+  set({ audioListen: null });
+  await refreshAudio();
+  toast('Audio added — it plays with the timeline and is saved with the scene');
+  return true;
+}
+/** Pick a WAV with the file dialog and put it on the timeline. */
+export async function pickAudio(offset?: number) {
+  const p = await window.studioEx?.openAudio?.();
+  return p ? loadAudio(p, offset) : false;
+}
+export async function setAudio(patch: { offset?: number; volume?: number; muted?: boolean }) {
+  const a = get().audio;
+  if (a) set({ audio: { ...a, ...patch } }); // optimistic: no jump back while the bridge answers
+  await call('audio.set', patch);
+  await refreshAudio();
+}
+export async function removeAudio() {
+  window.clearInterval(listenTimer);
+  set({ audioListen: null });
+  await call('audio.clear');
+  await refreshAudio();
+}
+
 export async function refreshAudio() {
   const a = await bridge.request<AudioInfo>('audio.get').catch(() => null);
   if (!a) return set({ audio: null, audioPeaks: null });
