@@ -31,6 +31,8 @@ namespace StudioEX.Bridge.Api
                 // a feature switched off for compatibility answers with the reason (not "unknown command")
                 var blocked = cmd == null ? null : Compat.BlockReason(cmd);
                 if (blocked != null) throw new BridgeException(blocked);
+                var busy = PoseThumbs.BlockReason(cmd);
+                if (busy != null) throw new BridgeException(busy);
                 if (cmd == null || !_handlers.TryGetValue(cmd, out var handler))
                     throw new BridgeException("Unknown command: " + cmd);
                 var sw = System.Diagnostics.Stopwatch.StartNew();

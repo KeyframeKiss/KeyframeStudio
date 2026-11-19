@@ -48,4 +48,12 @@ export default async function (t) {
   await ok('undo'); // the first apply: one step for everything
   await sleep(500);
   check('one undo takes it all back', !(await ok('fx.get')).effects.fog.on && (await ok('proj.list')).items.length === 0 && (!xFog || (await ok('fx.xukmi')).items.length === 0));
+  await ok('redo');
+  await sleep(500);
+  check('redo brings the fog and projector back', (await ok('fx.get')).effects.fog.on && (await ok('proj.list')).items.length === 1);
+  if (xFog) {
+    const items = (await ok('fx.xukmi')).items.filter((i) => i.effect === 'TwoToneFog');
+    const dens = items.length ? (await ok('me.material', await meTarget(items[0].id))).floats.find((f) => f.name === 'Density')?.value : null;
+    check('redo re-adds the xukmi fog with its value', items.length === 1 && near(dens, 0.077), String(dens));
+  }
 }

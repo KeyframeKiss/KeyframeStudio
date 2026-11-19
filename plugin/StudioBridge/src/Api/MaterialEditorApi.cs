@@ -446,6 +446,14 @@ namespace StudioEX.Bridge.Api
         private static bool RendererKind(string k) => k == "enabled" || k == "shadowCasting" || k == "receiveShadows";
 
         /// <summary>args: {id, part, renderer, material?, kind, prop?, value}</summary>
+        /// <summary>Like Set, but no undo step: for undo / redo putting back values on an object it re-created.</summary>
+        public static void SetQuietly(Dictionary<string, object> a)
+        {
+            string kind = a.GetString("kind"), prop = a.GetString("prop");
+            var t = Find(a, !RendererKind(kind));
+            Apply(t, kind, prop, a["value"]);
+        }
+
         public static object Set(Dictionary<string, object> a)
         {
             string kind = a.GetString("kind"), prop = a.GetString("prop");

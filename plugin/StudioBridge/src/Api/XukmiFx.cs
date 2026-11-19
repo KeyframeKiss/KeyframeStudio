@@ -133,14 +133,15 @@ namespace StudioEX.Bridge.Api
             {
                 string file = o.GetString("file"), effect = o.GetString("effect");
                 var it = Singleton<Studio.Studio>.Instance.dicObjectCtrl.Values.OfType<OCIItem>().FirstOrDefault(x => EffectOf(x) == effect);
+                Entry added = null;
                 if (it == null)
                 {
-                    var e = cat.FirstOrDefault(c => c.File == file);
-                    if (e == null) continue; // not installed here
-                    it = AddObjectItem.Add(e.Group, e.Category, e.No);
+                    added = cat.FirstOrDefault(c => c.File == file);
+                    if (added == null) continue; // not installed here
+                    it = AddObjectItem.Add(added.Group, added.Category, added.No);
                     if (it == null) continue;
-                    UndoStack.Push(new AddUndo(it, e));
                 }
+                var quiet = new List<KeyValuePair<string, KeyValuePair<string, object>>>();
                 bool vis = o.GetBool("visible", true);
                 if (it.treeNodeObject != null && it.treeNodeObject.visible != vis) it.treeNodeObject.SetVisible(vis);
                 var tg = Target(it.objectInfo.dicKey);
@@ -152,17 +153,22 @@ namespace StudioEX.Bridge.Api
                         foreach (var f in fl)
                             if (curF.TryGetValue(f.Key, out var cur))
                             {
-                                var args = new Dictionary<string, object>(tg) { { "kind", "float" }, { "prop", f.Key }, { "value", (double)Mathf.Lerp(cur, Convert.ToSingle(f.Value), strength) } };
-                                MeImpl.Set(args);
+                                object val = (double)Mathf.Lerp(cur, Convert.ToSingle(f.Value), strength);
+                                var args = new Dictionary<string, object>(tg) { { "kind", "float" }, { "prop", f.Key }, { "value", val } };
+                                if (added != null) { MeImpl.SetQuietly(args); quiet.Add(new KeyValuePair<string, KeyValuePair<string, object>>("float", new KeyValuePair<string, object>(f.Key, val))); }
+                                else MeImpl.Set(args);
                             }
                     if (o.GetObject("colors") is Dictionary<string, object> cl)
                         foreach (var c in cl)
                             if (curC.TryGetValue(c.Key, out var cur) && c.Value is List<object> tv)
                             {
                                 var col = Enumerable.Range(0, 4).Select(i => (object)(double)Mathf.Lerp(cur[i], Convert.ToSingle(tv[Math.Min(i, tv.Count - 1)]), strength)).ToList();
-                                MeImpl.Set(new Dictionary<string, object>(tg) { { "kind", "color" }, { "prop", c.Key }, { "value", col } });
+                                var args = new Dictionary<string, object>(tg) { { "kind", "color" }, { "prop", c.Key }, { "value", col } };
+                                if (added != null) { MeImpl.SetQuietly(args); quiet.Add(new KeyValuePair<string, KeyValuePair<string, object>>("color", new KeyValuePair<string, object>(c.Key, col))); }
+                                else MeImpl.Set(args);
                             }
                 }
+                if (added != null) UndoStack.Push(new AddUndo(it, added, quiet)); // one step: the item with its values
                 n++;
             }
             return n;
@@ -172,23 +178,59 @@ namespace StudioEX.Bridge.Api
         {
             private readonly OCIItem _oci;
             private readonly Entry _e;
-            public AddUndo(OCIItem oci, Entry e) { _oci = oci; _e = e; }
+            private readonly List<KeyValuePair<string, KeyValuePair<string, object>>> _values;
+            public AddUndo(OCIItem oci, Entry e, List<KeyValuePair<string, KeyValuePair<string, object>>> values = null) { _oci = oci; _e = e; _values = values; }
             public string Label => "Add " + _e.Name;
             public bool Absorbs(IUndoEntry newer) => false;
             public IUndoEntry Restore()
             {
+                // the values edited on it go with the item: a redo re-creates a new object, and edits recorded
+                // against the old one can't reach it
+                var edits = _values ?? (_oci?.objectInfo != null ? EditedValues(_oci.objectInfo.dicKey) : null);
                 if (_oci?.treeNodeObject != null) Singleton<Studio.Studio>.Instance.treeNodeCtrl.DeleteNode(_oci.treeNodeObject);
-                return new RemoveUndo(_e);
+                return new RemoveUndo(_e, edits);
             }
         }
 
         private sealed class RemoveUndo : IUndoEntry
         {
             private readonly Entry _e;
-            public RemoveUndo(Entry e) { _e = e; }
+            private readonly List<KeyValuePair<string, KeyValuePair<string, object>>> _edits; // kind → (prop, value)
+            public RemoveUndo(Entry e, List<KeyValuePair<string, KeyValuePair<string, object>>> edits) { _e = e; _edits = edits; }
             public string Label => "Add " + _e.Name;
             public bool Absorbs(IUndoEntry newer) => false;
-            public IUndoEntry Restore() => new AddUndo(AddObjectItem.Add(_e.Group, _e.Category, _e.No), _e);
+            public IUndoEntry Restore()
+            {
+                var it = AddObjectItem.Add(_e.Group, _e.Category, _e.No);
+                if (it != null && _edits != null && _edits.Count > 0)
+                {
+                    var tg = Target(it.objectInfo.dicKey);
+                    if (tg != null)
+                        foreach (var ed in _edits)
+                        {
+                            try { MeImpl.SetQuietly(new Dictionary<string, object>(tg) { { "kind", ed.Key }, { "prop", ed.Value.Key }, { "value", ed.Value.Value } }); }
+                            catch (Exception ex) { StudioBridgePlugin.Logger.LogDebug("xukmi redo value: " + ex.Message); }
+                        }
+                }
+                return new AddUndo(it, _e, _edits);
+            }
+        }
+
+        /// <summary>The values MaterialEditor holds as edits on an item's xukmi material.</summary>
+        private static List<KeyValuePair<string, KeyValuePair<string, object>>> EditedValues(int id)
+        {
+            var list = new List<KeyValuePair<string, KeyValuePair<string, object>>>();
+            try
+            {
+                var tg = Target(id);
+                if (tg == null || !(MeImpl.Material(tg) is Dictionary<string, object> mat)) return list;
+                foreach (var f in ((List<object>)mat["floats"]).OfType<Dictionary<string, object>>())
+                    if (f["edited"] is bool e && e) list.Add(new KeyValuePair<string, KeyValuePair<string, object>>("float", new KeyValuePair<string, object>((string)f["name"], f["value"])));
+                foreach (var c in ((List<object>)mat["colors"]).OfType<Dictionary<string, object>>())
+                    if (c["edited"] is bool e && e) list.Add(new KeyValuePair<string, KeyValuePair<string, object>>("color", new KeyValuePair<string, object>((string)c["name"], c["value"])));
+            }
+            catch (Exception ex) { StudioBridgePlugin.Logger.LogDebug("xukmi values: " + ex.Message); }
+            return list;
         }
     }
 }

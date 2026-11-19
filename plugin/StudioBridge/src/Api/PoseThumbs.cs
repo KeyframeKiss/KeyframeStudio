@@ -23,6 +23,29 @@ namespace StudioEX.Bridge.Api
         public static PoseThumbs Instance;
         public static bool Running { get; private set; }
 
+        // While thumbnails are made, a real character stands in, wearing each pose in turn: anything that would
+        // key, save or edit what it's wearing (or replace the scene under it) waits until they're done.
+        private static readonly HashSet<string> BlockedWhileRunning = new HashSet<string>
+        {
+            "undo", "redo", "chara.set", "chara.loadAnime", "abmx.set", "object.set", "motion.sample", "clips.apply",
+            "face.set", "face.setShape", "face.reset", "face.resetShapes", "face.applyPreset",
+            "pose.load", "pose.copy", "pose.mirror", "pose.save", "pose.preview",
+            "camera.key", "camera.move", "scene.load", "scene.new", "scene.import", "cards.swap",
+            "attachment.create", "attachment.edit", "look.applyPreset",
+        };
+        private static readonly HashSet<string> TimelineReads = new HashSet<string>
+        {
+            "timeline.get", "timeline.state", "timeline.changes", "timeline.models", "timeline.keyInfo", "timeline.keyValues",
+            "timeline.groupExpand", "timeline.setUiVisible",
+        };
+
+        public static string BlockReason(string cmd)
+        {
+            if (!Running || cmd == null) return null;
+            bool blocked = BlockedWhileRunning.Contains(cmd) || (cmd.StartsWith("timeline.", StringComparison.Ordinal) && !TimelineReads.Contains(cmd));
+            return blocked ? "Pose thumbnails are being made with a character standing in — wait for them to finish, or cancel them" : null;
+        }
+
         private bool _cancel;
         private int _done, _total;
         private Camera _cam;
