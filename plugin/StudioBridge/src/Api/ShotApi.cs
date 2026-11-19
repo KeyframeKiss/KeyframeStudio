@@ -134,6 +134,20 @@ namespace StudioEX.Bridge.Api
             return QueueState;
         }
 
+        /// <summary>Render `seconds` of the timeline from `start` as one video, playing it while recording (VideoExport's
+        /// own Seconds/Frames modes only record whatever is on screen, so the animation wouldn't move).</summary>
+        public static object StartRange(float start, float seconds, int warmups = 0)
+        {
+            if ((bool)QueueState["running"]) throw new BridgeException("A render is already running");
+            if (!TimelineApi.Available) throw new BridgeException("Rendering the animation needs Timeline");
+            if (TimelineApi.Pending() > 0) throw new BridgeException("Key or reset your unkeyed changes first — rendering plays the timeline");
+            if (RenderApi.Probe() != null) throw new BridgeException("Render needs VideoExport");
+            if (seconds <= 0.01f) throw new BridgeException("Nothing to render: the playhead is at the end of the timeline");
+            var range = new Dictionary<string, object> { { "name", "Timeline" }, { "start", (double)start }, { "end", (double)(start + seconds) }, { "warmups", warmups } };
+            _queue = _i.StartCoroutine(_i.RunQueue(new List<Dictionary<string, object>> { range }));
+            return QueueState;
+        }
+
         private static void CancelQueue()
         {
             if (!(bool)QueueState["running"]) return;
@@ -148,6 +162,8 @@ namespace StudioEX.Bridge.Api
             QueueState["total"] = shots.Count;
             QueueState["done"] = 0;
             QueueState["error"] = null;
+            QueueState["phase"] = null;
+            var limit = RenderApi.SaveLimit(); // each shot is recorded in Seconds mode; the user's own mode comes back after
             try
             {
                 for (int i = 0; i < shots.Count; i++)
@@ -157,6 +173,19 @@ namespace StudioEX.Bridge.Api
                     QueueState["index"] = i;
                     QueueState["shot"] = s.GetString("name");
                     float start = s.GetFloat("start"), end = s.GetFloat("end");
+                    // warm-up: play the range first (in real time) so hair and clothes physics have settled
+                    int warmups = s.GetInt("warmups", 0);
+                    for (int w = 0; w < warmups && !(bool)QueueState["cancel"]; w++)
+                    {
+                        QueueState["phase"] = "Warm-up " + (w + 1) + " of " + warmups;
+                        TimelineApi.PauseAt(start);
+                        yield return null;
+                        TimelineApi.Play();
+                        float t0 = Time.realtimeSinceStartup;
+                        while (Time.realtimeSinceStartup - t0 < end - start && !(bool)QueueState["cancel"]) yield return null;
+                    }
+                    QueueState["phase"] = null;
+                    if ((bool)QueueState["cancel"]) break;
                     TimelineApi.PauseAt(start);
                     yield return null;
                     yield return new WaitForEndOfFrame();
@@ -172,6 +201,7 @@ namespace StudioEX.Bridge.Api
             }
             finally
             {
+                RenderApi.RestoreLimit(limit);
                 QueueState["running"] = false;
                 _queue = null;
                 EventPump.RequestRebase();

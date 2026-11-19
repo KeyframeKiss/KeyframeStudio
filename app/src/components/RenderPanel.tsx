@@ -22,6 +22,8 @@ interface QueueState {
   total?: number;
   shot?: string;
   error?: string | null;
+  /** "Warm-up 1 of 3" while physics settle before recording */
+  phase?: string | null;
 }
 
 const SIZES: { label: string; w?: number; h?: number; hint: string }[] = [
@@ -94,9 +96,16 @@ export function RenderPanel() {
   const start = async () => {
     if (what === 'shots') return startQueue();
     const r = await call<RenderStatus>('render.start', {});
-    if (r) {
-      setSt(r);
-      toast('Rendering — Studio plays the timeline and captures every frame. Leave it alone until it finishes.');
+    if (!r) return;
+    setSt(r);
+    toast('Rendering — Studio plays the animation and captures every frame. Leave it alone until it finishes.');
+    // Keyframe Studio plays the timeline while VideoExport records (VideoExport doesn't play it itself)
+    if (r.settings.limit !== 'Animation') {
+      const q = await call<QueueState>('render.queueStatus');
+      if (q?.running) {
+        setQueue(q);
+        pollQueue();
+      }
     }
   };
   const startQueue = async () => {
@@ -105,6 +114,10 @@ export function RenderPanel() {
     const r = await call<QueueState>('render.queue', { ids });
     if (!r) return;
     setQueue(r);
+    pollQueue();
+  };
+  const pollQueue = () => {
+    window.clearInterval(qpoll.current);
     qpoll.current = window.setInterval(async () => {
       const q = await bridge.request<QueueState>('render.queueStatus').catch(() => null);
       if (!q) return;
@@ -112,12 +125,12 @@ export function RenderPanel() {
       load();
       if (!q.running) {
         window.clearInterval(qpoll.current);
-        toast(q.error ? `Render stopped: ${q.error}` : `Rendered ${q.done} of ${q.total} shot${q.total === 1 ? '' : 's'}`);
+        toast(q.error ? `Render stopped: ${q.error}` : q.shot === 'Timeline' ? 'Render finished' : `Rendered ${q.done} of ${q.total} shot${q.total === 1 ? '' : 's'}`);
       }
     }, 1000);
   };
   const stop = () => {
-    if (queue?.running) call('render.queueCancel');
+    call('render.queueCancel');
     call<RenderStatus>('render.stop').then((r) => r && setSt(r));
   };
 
@@ -136,7 +149,18 @@ export function RenderPanel() {
   const dims = s.resize ? `${s.width}×${s.height}` : 'window size';
   const picked = shots.filter((x) => isIncluded(x.id));
   // VideoExport's number means loops in Timeline mode, seconds in Seconds mode, frames in Frames mode
-  const seconds = what === 'shots' ? picked.reduce((a, x) => a + (x.end - x.start), 0) : s.limit === 'Timeline' && tl ? tl.duration * Math.max(1, s.limitNumber) : s.limit === 'Seconds' ? s.limitNumber : null;
+  // timed renders start at the playhead (at the very end: from the start)
+  const from = tl ? (tl.time >= tl.duration - 0.01 ? 0 : tl.time) : 0;
+  const seconds =
+    what === 'shots'
+      ? picked.reduce((a, x) => a + (x.end - x.start), 0)
+      : s.limit === 'Timeline' && tl
+        ? tl.duration * Math.max(1, s.limitNumber)
+        : s.limit === 'Seconds'
+          ? s.limitNumber
+          : s.limit === 'none' && tl
+            ? tl.duration - from
+            : null;
   const frames = seconds != null ? Math.round(seconds * s.fps) : null;
   const running = busy || !!queue?.running;
   const pct = Math.round((st.frameLimit > 0 ? st.frame / st.frameLimit : st.progress) * 100);
@@ -144,7 +168,8 @@ export function RenderPanel() {
     s.format,
     dims,
     `${s.fps} fps`,
-    what === 'shots' ? `${picked.length} shot${picked.length === 1 ? '' : 's'}, one video each` : s.limit === 'none' ? 'until you stop it' : seconds != null ? `${seconds.toFixed(1)} s` : '',
+    what === 'shots' ? `${picked.length} shot${picked.length === 1 ? '' : 's'}, one video each` : s.limit === 'Timeline' ? 'the whole timeline' : `from ${from.toFixed(2)} s`,
+    seconds != null ? `${seconds.toFixed(1)} s` : '',
     frames != null ? `${frames.toLocaleString()} frames` : '',
     what === 'timeline' && s.limit === 'Timeline' && s.prewarm ? `${s.prewarm} warm-up play${s.prewarm > 1 ? 's' : ''}` : '',
   ].filter(Boolean);
@@ -154,8 +179,8 @@ export function RenderPanel() {
       {/* what will come out, and the button */}
       <div className={`render-hero ${running ? 'running' : ''}`}>
         <div className="render-hero-text">
-          <b>{running ? (queue?.running ? `Rendering ${queue.shot ?? 'shots'} (${(queue.done ?? 0) + 1} of ${queue.total})` : st.encoding ? 'Encoding the video…' : 'Rendering…') : 'Ready to render'}</b>
-          <span>{running ? st.message || (st.recording ? `Frame ${st.frame}${st.frameLimit > 0 ? ` of ${st.frameLimit}` : ''}` : '') : summary.join(' · ')}</span>
+          <b>{running ? (queue?.running && queue.shot !== 'Timeline' ? `Rendering ${queue.shot ?? 'shots'} (${(queue.done ?? 0) + 1} of ${queue.total})` : st.encoding ? 'Encoding the video…' : 'Rendering…') : 'Ready to render'}</b>
+          <span>{running ? queue?.phase || st.message || (st.recording ? `Frame ${st.frame}${st.frameLimit > 0 ? ` of ${st.frameLimit}` : ''}` : '') : summary.join(' · ')}</span>
           {running && (
             <div className="render-progress">
               <span style={{ width: `${pct}%` }} />
@@ -197,14 +222,14 @@ export function RenderPanel() {
                 <div className="cleanup-row" style={{ marginTop: 10 }}>
                   <span>Length</span>
                   <div className="seg">
-                    <button className={s.limit === 'Timeline' ? 'on' : ''} disabled={running || !st.limits.includes('Timeline')} onClick={() => set({ limit: 'Timeline', limitNumber: 1 })} title="The whole timeline, once">
+                    <button className={s.limit === 'Timeline' ? 'on' : ''} disabled={running || !st.limits.includes('Timeline')} onClick={() => set({ limit: 'Timeline', limitNumber: 1 })} title="The whole timeline from the start, once">
                       All of it
                     </button>
-                    <button className={s.limit === 'Seconds' ? 'on' : ''} disabled={running} onClick={() => set({ limit: 'Seconds', limitNumber: s.limitNumber > 0 ? s.limitNumber : 5 })}>
-                      Seconds
+                    <button className={s.limit === 'Seconds' ? 'on' : ''} disabled={running} onClick={() => set({ limit: 'Seconds', limitNumber: s.limitNumber > 0 ? s.limitNumber : 5 })} title="Plays the animation from the playhead for as long as you set">
+                      From the playhead
                     </button>
-                    <button className={s.limit === 'none' ? 'on' : ''} disabled={running} onClick={() => set({ limit: 'none' })} title="Until you press Stop">
-                      Until I stop
+                    <button className={s.limit === 'none' ? 'on' : ''} disabled={running} onClick={() => set({ limit: 'none' })} title="Plays the animation from the playhead to the end of the timeline (Stop ends it early)">
+                      To the end
                     </button>
                   </div>
                 </div>
@@ -213,7 +238,7 @@ export function RenderPanel() {
                     <span />
                     <input className="input mono" type="number" min={0.5} step={0.5} value={s.limitNumber} disabled={running} onChange={(e) => set({ limitNumber: Number(e.target.value) || 1 })} style={{ width: 80 }} />
                     <span className="hint" style={{ margin: 0 }}>
-                      seconds
+                      seconds from {from.toFixed(2)} s
                     </span>
                   </div>
                 )}

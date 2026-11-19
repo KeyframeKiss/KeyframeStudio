@@ -4,6 +4,7 @@ using System.Reflection;
 using BepInEx.Bootstrap;
 using HarmonyLib;
 using StudioEX.Bridge.Net;
+using UnityEngine;
 
 namespace StudioEX.Bridge.Api
 {
@@ -48,6 +49,28 @@ namespace StudioEX.Bridge.Api
             {
                 if ((bool)Get("_isRecording")) throw new BridgeException("Already recording");
                 Apply(a);
+                // VideoExport only records the screen: in Seconds, Frames and no-limit modes it never starts the
+                // timeline, and its Timeline mode doesn't play the current Timeline either (it records the right
+                // number of frames of a still scene). So with Timeline installed, Keyframe Studio plays the timeline
+                // while VideoExport records: the whole timeline from 0 (with the warm-up plays), or from the
+                // playhead. Its Animation mode follows the characters' own animation and is left to it.
+                bool limited = (bool)Get("_limitDuration");
+                string mode = limited ? Get("_selectedLimitDuration").ToString() : "none";
+                if (TimelineApi.Available && mode != "Animation")
+                {
+                    float dur = TimelineApi.Duration();
+                    float n = Convert.ToSingle(Get("_limitDurationNumber"));
+                    if (mode == "Timeline")
+                    {
+                        ShotApi.StartRange(0f, dur, (int)Get("_prewarmLoopCount"));
+                        return Status();
+                    }
+                    float start = a.Has("from") ? a.GetFloat("from") : TimelineApi.PlaybackTime();
+                    if (start >= dur - 0.01f) start = 0f; // at the end: from the start
+                    float secs = mode == "Seconds" ? n : mode == "Frames" ? n / Math.Max(1, (int)Get("_fps")) : dur - start;
+                    ShotApi.StartRange(start, secs);
+                    return Status();
+                }
                 AccessTools.Method(T, "RecordVideo").Invoke(Plugin, null);
                 return Status();
             });
@@ -70,6 +93,17 @@ namespace StudioEX.Bridge.Api
             Apply(new Dictionary<string, object> { { "limit", "Seconds" }, { "limitNumber", (double)seconds } });
             AccessTools.Method(T, "RecordVideo").Invoke(Plugin, null);
             return null;
+        }
+
+        /// <summary>The length settings (mode and number), to put back after a render that had to change them.</summary>
+        public static object[] SaveLimit() => Plugin == null ? null : new[] { Get("_limitDuration"), Get("_selectedLimitDuration"), Get("_limitDurationNumber") };
+
+        public static void RestoreLimit(object[] saved)
+        {
+            if (saved == null || Plugin == null || Busy()) return;
+            Set("_limitDuration", saved[0]);
+            Set("_selectedLimitDuration", saved[1]);
+            Set("_limitDurationNumber", saved[2]);
         }
 
         private static object Get(string f) => AccessTools.Field(T, f).GetValue(AccessTools.Field(T, f).IsStatic ? null : Plugin);

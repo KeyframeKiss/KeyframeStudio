@@ -39,9 +39,57 @@ export default async function (t) {
       check('settings applied (Timeline mode plays at least once)', s.settings.fps === 30 && s.settings.format === 'MP4' && s.settings.limit === 'Timeline' && s.settings.limitNumber >= 1, JSON.stringify(s.settings));
       check('formats and length modes listed', s.formats.includes('MP4') && s.limits.includes('Timeline'));
       s = await ok('render.set', { fps: 10, limit: 'Seconds', limitNumber: 0.3, autoEncode: false, deleteFrames: false, resize: true, width: 320, height: 180 });
-      const made = await framesMadeBy(() => ok('render.start', {}));
+      // "from the playhead": the timeline has to play while it records, not stand still
+      await ok('timeline.seek', { t: 1 });
+      await sleep(300);
+      const times = [];
+      const made = await framesMadeBy(async () => {
+        await ok('render.start', {});
+        for (let i = 0; i < 40; i++) {
+          const st = await ok('render.status');
+          const q = await ok('render.queueStatus');
+          if (!st.recording && !q.running) break;
+          if (st.recording) times.push((await ok('timeline.state')).time);
+          await sleep(30);
+        }
+      });
       const frames = made.length ? fs.readdirSync(made[0]).length : 0;
       check('3 frames captured', made.length === 1 && frames === 3, `${made.length} folders, ${frames} frames`);
+      check('the animation plays while recording (from the playhead)', times.length > 0 && Math.max(...times) > 1.05, times.map((x) => x.toFixed(2)).join(' '));
+      const after = await ok('timeline.state');
+      check('the playhead goes back to where the render started', near(after.time, 1, 0.02) && !after.playing, String(after.time));
+      // "to the end": from the playhead to the end of the timeline; the chosen length mode stays chosen
+      const tl = await ok('timeline.state');
+      await ok('render.set', { limit: 'none' });
+      await ok('timeline.seek', { t: tl.duration - 0.3 });
+      await sleep(300);
+      const made2 = await framesMadeBy(() => ok('render.start', {}));
+      const frames2 = made2.length ? fs.readdirSync(made2[0]).length : 0;
+      check('"to the end" records the rest of the timeline', made2.length === 1 && frames2 >= 2 && frames2 <= 4, `${frames2} frames`);
+      check('the length mode comes back after', (await ok('render.status')).settings.limit === 'none');
+      // "all of it": the whole timeline from 0, after a warm-up play (VideoExport's own Timeline mode doesn't play it)
+      await ok('timeline.setSettings', { duration: 1 });
+      t.defer(() => req('timeline.setSettings', { duration: tl.duration }));
+      await ok('render.set', { limit: 'Timeline', limitNumber: 1, prewarm: 1 });
+      await ok('timeline.seek', { t: 0.6 });
+      await sleep(300);
+      const times3 = [];
+      let warmed = false;
+      const made3 = await framesMadeBy(async () => {
+        await ok('render.start', {});
+        for (let i = 0; i < 120; i++) {
+          const st = await ok('render.status');
+          const q = await ok('render.queueStatus');
+          if (q.phase) warmed = true;
+          if (!st.recording && !q.running) break;
+          if (st.recording) times3.push((await ok('timeline.state')).time);
+          await sleep(30);
+        }
+      });
+      const frames3 = made3.length ? fs.readdirSync(made3[0]).length : 0;
+      check('"all of it": warm-up first, then the whole timeline plays while recording', warmed && frames3 === 10 && times3.length > 0 && Math.min(...times3) < 0.3 && Math.max(...times3) > 0.5, `${frames3} frames, warm-up ${warmed}, ${times3.map((x) => x.toFixed(2)).join(' ')}`);
+      await ok('timeline.setSettings', { duration: tl.duration });
+      await ok('render.set', { limit: 'Seconds', limitNumber: 0.3, prewarm: 0 });
       const bad = await req('render.set', { format: 'MOV' });
       check('unknown format refused', !bad.ok);
     });
@@ -91,8 +139,9 @@ export default async function (t) {
   if (hasRender)
     await t.step('render queue', async () => {
       await ok('shots.set', { shots: [{ id: 'q', name: 'Queue test', start: 0.5, end: 0.8 }] });
-      await ok('render.set', { fps: 10, autoEncode: false, deleteFrames: false, resize: true, width: 320, height: 180 });
+      await ok('render.set', { fps: 10, autoEncode: false, deleteFrames: false, resize: true, width: 320, height: 180, limit: 'Timeline', limitNumber: 1 });
       const made = await framesMadeBy(() => ok('render.queue', { ids: ['q'] }));
+      check('the queue leaves the length mode as it was', (await ok('render.status')).settings.limit === 'Timeline');
       const q = await ok('render.queueStatus');
       check('queue rendered the shot', !q.running && q.done === 1 && !q.error, JSON.stringify(q));
       check('its frames were captured', made.length === 1 && fs.readdirSync(made[0]).length >= 2, `${made.length} folders`);
