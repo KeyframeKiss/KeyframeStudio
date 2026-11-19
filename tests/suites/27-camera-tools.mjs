@@ -58,5 +58,11 @@ export default async function (t) {
     check('set', s.guides.thirds && s.guides.center && s.guides.safe && Math.abs(s.guides.aspect - 0.5625) < 1e-3);
     const snap = await ok('camera.snapshot', { width: 200 });
     check('not in snapshots (screen overlay only)', typeof snap === 'string');
+    const before = (await ok('camtools.get')).guides.color;
+    t.defer(() => req('camtools.set', { guides: { color: before } }));
+    const c = (await ok('camtools.set', { guides: { color: [0.22, 0.85, 1, 0.8] } })).guides.color;
+    check('guide colour and strength', Math.abs(c[0] - 0.22) < 1e-3 && Math.abs(c[2] - 1) < 1e-3 && Math.abs(c[3] - 0.8) < 1e-3, JSON.stringify(c));
+    const c2 = (await ok('camtools.set', { guides: { color: [2, -1, 0.5] } })).guides.color;
+    check('out-of-range colours are clamped, strength kept', c2[0] === 1 && c2[1] === 0 && Math.abs(c2[3] - 0.8) < 1e-3, JSON.stringify(c2));
   });
 }

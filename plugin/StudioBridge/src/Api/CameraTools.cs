@@ -39,6 +39,8 @@ namespace StudioEX.Bridge.Api
         private bool _thirds, _center, _safe;
         private float _aspect; // 0 = no frame
         private float _dim = 0.6f;
+        // the guide lines' colour; alpha = how strongly they show
+        private Color _lineColor = new Color(1, 1, 1, 0.5f);
 
         private static readonly Dictionary<string, string[]> Bones = new Dictionary<string, string[]>
         {
@@ -75,7 +77,8 @@ namespace StudioEX.Bridge.Api
             // for checks: how far the camera is from the eyes (first person) / the view's centre from the followed part
             { "povDistance", _pov && _povProvider == "Keyframe Studio" && _eyes != null && Camera.main != null ? (double)Vector3.Distance(Camera.main.transform.position, _eyes.position) : -1d },
             { "followDistance", _follow && _target != null && Singleton<Studio.Studio>.Instance?.cameraCtrl != null ? (double)Vector3.Distance(Singleton<Studio.Studio>.Instance.cameraCtrl.targetPos, _target.position) : -1d },
-            { "guides", new Dictionary<string, object> { { "thirds", _thirds }, { "center", _center }, { "safe", _safe }, { "aspect", (double)_aspect }, { "dim", (double)_dim } } },
+            { "guides", new Dictionary<string, object> { { "thirds", _thirds }, { "center", _center }, { "safe", _safe }, { "aspect", (double)_aspect }, { "dim", (double)_dim },
+                { "color", new List<object> { (double)_lineColor.r, (double)_lineColor.g, (double)_lineColor.b, (double)_lineColor.a } } } },
         };
 
         private object Set(Dictionary<string, object> a)
@@ -118,6 +121,11 @@ namespace StudioEX.Bridge.Api
                 if (g.Has("safe")) _safe = g.GetBool("safe");
                 if (g.Has("aspect")) _aspect = Mathf.Max(0, g.GetFloat("aspect"));
                 if (g.Has("dim")) _dim = Mathf.Clamp01(g.GetFloat("dim"));
+                if (g.ContainsKey("color") && g["color"] is List<object> c && c.Count >= 3)
+                {
+                    float C(int i, float def) => i < c.Count ? Mathf.Clamp01(Convert.ToSingle(c[i])) : def;
+                    _lineColor = new Color(C(0, 1), C(1, 1), C(2, 1), C(3, _lineColor.a));
+                }
             }
             return State();
         }
@@ -323,9 +331,9 @@ namespace StudioEX.Bridge.Api
                 Fill(new Rect(0, frame.yMax, sw, sh - frame.yMax), dim);
                 Fill(new Rect(0, frame.yMin, frame.xMin, frame.height), dim);
                 Fill(new Rect(frame.xMax, frame.yMin, sw - frame.xMax, frame.height), dim);
-                Outline(frame, new Color(1, 1, 1, 0.5f));
+                Outline(frame, Tone(1.1f));
             }
-            var line = new Color(1, 1, 1, 0.45f);
+            var line = Tone(0.9f);
             if (_thirds)
                 for (int i = 1; i <= 2; i++)
                 {
@@ -340,10 +348,13 @@ namespace StudioEX.Bridge.Api
             }
             if (_safe)
             {
-                Outline(Inset(frame, 0.05f), new Color(1, 0.8f, 0.3f, 0.5f)); // action safe (90%)
-                Outline(Inset(frame, 0.1f), new Color(1, 0.8f, 0.3f, 0.3f)); // title safe (80%)
+                Outline(Inset(frame, 0.05f), Tone(0.9f)); // action safe (90%)
+                Outline(Inset(frame, 0.1f), Tone(0.55f)); // title safe (80%): fainter
             }
         }
+
+        /// <summary>The guide colour at a share of its strength.</summary>
+        private Color Tone(float k) => new Color(_lineColor.r, _lineColor.g, _lineColor.b, Mathf.Clamp01(_lineColor.a * k));
 
         private static Rect Inset(Rect r, float f) => new Rect(r.xMin + r.width * f, r.yMin + r.height * f, r.width * (1 - 2 * f), r.height * (1 - 2 * f));
 

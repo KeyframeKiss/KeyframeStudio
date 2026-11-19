@@ -3,7 +3,7 @@ import { bridge } from '../bridge/client';
 import { displayName, toast, useStore } from '../state/store';
 import { Slider } from './CharacterPanel';
 import { Help } from './Help';
-import { Switch } from './LookPanel';
+import { ColorInput, Switch } from './LookPanel';
 
 // Shoot › Shots & camera: first-person view, follow a body part, framing guides over Studio's window.
 // RealPOV / LockOnPlugin do the first two when they're installed (switchable); ours otherwise.
@@ -11,10 +11,29 @@ import { Switch } from './LookPanel';
 interface Tools {
   pov: { on: boolean; id: number; fov: number; hideHead: boolean; useTheirs: boolean; provider: string; theirsInstalled: boolean };
   follow: { on: boolean; id: number; bone: string; speed: number; useTheirs: boolean; provider: string; theirsInstalled: boolean; bones: string[] };
-  guides: { thirds: boolean; center: boolean; safe: boolean; aspect: number; dim: number };
+  guides: { thirds: boolean; center: boolean; safe: boolean; aspect: number; dim: number; color: number[] };
 }
 
 const BONE_LABEL: Record<string, string> = { head: 'Head', eyes: 'Eyes', chest: 'Chest', hips: 'Hips', handL: 'Left hand', handR: 'Right hand', feet: 'Feet' };
+// guide colours that read well on light or dark scenes
+const GUIDE_COLORS: { label: string; c: [number, number, number] }[] = [
+  { label: 'White', c: [1, 1, 1] },
+  { label: 'Black', c: [0, 0, 0] },
+  { label: 'Yellow', c: [1, 0.83, 0.3] },
+  { label: 'Cyan', c: [0.22, 0.85, 1] },
+  { label: 'Magenta', c: [1, 0.31, 0.85] },
+  { label: 'Green', c: [0.49, 1, 0.42] },
+];
+const GUIDE_KEY = 'kf.guideColor';
+const savedGuideColor = (): number[] | null => {
+  try {
+    const v = JSON.parse(localStorage.getItem(GUIDE_KEY) ?? 'null');
+    return Array.isArray(v) && v.length === 4 ? v : null;
+  } catch {
+    return null;
+  }
+};
+
 const ASPECTS: { label: string; v: number | 'render' }[] = [
   { label: 'Off', v: 0 },
   { label: 'Render size', v: 'render' },
@@ -38,7 +57,15 @@ export function CameraToolsCards() {
   const chara = who != null && nodes[who] ? who : (selChara ?? charas[0]?.id ?? null);
 
   const load = useCallback(() => {
-    bridge.request<Tools>('camtools.get').then(setT).catch(() => setT(null));
+    bridge
+      .request<Tools>('camtools.get')
+      .then(async (r) => {
+        // the colour you picked last time (Studio forgets it when it restarts)
+        const saved = savedGuideColor();
+        if (saved && saved.some((x, i) => Math.abs(x - (r.guides.color?.[i] ?? 0)) > 1e-3)) r = await bridge.request<Tools>('camtools.set', { guides: { color: saved } });
+        setT(r);
+      })
+      .catch(() => setT(null));
     bridge
       .request<{ settings: { resize: boolean; width: number; height: number } }>('render.status')
       .then((r) => setRenderAspect(r.settings.resize && r.settings.height ? r.settings.width / r.settings.height : 0))
@@ -77,6 +104,15 @@ export function CameraToolsCards() {
         load();
       }
     });
+  };
+
+  const setGuideColor = (color: number[]) => {
+    try {
+      localStorage.setItem(GUIDE_KEY, JSON.stringify(color));
+    } catch {
+      /* private mode */
+    }
+    set({ guides: { color } });
   };
 
   if (!t) return null;
@@ -231,6 +267,26 @@ export function CameraToolsCards() {
                 </button>
               );
             })}
+          </div>
+          <div className="ct-label">Colour</div>
+          <div className="ct-swatches">
+            {GUIDE_COLORS.map((g) => {
+              const on = g.c.every((x, i) => Math.abs(x - t.guides.color[i]) < 0.01);
+              return (
+                <button
+                  key={g.label}
+                  className={`ct-swatch ${on ? 'on' : ''}`}
+                  title={g.label}
+                  style={{ background: `rgb(${g.c.map((x) => Math.round(x * 255)).join(',')})` }}
+                  onClick={() => setGuideColor([...g.c, t.guides.color[3]])}
+                />
+              );
+            })}
+            <ColorInput value={t.guides.color} onChange={(c) => setGuideColor([c[0], c[1], c[2], t.guides.color[3]])} />
+          </div>
+          <div className="ct-row">
+            <label>Strength</label>
+            <Slider value={t.guides.color[3]} min={0.1} max={1} step={0.05} onChange={(a) => setGuideColor([t.guides.color[0], t.guides.color[1], t.guides.color[2], a])} />
           </div>
           {t.guides.aspect > 0 && (
             <div className="ct-row">

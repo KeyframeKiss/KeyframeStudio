@@ -5332,3 +5332,37 @@ html.frameless .tooltip {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+.ct-swatches {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin: 6px 0 4px;
+}
+.ct-swatch {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+  cursor: pointer;
+  padding: 0;
+}
+.ct-swatch.on {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.ct-swatches .color-input {
+  margin-left: 4px;
+}
+/* sliders in card rows shrink with the card (a range input won't go below its natural width by itself) */
+.ct-row > *,
+.fx-row > * {
+  min-width: 0;
+}
+.ct-row input[type='range'],
+.fx-row input[type='range'] {
+  min-width: 0;
+  width: 100%;
+}
