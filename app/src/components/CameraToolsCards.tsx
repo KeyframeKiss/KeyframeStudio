@@ -1,18 +1,20 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect } from 'react';
+import { create } from 'zustand';
 import { bridge } from '../bridge/client';
 import { displayName, toast, useStore } from '../state/store';
 import { Slider } from './CharacterPanel';
-import { Help } from './Help';
 import { ColorInput, Switch } from './LookPanel';
+import { Field, Panel } from './Page';
 
-// Shoot › Shots & camera: first-person view, follow a body part, framing guides over Studio's window.
-// RealPOV / LockOnPlugin do the first two when they're installed (switchable); ours otherwise.
+// Shoot › Shots & camera: what the camera is doing (free / first person / follow) and the frame guides over
+// Studio's window. RealPOV / LockOnPlugin do first person and follow when they're installed (switchable).
 
 interface Tools {
   pov: { on: boolean; id: number; fov: number; hideHead: boolean; useTheirs: boolean; provider: string; theirsInstalled: boolean };
   follow: { on: boolean; id: number; bone: string; speed: number; useTheirs: boolean; provider: string; theirsInstalled: boolean; bones: string[] };
   guides: { thirds: boolean; center: boolean; safe: boolean; aspect: number; dim: number; color: number[] };
 }
+type Patch = Partial<{ [K in keyof Tools]: Partial<Tools[K]> }>;
 
 const BONE_LABEL: Record<string, string> = { head: 'Head', eyes: 'Eyes', chest: 'Chest', hips: 'Hips', handL: 'Left hand', handR: 'Right hand', feet: 'Feet' };
 // guide colours that read well on light or dark scenes
@@ -33,7 +35,6 @@ const savedGuideColor = (): number[] | null => {
     return null;
   }
 };
-
 const ASPECTS: { label: string; v: number | 'render' }[] = [
   { label: 'Off', v: 0 },
   { label: 'Render size', v: 'render' },
@@ -44,258 +45,250 @@ const ASPECTS: { label: string; v: number | 'render' }[] = [
   { label: '2.39:1', v: 2.39 },
 ];
 
-export function CameraToolsCards() {
+// ---------------------------------------------------------------------------
+// Shared state for both panels: shown at once, sent at most once a frame (sliders); replies only land when
+// nothing newer is waiting.
+// ---------------------------------------------------------------------------
+
+interface CamToolsState {
+  t: Tools | null;
+  renderAspect: number;
+  aspectPick: string;
+  who: number | null;
+}
+const useCamTools = create<CamToolsState>(() => ({ t: null, renderAspect: 0, aspectPick: 'Off', who: null }));
+let pending: Record<string, Record<string, unknown>> = {};
+let frame = 0;
+let inflight = 0;
+
+function loadCamTools() {
+  bridge
+    .request<Tools>('camtools.get')
+    .then(async (r) => {
+      // the colour you picked last time (Studio forgets it when it restarts)
+      const saved = savedGuideColor();
+      if (saved && saved.some((x, i) => Math.abs(x - (r.guides.color?.[i] ?? 0)) > 1e-3)) r = await bridge.request<Tools>('camtools.set', { guides: { color: saved } });
+      useCamTools.setState({ t: r });
+    })
+    .catch(() => useCamTools.setState({ t: null }));
+  bridge
+    .request<{ settings: { resize: boolean; width: number; height: number } }>('render.status')
+    .then((r) => useCamTools.setState({ renderAspect: r.settings.resize && r.settings.height ? r.settings.width / r.settings.height : 0 }))
+    .catch(() => useCamTools.setState({ renderAspect: 0 }));
+}
+
+function setCamTools(patch: Patch) {
+  const cur = useCamTools.getState().t;
+  if (cur) {
+    const next = { ...cur } as unknown as Record<string, object>;
+    for (const [k, v] of Object.entries(patch)) next[k] = { ...(cur as unknown as Record<string, object>)[k], ...v };
+    useCamTools.setState({ t: next as unknown as Tools });
+  }
+  for (const [k, v] of Object.entries(patch)) pending[k] = { ...(pending[k] ?? {}), ...(v as object) };
+  if (frame) return;
+  frame = requestAnimationFrame(async () => {
+    frame = 0;
+    const p = pending;
+    pending = {};
+    inflight++;
+    try {
+      const r = await bridge.request<Tools>('camtools.set', p);
+      if (--inflight === 0 && !frame) useCamTools.setState({ t: r });
+    } catch (e) {
+      inflight--;
+      toast((e as Error).message, 'error');
+      loadCamTools();
+    }
+  });
+}
+
+function useLoadedCamTools() {
   const status = useStore((s) => s.status);
+  useEffect(() => {
+    if (status === 'open') loadCamTools();
+  }, [status]);
+  return useCamTools();
+}
+
+// ---------------------------------------------------------------------------
+// Camera mode: one choice (they can't both be on)
+// ---------------------------------------------------------------------------
+
+export function CameraModePanel() {
+  const { t, who } = useLoadedCamTools();
   const nodes = useStore((s) => s.nodes);
   const selection = useStore((s) => s.studioSelection);
-  const [t, setT] = useState<Tools | null>(null);
-  const [renderAspect, setRenderAspect] = useState(0);
-  const [aspectPick, setAspectPick] = useState<string>('Off');
+  if (!t) return null;
   const charas = Object.values(nodes).filter((n) => n.type === 'Char');
-  const selChara = selection.find((id) => nodes[id]?.type === 'Char');
-  const [who, setWho] = useState<number | null>(null);
-  const chara = who != null && nodes[who] ? who : (selChara ?? charas[0]?.id ?? null);
-
-  const load = useCallback(() => {
-    bridge
-      .request<Tools>('camtools.get')
-      .then(async (r) => {
-        // the colour you picked last time (Studio forgets it when it restarts)
-        const saved = savedGuideColor();
-        if (saved && saved.some((x, i) => Math.abs(x - (r.guides.color?.[i] ?? 0)) > 1e-3)) r = await bridge.request<Tools>('camtools.set', { guides: { color: saved } });
-        setT(r);
-      })
-      .catch(() => setT(null));
-    bridge
-      .request<{ settings: { resize: boolean; width: number; height: number } }>('render.status')
-      .then((r) => setRenderAspect(r.settings.resize && r.settings.height ? r.settings.width / r.settings.height : 0))
-      .catch(() => setRenderAspect(0));
-  }, []);
-  useEffect(() => {
-    if (status === 'open') load();
-  }, [status, load]);
-
-  // shown at once, sent at most once a frame (sliders); replies only land when nothing newer is waiting
-  type Patch = Partial<{ [K in keyof Tools]: Partial<Tools[K]> }>;
-  const pending = useRef<Record<string, Record<string, unknown>>>({});
-  const frame = useRef(0);
-  const inflight = useRef(0);
-  useEffect(() => () => cancelAnimationFrame(frame.current), []);
-  const set = (patch: Patch) => {
-    setT((cur) => {
-      if (!cur) return cur;
-      const next = { ...cur } as Record<string, unknown>;
-      for (const [k, v] of Object.entries(patch)) next[k] = { ...(cur as unknown as Record<string, object>)[k], ...v };
-      return next as unknown as Tools;
-    });
-    for (const [k, v] of Object.entries(patch)) pending.current[k] = { ...(pending.current[k] ?? {}), ...(v as object) };
-    if (frame.current) return;
-    frame.current = requestAnimationFrame(async () => {
-      frame.current = 0;
-      const p = pending.current;
-      pending.current = {};
-      inflight.current++;
-      try {
-        const r = await bridge.request<Tools>('camtools.set', p);
-        if (--inflight.current === 0 && !frame.current) setT(r);
-      } catch (e) {
-        inflight.current--;
-        toast((e as Error).message, 'error');
-        load();
-      }
-    });
+  const chara = who != null && nodes[who] ? who : (selection.find((id) => nodes[id]?.type === 'Char') ?? charas[0]?.id ?? null);
+  const mode: 'free' | 'pov' | 'follow' = t.pov.on ? 'pov' : t.follow.on ? 'follow' : 'free';
+  const pick = (m: typeof mode) => {
+    if (m === mode) return;
+    if (m !== 'free' && chara == null) return toast('No character in the scene', 'error');
+    if (m === 'free') setCamTools({ pov: { on: false }, follow: { on: false } });
+    else if (m === 'pov') setCamTools({ follow: { on: false }, pov: { on: true, id: chara! } });
+    else setCamTools({ pov: { on: false }, follow: { on: true, id: chara! } });
   };
+  const using = mode === 'pov' ? t.pov.id : mode === 'follow' ? t.follow.id : chara;
+  const provider = mode === 'pov' ? t.pov.provider : mode === 'follow' ? t.follow.provider : null;
 
-  const setGuideColor = (color: number[]) => {
+  return (
+    <Panel title="Camera mode" help="What Studio's camera does. Free: you move it (orbit with the mouse in Studio). First person: through a character's eyes, turning with the head. Follow: keeps a body part centred while you still orbit around it.">
+      <div className="seg cm-modes">
+        {(
+          [
+            ['free', 'Free'],
+            ['pov', 'First person'],
+            ['follow', 'Follow'],
+          ] as const
+        ).map(([m, label]) => (
+          <button key={m} className={mode === m ? 'on' : ''} onClick={() => pick(m)}>
+            {label}
+          </button>
+        ))}
+      </div>
+      {mode === 'free' ? (
+        <div className="pn-note">Studio's own camera. Saved views and camera keys work in any mode.</div>
+      ) : (
+        <>
+          <Field label="Character">
+            <select
+              className="input"
+              value={using != null && nodes[using] ? using : ''}
+              onChange={(e) => {
+                const id = Number(e.target.value);
+                useCamTools.setState({ who: id });
+                setCamTools({ [mode]: { id } } as Patch);
+              }}
+            >
+              {charas.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {displayName(c)}
+                </option>
+              ))}
+            </select>
+          </Field>
+          {mode === 'pov' && (
+            <>
+              <Field label="Field of view">
+                <Slider value={t.pov.fov} min={30} max={110} step={1} onChange={(v) => setCamTools({ pov: { fov: v } })} />
+              </Field>
+              <Field label="Hide the head" help="Hair and accessories won't block the view.">
+                <Switch on={t.pov.hideHead} onChange={(v) => setCamTools({ pov: { hideHead: v } })} />
+              </Field>
+              {t.pov.theirsInstalled && (
+                <Field label="Use RealPOV" help="RealPOV is installed: let it do first person (mouse-look works in Studio's window). Off uses Keyframe Studio's, which follows the head exactly — better for animated shots.">
+                  <Switch on={t.pov.useTheirs} onChange={(v) => setCamTools({ pov: { useTheirs: v } })} />
+                </Field>
+              )}
+            </>
+          )}
+          {mode === 'follow' && (
+            <>
+              <Field label="Keep centred">
+                <div className="ct-chips" style={{ margin: 0 }}>
+                  {t.follow.bones.map((b) => (
+                    <button key={b} className={`btn chip ${t.follow.bone === b ? 'on' : ''}`} onClick={() => setCamTools({ follow: { bone: b } })}>
+                      {BONE_LABEL[b] ?? b}
+                    </button>
+                  ))}
+                </div>
+              </Field>
+              {t.follow.provider !== 'LockOnPlugin' && (
+                <Field label="Smoothness" help="Low = lags behind softly; high = sticks tight.">
+                  <Slider value={t.follow.speed} min={1} max={30} step={0.5} onChange={(v) => setCamTools({ follow: { speed: v } })} />
+                </Field>
+              )}
+              {t.follow.theirsInstalled && (
+                <Field label="Use LockOnPlugin" help="LockOnPlugin is installed: let it follow (its hotkeys keep working). Off uses Keyframe Studio's.">
+                  <Switch on={t.follow.useTheirs} onChange={(v) => setCamTools({ follow: { useTheirs: v } })} />
+                </Field>
+              )}
+            </>
+          )}
+          {provider && <div className="pn-note">Done by {provider}</div>}
+        </>
+      )}
+    </Panel>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Frame guides
+// ---------------------------------------------------------------------------
+
+export function FrameGuidesPanel() {
+  const { t, renderAspect, aspectPick } = useLoadedCamTools();
+  if (!t) return null;
+  const g = t.guides;
+  const setColor = (color: number[]) => {
     try {
       localStorage.setItem(GUIDE_KEY, JSON.stringify(color));
     } catch {
       /* private mode */
     }
-    set({ guides: { color } });
+    setCamTools({ guides: { color } });
   };
-
-  if (!t) return null;
-  const who2 = (on: boolean) => (on ? { id: chara ?? -1 } : {});
-  // while a tool is on, its picker shows (and changes) the character it actually uses
-  const picker = (kind: 'pov' | 'follow') => (
-    <select
-      className="input"
-      value={t[kind].on && nodes[t[kind].id] ? t[kind].id : (chara ?? '')}
-      onChange={(e) => {
-        const id = Number(e.target.value);
-        setWho(id);
-        if (t[kind].on) set({ [kind]: { id } } as Patch);
-      }}
-      title="The character the camera uses"
-    >
-      {charas.map((c) => (
-        <option key={c.id} value={c.id}>
-          {displayName(c)}
-        </option>
-      ))}
-    </select>
-  );
-
+  const toggles = [
+    ['thirds', 'Thirds', 'Rule of thirds'],
+    ['center', 'Centre', 'A cross at the centre'],
+    ['safe', 'Safe areas', 'Inner frames at 90% and 80%: keep faces and text inside for screens that crop the edges'],
+  ] as const;
   return (
-    <>
-      <div className="look-card">
-        <div className="look-card-head">
-          <div>
-            <b>
-              First person
-              <Help text="See through a character's eyes: the camera sits at the eyes and turns with the head (keyed head and neck motion included). Turning it off puts Studio's camera back where it was." />
-            </b>
-          </div>
-          <Switch on={t.pov.on} onChange={(v) => (charas.length ? set({ pov: { on: v, ...who2(v) } }) : toast('No character in the scene', 'error'))} />
+    <Panel title="Frame guides" help="Drawn over Studio's window only — never in renders, snapshots or stills, and hidden while recording.">
+      <Field label="Show">
+        <div className="ct-chips" style={{ margin: 0 }}>
+          {toggles.map(([k, label, hint]) => (
+            <button key={k} className={`btn chip ${g[k] ? 'on' : ''}`} title={hint} onClick={() => setCamTools({ guides: { [k]: !g[k] } })}>
+              {label}
+            </button>
+          ))}
         </div>
-        <div className="look-card-body ct-body">
-          <div className="ct-row">
-            <label>Character</label>
-            {picker('pov')}
-          </div>
-          <div className="ct-row">
-            <label>Field of view</label>
-            <Slider value={t.pov.fov} min={30} max={110} step={1} onChange={(v) => set({ pov: { fov: v } })} />
-          </div>
-          <div className="ct-row">
-            <label>
-              Hide the head
-              <Help text="Hair and accessories won't block the view." />
-            </label>
-            <Switch on={t.pov.hideHead} onChange={(v) => set({ pov: { hideHead: v } })} />
-          </div>
-          {t.pov.theirsInstalled && (
-            <div className="ct-row">
-              <label>
-                Use RealPOV
-                <Help text="RealPOV is installed: let it do first person (mouse-look works in Studio's window). Off uses Keyframe Studio's, which follows the head exactly — better for animated shots." />
-              </label>
-              <Switch on={t.pov.useTheirs} onChange={(v) => set({ pov: { useTheirs: v } })} />
-            </div>
-          )}
-          <div className="ct-foot">{t.pov.on ? `On · ${t.pov.provider}` : `Off · would use ${t.pov.provider}`}</div>
-        </div>
-      </div>
-
-      <div className="look-card">
-        <div className="look-card-head">
-          <div>
-            <b>
-              Follow
-              <Help text="The camera keeps a body part in the centre while it moves — you can still orbit and zoom around it in Studio's window." />
-            </b>
-          </div>
-          <Switch on={t.follow.on} onChange={(v) => (charas.length ? set({ follow: { on: v, ...who2(v) } }) : toast('No character in the scene', 'error'))} />
-        </div>
-        <div className="look-card-body ct-body">
-          <div className="ct-row">
-            <label>Character</label>
-            {picker('follow')}
-          </div>
-          <div className="ct-chips">
-            {t.follow.bones.map((b) => (
-              <button key={b} className={`btn chip ${t.follow.bone === b ? 'on' : ''}`} onClick={() => set({ follow: { bone: b } })}>
-                {BONE_LABEL[b] ?? b}
+      </Field>
+      <Field label="Frame" help="The shape of the picture, with the outside dimmed. Render size = the size set in Shoot › Render.">
+        <div className="ct-chips" style={{ margin: 0 }}>
+          {ASPECTS.map((a) => {
+            const v = a.v === 'render' ? renderAspect : a.v;
+            const on = aspectPick === a.label || (aspectPick === 'Off' && a.v === 0 && !g.aspect);
+            return (
+              <button
+                key={a.label}
+                className={`btn chip ${on ? 'on' : ''}`}
+                disabled={a.v === 'render' && !renderAspect}
+                title={a.v === 'render' ? (renderAspect ? 'The size set in Shoot › Render' : 'Render uses the window size') : undefined}
+                onClick={() => {
+                  useCamTools.setState({ aspectPick: a.label });
+                  setCamTools({ guides: { aspect: v } });
+                }}
+              >
+                {a.label}
               </button>
-            ))}
-          </div>
-          {t.follow.provider !== 'LockOnPlugin' && (
-            <div className="ct-row">
-              <label>
-                Smoothness
-                <Help text="Low = lags behind softly; high = sticks tight." />
-              </label>
-              <Slider value={t.follow.speed} min={1} max={30} step={0.5} onChange={(v) => set({ follow: { speed: v } })} />
-            </div>
-          )}
-          {t.follow.theirsInstalled && (
-            <div className="ct-row">
-              <label>
-                Use LockOnPlugin
-                <Help text="LockOnPlugin is installed: let it follow (its hotkeys keep working). Off uses Keyframe Studio's." />
-              </label>
-              <Switch on={t.follow.useTheirs} onChange={(v) => set({ follow: { useTheirs: v } })} />
-            </div>
-          )}
-          <div className="ct-foot">{t.follow.on ? `On · ${t.follow.provider}` : `Off · would use ${t.follow.provider}`}</div>
+            );
+          })}
         </div>
-      </div>
-
-      <div className="look-card">
-        <div className="look-card-head">
-          <div>
-            <b>
-              Frame guides
-              <Help text="Drawn over Studio's window only — never in renders or snapshots, and hidden while recording." />
-            </b>
-          </div>
+      </Field>
+      {g.aspect > 0 && (
+        <Field label="Dim outside">
+          <Slider value={g.dim} min={0} max={1} step={0.05} onChange={(v) => setCamTools({ guides: { dim: v } })} />
+        </Field>
+      )}
+      <Field label="Colour">
+        <div className="ct-swatches" style={{ margin: 0 }}>
+          {GUIDE_COLORS.map((c) => (
+            <button
+              key={c.label}
+              className={`ct-swatch ${c.c.every((x, i) => Math.abs(x - g.color[i]) < 0.01) ? 'on' : ''}`}
+              title={c.label}
+              style={{ background: `rgb(${c.c.map((x) => Math.round(x * 255)).join(',')})` }}
+              onClick={() => setColor([...c.c, g.color[3]])}
+            />
+          ))}
+          <ColorInput value={g.color} onChange={(c) => setColor([c[0], c[1], c[2], g.color[3]])} />
         </div>
-        <div className="look-card-body ct-body">
-          <div className="ct-row">
-            <label>Thirds</label>
-            <Switch on={t.guides.thirds} onChange={(v) => set({ guides: { thirds: v } })} />
-          </div>
-          <div className="ct-row">
-            <label>Centre</label>
-            <Switch on={t.guides.center} onChange={(v) => set({ guides: { center: v } })} />
-          </div>
-          <div className="ct-row">
-            <label>
-              Safe areas
-              <Help text="Inner frames at 90% and 80%: keep faces and text inside for screens that crop the edges." />
-            </label>
-            <Switch on={t.guides.safe} onChange={(v) => set({ guides: { safe: v } })} />
-          </div>
-          <div className="ct-label">Frame</div>
-          <div className="ct-chips">
-            {ASPECTS.map((a) => {
-              const v = a.v === 'render' ? renderAspect : a.v;
-              const on = aspectPick === a.label || (aspectPick === 'Off' && a.v === 0 && !t.guides.aspect);
-              return (
-                <button
-                  key={a.label}
-                  className={`btn chip ${on ? 'on' : ''}`}
-                  disabled={a.v === 'render' && !renderAspect}
-                  title={a.v === 'render' ? (renderAspect ? 'The size set in Shoot › Render' : 'Render uses the window size') : undefined}
-                  onClick={() => {
-                    setAspectPick(a.label);
-                    set({ guides: { aspect: v } });
-                  }}
-                >
-                  {a.label}
-                </button>
-              );
-            })}
-          </div>
-          <div className="ct-label">Colour</div>
-          <div className="ct-swatches">
-            {GUIDE_COLORS.map((g) => {
-              const on = g.c.every((x, i) => Math.abs(x - t.guides.color[i]) < 0.01);
-              return (
-                <button
-                  key={g.label}
-                  className={`ct-swatch ${on ? 'on' : ''}`}
-                  title={g.label}
-                  style={{ background: `rgb(${g.c.map((x) => Math.round(x * 255)).join(',')})` }}
-                  onClick={() => setGuideColor([...g.c, t.guides.color[3]])}
-                />
-              );
-            })}
-            <ColorInput value={t.guides.color} onChange={(c) => setGuideColor([c[0], c[1], c[2], t.guides.color[3]])} />
-          </div>
-          <div className="ct-row">
-            <label>Strength</label>
-            <Slider value={t.guides.color[3]} min={0.1} max={1} step={0.05} onChange={(a) => setGuideColor([t.guides.color[0], t.guides.color[1], t.guides.color[2], a])} />
-          </div>
-          {t.guides.aspect > 0 && (
-            <div className="ct-row">
-              <label>Dim outside</label>
-              <Slider value={t.guides.dim} min={0} max={1} step={0.05} onChange={(v) => set({ guides: { dim: v } })} />
-            </div>
-          )}
-        </div>
-      </div>
-    </>
+      </Field>
+      <Field label="Strength">
+        <Slider value={g.color[3]} min={0.1} max={1} step={0.05} onChange={(a) => setColor([g.color[0], g.color[1], g.color[2], a])} />
+      </Field>
+    </Panel>
   );
 }

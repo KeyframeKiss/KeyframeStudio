@@ -1,5 +1,6 @@
 import { Children, useCallback, useEffect, useRef, useState } from 'react';
 import { Help } from './Help';
+import { Page, Section } from './Page';
 import { bridge } from '../bridge/client';
 import { call, displayName, showTab, toast, useStore } from '../state/store';
 import { Slider } from './CharacterPanel';
@@ -84,7 +85,7 @@ export function LookPanel() {
   const lutName = (n: Named) => displayName({ name: n.name, nameEn: n.nameEn ?? undefined });
 
   return (
-    <div className="look-page">
+    <Page max={1280}>
       <div className="look-page-bar">
         <span style={{ flex: 1 }} />
         <Help text="Changes show in Studio right away, are undoable (Ctrl+Z) and are saved with the scene." />
@@ -133,7 +134,15 @@ export function LookPanel() {
             <Slider value={e.bloomBlur} min={0.1} max={10} step={0.05} onChange={(v) => patch('effects', { bloomBlur: v })} />
           </div>
         </LookCard>
-        <LookCard title="Vignette" desc="Darkened corners (Studio only has on/off)" on={e.vignette} onToggle={(v) => patch('effects', { vignette: v })} />
+        <LookCard title="Vignette" desc="Darkened corners (Studio only has on/off)" on={e.vignette} onToggle={(v) => patch('effects', { vignette: v })}>
+          <div className="pn-note">
+            Studio's vignette is on or off only. For strength, roundness and colour, use the vignette in{' '}
+            <button className="link-btn" onClick={() => showTab('look', 'effects')}>
+              Effects
+            </button>
+            .
+          </div>
+        </LookCard>
       </LookGroup>
 
       <LookGroup title="Depth & atmosphere" hint="Focus, contact shadows and the air between camera and scene">
@@ -242,24 +251,18 @@ export function LookPanel() {
           </LookCard>
         </LookGroup>
       )}
-    </div>
+    </Page>
   );
 }
 
 function LookGroup({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
   return (
-    <section className="look-group">
-      <div className="look-group-head">
-        <h3>
-          {title}
-          {hint && <Help text={hint} />}
-        </h3>
-      </div>
-      {/* one column per card (they line up as a row), wrapping only when the window is narrow */}
+    <Section title={title} help={hint}>
+      {/* one column per card (they line up as a row, same height), wrapping only when the window is narrow */}
       <div className="look-cards" style={{ '--n': Math.max(1, Children.count(children)) } as React.CSSProperties}>
         {children}
       </div>
-    </section>
+    </Section>
   );
 }
 

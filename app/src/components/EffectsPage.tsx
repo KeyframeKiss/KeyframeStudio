@@ -6,6 +6,7 @@ import { Icon } from './Icon';
 import { ColorInput, Switch } from './LookPanel';
 import { NumberBox } from './MaterialEditor';
 import { Popover } from './Shell';
+import { Col, Columns, Page, Section } from './Page';
 
 // ---------------------------------------------------------------------------
 // Look › Effects: xukmi FX items when that mod is installed (it's what many scenes use), then Keyframe Studio's
@@ -234,38 +235,51 @@ export function EffectsPage() {
   const xkVisible = (names: string[]) => (xk?.items ?? []).filter((i) => i.visible && names.includes(i.effect));
   const studioOn = (k?: string) => !!k && !!studioFx && studioFx[k] === true;
 
-  return (
-    <div className="subpage">
-      <div className="subpage-inner fx-page" style={{ maxWidth: 1180 }}>
-        {xk?.installed && <XukmiSection xk={xk} reload={load} />}
+  const card = (id: string) => {
+    const def = EFFECTS.find((d) => d.id === id)!;
+    return (
+      <EffectCard
+        key={def.id}
+        def={def}
+        values={fx.effects[def.id]}
+        onSet={(v) => set(def.id, v)}
+        onReset={() => bridge.request('fx.reset', { effect: def.id }).then(load)}
+        doubles={[...xkVisible(def.xukmi).map((i) => `xukmi's ${xukmiLabel(i.effect)} (${i.name})`), ...(studioOn(def.studio) ? [`Studio's own ${def.studio === 'dof' ? 'depth of field' : def.studio}`] : [])]}
+      />
+    );
+  };
 
-        <section className="look-group">
-          <div className="look-group-head">
-            <h3>
-              Keyframe Studio effects
-              <Help text="Built in — no mod needed. They run after Studio's own effects, are saved with the scene, Ctrl+Z undoes them, and ◆ beside a value adds a Timeline track for it." />
-            </h3>
-            <span style={{ flex: 1 }} />
-            <button className="btn" onClick={() => bridge.request('fx.reset').then(load)} title="Turn every built-in effect off and back to its starting values">
-              Reset all
-            </button>
-          </div>
-          {!fx.ready && <div className="fx-warn">Effects can't run: {fx.error ?? 'the shaders didn’t load'}</div>}
-          <div className="fx-cards">
-            {EFFECTS.map((def) => (
-              <EffectCard
-                key={def.id}
-                def={def}
-                values={fx.effects[def.id]}
-                onSet={(v) => set(def.id, v)}
-                onReset={() => bridge.request('fx.reset', { effect: def.id }).then(load)}
-                doubles={[...xkVisible(def.xukmi).map((i) => `xukmi's ${xukmiLabel(i.effect)} (${i.name})`), ...(studioOn(def.studio) ? [`Studio's own ${def.studio === 'dof' ? 'depth of field' : def.studio}`] : [])]}
-              />
-            ))}
-          </div>
-        </section>
-      </div>
-    </div>
+  return (
+    <Page>
+      {xk?.installed && <XukmiSection xk={xk} reload={load} />}
+      <Section
+        title="Keyframe Studio effects"
+        help="Built in — no mod needed. They run after Studio's own effects, are saved with the scene, Ctrl+Z undoes them, and ◆ beside a value adds a Timeline track for it."
+        actions={
+          <button className="btn" onClick={() => bridge.request('fx.reset').then(load)} title="Turn every built-in effect off and back to its starting values">
+            Reset all
+          </button>
+        }
+      >
+        {!fx.ready && <div className="fx-warn">Effects can't run: {fx.error ?? 'the shaders didn’t load'}</div>}
+        {/* by kind, balanced by height: atmosphere · colour · lens */}
+        <Columns>
+          <Col label="Atmosphere">
+            {card('fog')}
+            {card('dof')}
+          </Col>
+          <Col label="Colour & detail">
+            {card('grade')}
+            {card('sharpen')}
+          </Col>
+          <Col label="Lens">
+            {card('vignette')}
+            {card('aberration')}
+            {card('grain')}
+          </Col>
+        </Columns>
+      </Section>
+    </Page>
   );
 }
 
@@ -286,13 +300,10 @@ function XukmiSection({ xk, reload }: { xk: Xukmi; reload: () => void }) {
     showTab('look', 'materials');
   };
   return (
-    <section className="look-group">
-      <div className="look-group-head">
-        <h3>
-          xukmi FX in this scene
-          <Help text="xukmi FX Shaders is installed. Its effects are items in the scene; their values are material settings, so Edit opens them in Materials. Hiding one turns it off." />
-        </h3>
-        <span style={{ flex: 1 }} />
+    <Section
+      title="xukmi FX in this scene"
+      help="xukmi FX Shaders is installed. Its effects are items in the scene; their values are material settings, so Edit opens them in Materials. Hiding one turns it off."
+      actions={
         <Popover
           align="right"
           placement="down"
@@ -324,7 +335,8 @@ function XukmiSection({ xk, reload }: { xk: Xukmi; reload: () => void }) {
             </div>
           )}
         </Popover>
-      </div>
+      }
+    >
       {xk.items.length === 0 ? (
         <div className="fx-none">None in this scene. Add one, or use the built-in effects below.</div>
       ) : (
@@ -349,7 +361,7 @@ function XukmiSection({ xk, reload }: { xk: Xukmi; reload: () => void }) {
           ))}
         </div>
       )}
-    </section>
+    </Section>
   );
 }
 

@@ -23,6 +23,7 @@ import { LightRigsPanel } from './LightRigsPanel';
 import { LookPanel } from './LookPanel';
 import { MaterialEditorPage } from './MaterialEditor';
 import { EffectsPage } from './EffectsPage';
+import { Col, Columns, Page } from './Page';
 import { StillsPage } from './StillsPage';
 import { AimLightsPanel, ProjectorsPanel } from './ProjectorsPanel';
 import { StudioWindowPage } from './StudioWindowPage';
@@ -302,16 +303,20 @@ function OutfitPage() {
       </div>
     );
   return (
-    <div className="subpage">
-      <div className="outfit-page">
-        <div className="outfit-col">
-          <CharacterPanel bare sections={['outfit']} />
-        </div>
-        <div className="outfit-col">
-          <OutfitPanel />
-        </div>
-      </div>
-    </div>
+    <Page max={1100}>
+      <Columns>
+        <Col label="What they wear">
+          <div className="outfit-col">
+            <CharacterPanel bare sections={['outfit']} />
+          </div>
+        </Col>
+        <Col label="Outfits & accessories">
+          <div className="outfit-col">
+            <OutfitPanel />
+          </div>
+        </Col>
+      </Columns>
+    </Page>
   );
 }
 
@@ -385,13 +390,11 @@ export function LookWorkspace() {
             {tab === 'effects' && <EffectsPage />}
             {tab === 'materials' && <MaterialEditorPage />}
             {tab === 'lighting' && (
-              <SubPage max={1100}>
-                <div className="pj-rigs">
-                  <LightRigsPanel />
-                </div>
+              <Page>
+                <LightRigsPanel />
                 <ProjectorsPanel />
                 <AimLightsPanel />
-              </SubPage>
+              </Page>
             )}
           </ErrorBoundary>
           <Disconnected />
@@ -448,11 +451,7 @@ export function ShootWorkspace() {
         <CenterTabBar tabs={SHOOT_TABS} tab={tab} pick={pick} />
         <ErrorBoundary key={tab} name={SHOOT_TABS.find((t) => t.id === tab)?.label ?? tab}>
           {tab === 'shots' && <ShotsAndCamera />}
-          {tab === 'audio' && (
-            <div className="subpage">
-              <AudioPage />
-            </div>
-          )}
+          {tab === 'audio' && <AudioPage />}
           {tab === 'render' && (
             <div className="subpage">
               <RenderPanel />
@@ -463,11 +462,7 @@ export function ShootWorkspace() {
               <StillsPage />
             </div>
           )}
-          {tab === 'templates' && (
-            <SubPage max={620}>
-              <TemplatesPanel />
-            </SubPage>
-          )}
+          {tab === 'templates' && <TemplatesPanel />}
         </ErrorBoundary>
         <Disconnected />
       </main>

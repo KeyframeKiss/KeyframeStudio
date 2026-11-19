@@ -173,7 +173,7 @@ export function RenderPanel() {
         )}
       </div>
 
-      <div className="render-grid">
+      <div className="render-grid render-layout">
         <div className="look-card">
           <div className="look-card-head">
             <div>

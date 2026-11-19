@@ -153,7 +153,7 @@ export function StillsPage() {
         </div>
       </div>
 
-      <div className="render-grid">
+      <div className="render-grid stills-layout">
         <div className="look-card">
           <div className="look-card-head">
             <div>

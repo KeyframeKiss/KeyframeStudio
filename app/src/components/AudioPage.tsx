@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Help } from './Help';
+import { Columns, Field, Page, Panel, Section } from './Page';
 import { call, liveTime, refreshAudio, seekNow, showTab, toast, useStore } from '../state/store';
 import { Slider } from './CharacterPanel';
 
@@ -37,104 +37,67 @@ export function AudioPage() {
   };
 
   return (
-    <div className="render-page">
-      <div className="look-card">
-        <div className="look-card-head">
-          <div>
-            <b>
-              Audio track
-              <Help text="A WAV that plays with the timeline (Space) and is saved with the scene" />
-            </b>
-          </div>
-          {audio && (
+    <Page max={1100}>
+      <Section
+        title="Audio track"
+        help="A WAV that plays with the timeline (Space) and is saved with the scene"
+        actions={
+          audio && (
             <button className="btn small" onClick={() => call('audio.clear').then(refreshAudio)} title="Remove the audio from this scene">
               Remove
             </button>
+          )
+        }
+      >
+        <div className="audio-file">
+          <select className="input" value={audio?.file ?? ''} onMouseDown={loadFiles} onFocus={loadFiles} onChange={(e) => e.target.value && load(e.target.value)}>
+            <option value="">{files.length ? '— choose a file from UserData/audio —' : 'No WAV files in UserData/audio yet'}</option>
+            {files.map((f) => (
+              <option key={f.file} value={f.file}>
+                {f.file}
+              </option>
+            ))}
+          </select>
+          {window.studioEx?.openAudio && (
+            <button className="btn solid" onClick={browse} title="Pick a WAV anywhere; it's copied into UserData/audio so the scene can find it">
+              Browse…
+            </button>
           )}
         </div>
-        <div className="look-card-body">
-          <div className="audio-file">
-            <select className="input" value={audio?.file ?? ''} onMouseDown={loadFiles} onFocus={loadFiles} onChange={(e) => e.target.value && load(e.target.value)}>
-              <option value="">{files.length ? '— choose a file from UserData/audio —' : 'No WAV files in UserData/audio yet'}</option>
-              {files.map((f) => (
-                <option key={f.file} value={f.file}>
-                  {f.file}
-                </option>
-              ))}
-            </select>
-            {window.studioEx?.openAudio && (
-              <button className="btn solid" onClick={browse} title="Pick a WAV anywhere; it's copied into UserData/audio so the scene can find it">
-                Browse…
-              </button>
-            )}
-          </div>
-          {audio ? <Waveform /> : <div className="audio-empty">Choose a WAV to see its waveform on the timeline.</div>}
-        </div>
-      </div>
+        {audio ? <Waveform /> : <div className="audio-empty">Choose a WAV to see its waveform on the timeline.</div>}
+      </Section>
 
       {audio && (
-        <div className="render-grid">
-          <div className="look-card">
-            <div className="look-card-head">
-              <div>
-                <b>
-                  Timing
-                  <Help text="Where the audio starts on the timeline" />
-                </b>
-              </div>
-            </div>
-            <div className="look-card-body">
-              <div className="cleanup-row">
-                <span>Starts at</span>
-                <input className="input mono" type="number" step={0.05} value={audio.offset} onChange={(e) => setA({ offset: Number(e.target.value) || 0 })} style={{ width: 90 }} />
-                <span className="hint" style={{ margin: 0 }}>
-                  s
-                </span>
-                <button className="btn small solid" onClick={() => setA({ offset: Math.round(liveTime() * 1000) / 1000 })} title="Start the audio at the playhead">
-                  At playhead
-                </button>
-                <button className="btn small" onClick={() => setA({ offset: 0 })}>
-                  At 0
-                </button>
-              </div>
-              <AudioFit />
-            </div>
-          </div>
-          <div className="look-card">
-            <div className="look-card-head">
-              <div>
-                <b>
-                  Volume
-                  <Help text="How loud it plays in Studio while you animate" />
-                </b>
-              </div>
-            </div>
-            <div className="look-card-body">
-              <div className="cleanup-row">
-                <span>Volume</span>
-                <Slider value={audio.volume} min={0} max={1} step={0.05} onChange={(v) => setA({ volume: v })} />
-              </div>
-              <label className="rigs-opt" style={{ margin: 0 }}>
-                <input type="checkbox" checked={audio.muted} onChange={(e) => setA({ muted: e.target.checked })} /> Mute while animating
-              </label>
-            </div>
-          </div>
-          <div className="look-card">
-            <div className="look-card-head">
-              <div>
-                <b>
-                  Lip-sync
-                  <Help text="Mouth keys from this audio, with A / I / U / E / O shapes. It's with the face controls (Animate › Face) so you can see and fix the result in one place: select the character who speaks, then Generate lip-sync." />
-                </b>
-              </div>
-              <button className="btn small solid" onClick={() => showTab('animate', 'face')}>
-                Animate › Face ›
+        <Columns>
+          <Panel title="Timing" help="Where the audio starts on the timeline">
+            <Field label="Starts at (s)">
+              <input className="input mono" type="number" step={0.05} value={audio.offset} onChange={(e) => setA({ offset: Number(e.target.value) || 0 })} style={{ width: 80, flex: 'none' }} />
+              <button className="btn small solid" onClick={() => setA({ offset: Math.round(liveTime() * 1000) / 1000 })} title="Start the audio at the playhead">
+                Playhead
               </button>
-            </div>
-          </div>
-        </div>
+              <button className="btn small" onClick={() => setA({ offset: 0 })} title="Start the audio at 0 s">
+                0
+              </button>
+            </Field>
+            <AudioFit />
+          </Panel>
+          <Panel title="Volume" help="How loud it plays in Studio while you animate">
+            <Field label="Volume">
+              <Slider value={audio.volume} min={0} max={1} step={0.05} onChange={(v) => setA({ volume: v })} />
+            </Field>
+            <label className="rigs-opt" style={{ margin: 0 }}>
+              <input type="checkbox" checked={audio.muted} onChange={(e) => setA({ muted: e.target.checked })} /> Mute while animating
+            </label>
+          </Panel>
+          <Panel title="Lip-sync" help="Mouth keys from this audio, with A / I / U / E / O shapes.">
+            <div className="pn-note">It's with the face controls so you can see and fix the result in one place: select the character who speaks, then Generate lip-sync.</div>
+            <button className="btn solid" onClick={() => showTab('animate', 'face')}>
+              Open Animate › Face
+            </button>
+          </Panel>
+        </Columns>
       )}
-    </div>
+    </Page>
   );
 }
 

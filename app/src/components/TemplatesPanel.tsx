@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Help } from './Help';
+import { Columns, Page, Panel, Section } from './Page';
 import { ask } from './Dialogs';
 import { bridge } from '../bridge/client';
 import { ALL_PARTS, applyTemplate, gatherTemplate, TEMPLATE_PARTS, templateSummary, type TemplateData, type TemplatePart } from '../lib/templates';
@@ -50,65 +50,67 @@ export function TemplatesPanel() {
   };
 
   return (
-    <div className="panel-body templates">
-      <div className="section">
-        <h3>
-          Templates
-          <Help text="A template is a scene's staging without its characters: timeline length, shots and cameras, look, lighting rigs, render settings and audio. Save one, then apply any part of it to another scene." />
-        </h3>
-        <div style={{ display: 'flex', gap: 4 }}>
-          <input className="input" style={{ flex: 1, minWidth: 0 }} placeholder="Save this scene as…" value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && save()} />
-          <button className="btn primary" disabled={!name.trim()} onClick={save}>
-            Save
-          </button>
-        </div>
-      </div>
-      {list.length > 0 && (
-        <div className="section">
-          <h3>Saved</h3>
-          <div className="clip-list">
-            {list.map((t) => (
-              <div key={t.file} className={`clip-item ${open === t.file ? 'open' : ''}`}>
-                <div className="clip-row" role="button" tabIndex={0} onClick={() => setOpen(open === t.file ? null : t.file)} onKeyDown={(e) => e.key === 'Enter' && setOpen(open === t.file ? null : t.file)}>
-                  <span className="clip-text">
-                    <b>{t.name}</b>
-                    <small>{templateSummary(t.data) || 'empty'}</small>
-                  </span>
-                </div>
-                {open === t.file && (
-                  <div className="clip-apply">
-                    {TEMPLATE_PARTS.filter((p) => t.data[p.id] !== undefined).map((p) => (
-                      <label key={p.id} className="rigs-opt" style={{ margin: '0 0 4px' }}>
-                        <input
-                          type="checkbox"
-                          checked={parts.has(p.id)}
-                          onChange={(e) =>
-                            setParts((s) => {
-                              const n = new Set(s);
-                              if (e.target.checked) n.add(p.id);
-                              else n.delete(p.id);
-                              return n;
-                            })
-                          }
-                        />{' '}
-                        {p.label}
-                      </label>
-                    ))}
-                    <div style={{ display: 'flex', gap: 4, marginTop: 6 }}>
-                      <button className="btn primary" style={{ flex: 1 }} onClick={() => apply(t)}>
-                        Apply to this scene
-                      </button>
-                      <button className="btn" title="Delete this template" onClick={async () => (await ask(`Delete the template “${t.name}”?`)) && call<Template[]>('store.delete', { kind: 'templates', file: t.file }).then((r) => r && setList(r))}>
-                        ✕
-                      </button>
-                    </div>
-                  </div>
-                )}
+    <Page max={1000}>
+      <Section
+        title="Templates"
+        help="A template is a scene's staging without its characters: timeline length, shots and cameras, look, lighting rigs, render settings and audio. Save one, then apply any part of it to another scene."
+      >
+        <Columns widths="minmax(0, 1fr) minmax(0, 1.3fr)">
+          <Panel title="Save this scene">
+            <div className="pn-note">Keeps the timeline length, shots and cameras, look, lighting rigs, render settings and audio — not the characters.</div>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <input className="input" style={{ flex: 1, minWidth: 0 }} placeholder="Template name…" value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && save()} />
+              <button className="btn primary" disabled={!name.trim()} onClick={save}>
+                Save
+              </button>
+            </div>
+          </Panel>
+          <Panel title="Saved templates" help="Click one to choose which parts to apply">
+            {!list.length && <div className="pn-note">None yet — save this scene's staging on the left.</div>}
+        <div className="clip-list">
+          {list.map((t) => (
+            <div key={t.file} className={`clip-item ${open === t.file ? 'open' : ''}`}>
+              <div className="clip-row" role="button" tabIndex={0} onClick={() => setOpen(open === t.file ? null : t.file)} onKeyDown={(e) => e.key === 'Enter' && setOpen(open === t.file ? null : t.file)}>
+                <span className="clip-text">
+                  <b>{t.name}</b>
+                  <small>{templateSummary(t.data) || 'empty'}</small>
+                </span>
               </div>
-            ))}
-          </div>
+              {open === t.file && (
+                <div className="clip-apply">
+                  {TEMPLATE_PARTS.filter((p) => t.data[p.id] !== undefined).map((p) => (
+                    <label key={p.id} className="rigs-opt" style={{ margin: '0 0 4px' }}>
+                      <input
+                        type="checkbox"
+                        checked={parts.has(p.id)}
+                        onChange={(e) =>
+                          setParts((s) => {
+                            const n = new Set(s);
+                            if (e.target.checked) n.add(p.id);
+                            else n.delete(p.id);
+                            return n;
+                          })
+                        }
+                      />{' '}
+                      {p.label}
+                    </label>
+                  ))}
+                  <div style={{ display: 'flex', gap: 4, marginTop: 6 }}>
+                    <button className="btn primary" style={{ flex: 1 }} onClick={() => apply(t)}>
+                      Apply to this scene
+                    </button>
+                    <button className="btn" title="Delete this template" onClick={async () => (await ask(`Delete the template “${t.name}”?`)) && call<Template[]>('store.delete', { kind: 'templates', file: t.file }).then((r) => r && setList(r))}>
+                      ✕
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
         </div>
-      )}
-    </div>
+          </Panel>
+        </Columns>
+      </Section>
+    </Page>
   );
 }

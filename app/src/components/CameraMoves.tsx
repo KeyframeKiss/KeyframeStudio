@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Help } from './Help';
+import { Field, Panel } from './Page';
 import { call, liveTime, refreshTimeline, seekNow, toast, togglePlay, useStore } from '../state/store';
 import { Slider } from './CharacterPanel';
 
@@ -43,16 +43,10 @@ export function CameraMoves({ onDone }: { onDone: () => void }) {
   };
 
   return (
-    <div className="look-card">
-      <div className="look-card-head">
-        <div>
-          <b>
-            Camera moves
-            <Help text={`A ready-made move starting from the camera as it is now. ${m.hint}. ${move === 'crane' || move === 'truck' ? 'Distance is relative to how far the camera is from its subject. ' : ''}Frame the start in Studio first; camera keys inside the move are replaced.`} />
-          </b>
-        </div>
-      </div>
-      <div className="look-card-body">
+    <Panel
+      title="Camera moves"
+      help={`A ready-made move starting from the camera as it is now. ${m.hint}. ${move === 'crane' || move === 'truck' ? 'Distance is relative to how far the camera is from its subject. ' : ''}Frame the start in Studio first; camera keys inside the move are replaced.`}
+    >
       <div className="cam-moves">
         {(Object.keys(MOVES) as Move[]).map((k) => (
           <button key={k} className={`btn solid ${move === k ? 'on' : ''}`} title={MOVES[k].hint} onClick={() => setMove(k)}>
@@ -60,8 +54,7 @@ export function CameraMoves({ onDone }: { onDone: () => void }) {
           </button>
         ))}
       </div>
-      <div className="cleanup-row">
-        <span>Direction</span>
+      <Field label="Direction">
         <div className="seg">
           {m.dirs.map((d, i) => (
             <button key={d} className={(i === 0) === first ? 'on' : ''} onClick={() => setFirst(i === 0)}>
@@ -69,22 +62,13 @@ export function CameraMoves({ onDone }: { onDone: () => void }) {
             </button>
           ))}
         </div>
-      </div>
-      <div className="cleanup-row">
-        <span>
-          {move === 'crane' || move === 'truck' ? 'Distance' : 'Amount'} ({m.unit})
-        </span>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <Slider value={amounts[move]} min={m.min} max={m.max} step={m.step} onChange={(v) => setAmounts((a) => ({ ...a, [move]: v }))} />
-        </div>
-      </div>
-      <div className="cleanup-row">
-        <span>Length</span>
-        <input className="input mono" type="number" min={0.2} max={duration} step={0.5} value={secs} onChange={(e) => setSecs(Number(e.target.value))} style={{ width: 70 }} />
-        <span className="hint" style={{ margin: 0 }}>
-          s
-        </span>
-        <div className="seg" style={{ marginLeft: 'auto' }}>
+      </Field>
+      <Field label={`${move === 'crane' || move === 'truck' ? 'Distance' : 'Amount'} (${m.unit})`}>
+        <Slider value={amounts[move]} min={m.min} max={m.max} step={m.step} onChange={(v) => setAmounts((a) => ({ ...a, [move]: v }))} />
+      </Field>
+      <Field label="Length (s)">
+        <input className="input mono" type="number" min={0.2} max={duration} step={0.5} value={secs} onChange={(e) => setSecs(Number(e.target.value))} style={{ width: 64, flex: 'none' }} />
+        <div className="seg">
           <button className={smooth ? 'on' : ''} onClick={() => setSmooth(true)} title="Ease in and out">
             Smooth
           </button>
@@ -92,7 +76,7 @@ export function CameraMoves({ onDone }: { onDone: () => void }) {
             Linear
           </button>
         </div>
-      </div>
+      </Field>
       <div style={{ display: 'flex', gap: 6 }}>
         <button className="btn primary" style={{ flex: 1 }} disabled={!(secs > 0)} onClick={add} title="Starts from the camera as it is now, at the playhead">
           Add {m.label.toLowerCase()} at playhead
@@ -101,7 +85,6 @@ export function CameraMoves({ onDone }: { onDone: () => void }) {
           ▶ Preview
         </button>
       </div>
-      </div>
-    </div>
+    </Panel>
   );
 }

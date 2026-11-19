@@ -6,6 +6,7 @@ import { Help } from './Help';
 import { Icon } from './Icon';
 import { ColorInput, Switch } from './LookPanel';
 import { Popover } from './Shell';
+import { Section } from './Page';
 
 // Look › Lighting: projectors (light / shadow shapes on characters and the set) and lights that aim at a character.
 
@@ -120,13 +121,10 @@ export function ProjectorsPanel() {
   };
 
   return (
-    <section className="look-group">
-      <div className="look-group-head">
-        <h3>
-          Projectors
-          <Help text="Shapes of light or shadow cast onto characters and the set — window light, blinds, leaf shadows, a heart spot. Each one is a folder in the scene: move and turn it with Studio's handles, animate it like any object, delete it like any object. Saved with the scene." />
-        </h3>
-        <span style={{ flex: 1 }} />
+    <Section
+      title="Projectors"
+      help="Shapes of light or shadow cast onto characters and the set — window light, blinds, leaf shadows, a heart spot. Each one is a folder in the scene: move and turn it with Studio's handles, animate it like any object, delete it like any object. Saved with the scene."
+      actions={
         <Popover
           align="right"
           placement="down"
@@ -160,9 +158,10 @@ export function ProjectorsPanel() {
             </div>
           )}
         </Popover>
-      </div>
+      }
+    >
       {!items ? null : items.length === 0 ? (
-        <div className="fx-none">No projectors in this scene.</div>
+        <div className="pn-note">No projectors in this scene — add one: window light, blinds, leaf shadows, a heart spot…</div>
       ) : (
         <div className="fx-cards">
           {items.map((p) => (
@@ -170,7 +169,7 @@ export function ProjectorsPanel() {
           ))}
         </div>
       )}
-    </section>
+    </Section>
   );
 }
 
@@ -337,21 +336,19 @@ export function AimLightsPanel() {
   };
   if (!st) return null;
   return (
-    <section className="look-group">
-      <div className="look-group-head">
-        <h3>
-          Aim lights
-          <Help text="A spot or directional light keeps pointing at a character while they move — a key light that follows the face. Turning it off puts the light back where it was." />
-        </h3>
-        <span style={{ flex: 1 }} />
-        {st.lightManager && (
+    <Section
+      title="Aim lights"
+      help="A spot or directional light keeps pointing at a character while they move — a key light that follows the face. Turning it off puts the light back where it was."
+      actions={
+        st.lightManager && (
           <label className="pj-inline" title="LightManager is installed: it does aiming at the body (spot lights), saved in its own format. Off uses Keyframe Studio's for everything.">
             Use LightManager <Switch on={st.useLightManager} onChange={(v) => set({ useLightManager: v })} />
           </label>
-        )}
-      </div>
+        )
+      }
+    >
       {st.lights.length === 0 ? (
-        <div className="fx-none">No spot or directional lights in the scene — add one in Studio, or apply a lighting rig above.</div>
+        <div className="pn-note">No spot or directional lights in the scene — add one in Studio, or apply a lighting rig above.</div>
       ) : (
         <div className="pj-aims">
           {st.lights.map((l) => (
@@ -389,6 +386,6 @@ export function AimLightsPanel() {
           ))}
         </div>
       )}
-    </section>
+    </Section>
   );
 }
