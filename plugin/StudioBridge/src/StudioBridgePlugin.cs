@@ -10,6 +10,7 @@ using UnityEngine;
 namespace StudioEX.Bridge
 {
     [BepInPlugin(GUID, Name, Version)]
+    [BepInDependency(Attachments.Guid, BepInDependency.DependencyFlags.SoftDependency)]
     [BepInProcess("CharaStudio")]
     [BepInDependency(TimelineGuid, BepInDependency.DependencyFlags.SoftDependency)]
     public class StudioBridgePlugin : BaseUnityPlugin
@@ -62,6 +63,7 @@ namespace StudioEX.Bridge
             DiagApi.Register(_router);
             UndoStack.Register(_router);
             ObjectApi.Register(_router);
+            Attachments.Register(_router);
             CameraApi.Register(_router);
             ConfigApi.Register(_router);
             LookApi.Register(_router);

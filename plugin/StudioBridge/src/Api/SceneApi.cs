@@ -25,6 +25,9 @@ namespace StudioEX.Bridge.Api
             }
         }
 
+        internal static string CurrentFile;
+        internal static int SaveCount;
+
         public static void Register(CommandRouter r)
         {
             r.Add("scene.get", a => GetScene());
@@ -34,7 +37,12 @@ namespace StudioEX.Bridge.Api
             r.Add("scene.load", LoadScene);
             r.Add("scene.import", ImportScene);
             // Same as Studio's Save button (new timestamped file + notification); mods' save hooks run.
-            r.Add("scene.save", a => { Studio.systemButtonCtrl.OnClickSave(); return true; });
+            r.Add("scene.save", a => {
+                var before = SaveCount;
+                Studio.systemButtonCtrl.OnClickSave();
+                if (before == SaveCount) throw new BridgeException("Studio did not confirm the scene save");
+                return a.GetBool("returnName") ? (object)CurrentFile : true;
+            });
             r.Add("scene.new", a => { Studio.InitScene(); return true; });
             r.Add("scene.rename", Rename);
         }
@@ -186,6 +194,7 @@ namespace StudioEX.Bridge.Api
             }
             return new Dictionary<string, object>
             {
+                { "fileName", CurrentFile },
                 { "roots", roots },
                 { "nodes", nodes },
                 { "selected", SelectedIds() },

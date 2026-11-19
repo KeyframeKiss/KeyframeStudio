@@ -4,6 +4,7 @@ import { Icon } from './Icon';
 import { NumberField, TimeField } from './TopBar';
 import { ViewportControls } from './ViewportControls';
 import {
+  saveSceneFile,
   jumpKey,
   keyChanged,
   lsSet,
@@ -36,7 +37,7 @@ const WORKSPACES: { id: Workspace; label: string; icon: string; hint: string }[]
 export function Header() {
   const workspace = useStore((s) => s.workspace);
   const status = useStore((s) => s.status);
-  const hello = useStore((s) => s.hello);
+  const sceneName = useStore((s) => s.sceneName);
   const [pinned, setPinned] = useState(false);
   useEffect(() => {
     window.studioEx?.getAlwaysOnTop().then(setPinned);
@@ -44,9 +45,18 @@ export function Header() {
 
   return (
     <header className="header">
-      <div className="brand" title={hello ? `Keyframe Studio · bridge v${hello.plugin}` : 'Keyframe Studio'}>
-        <img className="brand-logo" src="brand/logo.png" alt="Keyframe Studio" draggable={false} />
-      </div>
+      <Popover placement="down" trigger={(_, toggle) => (
+        <button className="brand scene-trigger" onClick={toggle} title={`Scene menu · ${sceneName ?? 'Current scene'}`}>
+          <img className="brand-logo" src="brand/logo.png" alt="Keyframe Studio" draggable={false} />
+          <span>{sceneName ?? 'Scene'} ▾</span>
+        </button>
+      )}>
+        {(close) => <div className="layout-menu">
+          <b>{sceneName ?? 'Current scene'}</b>
+          <button className="menu-item" onClick={() => { close(); useStore.setState({ sceneFilter: 'recent' }); openLibrary('scenes'); }}>Open recent</button>
+          <button className="menu-item" disabled={status !== 'open'} onClick={() => { close(); void saveSceneFile(); }}>Save as new scene file</button>
+        </div>}
+      </Popover>
       <nav className="ws-tabs">
         {WORKSPACES.map((w) => (
           <button key={w.id} className={`ws-tab ${workspace === w.id ? 'active' : ''}`} onClick={() => setWorkspace(w.id)} title={w.hint}>
@@ -188,62 +198,90 @@ export function TransportBar() {
   const snap = useStore((s) => s.snap);
   const disabled = status !== 'open' || !tl.has;
 
-  return (
-    <div className="transport">
-      <div className="group">
-        <button className="btn icon" title="Go to start (Home)" onClick={() => seek(0)} disabled={disabled}>
-          <Icon name="toStart" />
+  const bar = useRef<HTMLDivElement>(null);
+  const [barWidth, setBarWidth] = useState(0);
+  const compact = barWidth < 1120;
+  const narrow = barWidth < 660;
+  useLayoutEffect(() => {
+    const el = bar.current!;
+    const update = () => setBarWidth(el.clientWidth);
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  const navigation = (
+    <div className="group">
+      <button className="btn icon" title="Go to start (Home)" onClick={() => seek(0)} disabled={disabled}>
+        <Icon name="toStart" />
+      </button>
+      <button className="btn icon" title="Previous key (Shift+←)" onClick={() => jumpKey(-1)} disabled={disabled}>
+        <Icon name="prevKey" />
+      </button>
+      <button className="btn icon" title="Previous frame (←)" onClick={() => stepFrames(-1)} disabled={disabled}>
+        <Icon name="prevFrame" />
+      </button>
+      <button className="btn icon" title="Next frame (→)" onClick={() => stepFrames(1)} disabled={disabled}>
+        <Icon name="nextFrame" />
+      </button>
+      <button className="btn icon" title="Next key (Shift+→)" onClick={() => jumpKey(1)} disabled={disabled}>
+        <Icon name="nextKey" />
+      </button>
+    </div>
+  );
+  const settings = (
+    <Popover
+      trigger={(open, toggle) => (
+        <button className={`btn chip ${open ? 'on' : ''}`} onClick={toggle} disabled={disabled} title="Length, frame rate, playback speed">
+          {(tl?.duration ?? 0).toFixed(2)}s · {tl?.fps ?? 60} fps{tl.has && tl.speed !== 1 ? ` · ${tl.speed.toFixed(2)}×` : ''}
+          <Icon name="chevronDown" size={11} />
         </button>
-        <button className="btn icon" title="Previous key (Shift+←)" onClick={() => jumpKey(-1)} disabled={disabled}>
-          <Icon name="prevKey" />
-        </button>
-        <button className="btn icon" title="Previous frame (←)" onClick={() => stepFrames(-1)} disabled={disabled}>
-          <Icon name="prevFrame" />
-        </button>
-        <button className={`btn play ${tl?.playing ? 'on' : ''}`} title="Play / Pause (Space)" onClick={togglePlay} disabled={disabled}>
-          <Icon name={tl?.playing ? 'pause' : 'play'} />
-        </button>
-        <button className="btn icon" title="Next frame (→)" onClick={() => stepFrames(1)} disabled={disabled}>
-          <Icon name="nextFrame" />
-        </button>
-        <button className="btn icon" title="Next key (Shift+→)" onClick={() => jumpKey(1)} disabled={disabled}>
-          <Icon name="nextKey" />
-        </button>
+      )}
+    >
+      <div style={{ display: 'grid', gridTemplateColumns: '70px 1fr', gap: 8, alignItems: 'center', padding: 6 }}>
+        <span className="hint" style={{ margin: 0 }}>Length</span>
+        <NumberField value={tl?.duration ?? 10} format={(v) => v.toFixed(2) + 's'} parse={(s) => parseTime(s.replace(/s$/, ''), tl?.fps ?? 60)} onCommit={(v) => v > 0 && setSettings({ duration: Math.min(3600, v) })} />
+        <span className="hint" style={{ margin: 0 }}>Frame rate</span>
+        <NumberField value={tl?.fps ?? 60} format={(v) => `${v} fps`} parse={(s) => Math.round(Number(s.replace(/fps/i, ''))) || null} onCommit={(v) => setSettings({ fps: Math.max(1, Math.min(240, Math.round(v))) })} />
+        <span className="hint" style={{ margin: 0 }}>Speed</span>
+        <NumberField
+          value={tl?.speed ?? 1}
+          format={(v) => v.toFixed(2) + '×'}
+          parse={(s) => {
+            const n = Number(s.replace('×', ''));
+            return Number.isFinite(n) ? n : null;
+          }}
+          onCommit={(v) => v > 0 && setSettings({ speed: Math.min(10, v) })}
+        />
       </div>
-      <TimeField />
-      <Popover
-        trigger={(open, toggle) => (
-          <button className={`btn chip ${open ? 'on' : ''}`} onClick={toggle} disabled={disabled} title="Length, frame rate, playback speed">
-            {(tl?.duration ?? 0).toFixed(2)}s · {tl?.fps ?? 60} fps{tl.has && tl.speed !== 1 ? ` · ${tl.speed.toFixed(2)}×` : ''}
-            <Icon name="chevronDown" size={11} />
-          </button>
-        )}
-      >
-        <div style={{ display: 'grid', gridTemplateColumns: '70px 1fr', gap: 8, alignItems: 'center', padding: 6 }}>
-          <span className="hint" style={{ margin: 0 }}>Length</span>
-          <NumberField value={tl?.duration ?? 10} format={(v) => v.toFixed(2) + 's'} parse={(s) => parseTime(s.replace(/s$/, ''), tl?.fps ?? 60)} onCommit={(v) => v > 0 && setSettings({ duration: Math.min(3600, v) })} />
-          <span className="hint" style={{ margin: 0 }}>Frame rate</span>
-          <NumberField value={tl?.fps ?? 60} format={(v) => `${v} fps`} parse={(s) => Math.round(Number(s.replace(/fps/i, ''))) || null} onCommit={(v) => setSettings({ fps: Math.max(1, Math.min(240, Math.round(v))) })} />
-          <span className="hint" style={{ margin: 0 }}>Speed</span>
-          <NumberField
-            value={tl?.speed ?? 1}
-            format={(v) => v.toFixed(2) + '×'}
-            parse={(s) => {
-              const n = Number(s.replace('×', ''));
-              return Number.isFinite(n) ? n : null;
-            }}
-            onCommit={(v) => v > 0 && setSettings({ speed: Math.min(10, v) })}
-          />
-        </div>
-      </Popover>
-
-      <div className="spacer" />
-
+    </Popover>
+  );
+  const viewOptions = (
+    <>
       <ViewportControls />
       <span className="sep" />
       <button className={`btn icon ${snap ? 'on' : ''}`} title="Snap keys to frames (Alt while dragging bypasses)" onClick={() => useStore.setState({ snap: !snap })}>
         <Icon name="magnet" />
       </button>
+    </>
+  );
+  const changed = (
+    <button className={`btn solid ${pending > 0 ? 'attention' : ''}`} onClick={keyChanged} disabled={disabled} title={`Key everything you changed in Studio (Shift+Enter)${autoKeyNew ? ' — creates tracks for moved bones/objects' : ''}`}>
+      Key changes{pending > 0 ? <span className="badge">{pending}</span> : null}
+    </button>
+  );
+
+  return (
+    <div ref={bar} className={`transport ${compact ? 'compact-transport' : ''}`}>
+      <button className={`btn play ${tl?.playing ? 'on' : ''}`} title="Play / Pause (Space)" onClick={togglePlay} disabled={disabled}>
+        <Icon name={tl?.playing ? 'pause' : 'play'} />
+      </button>
+      {!narrow && navigation}
+      <TimeField />
+      {!compact && settings}
+      <div className="spacer" />
+      {!compact && viewOptions}
       <Popover
         align="right"
         width={240}
@@ -253,12 +291,15 @@ export function TransportBar() {
           </button>
         )}
       >
-        <TimelineMoreMenu />
+        <div className="transport-menu">
+          {narrow && navigation}
+          {compact && <>{settings}{viewOptions}</>}
+          {narrow && changed}
+          <TimelineMoreMenu />
+        </div>
       </Popover>
-      <span className="sep" />
-      <button className={`btn solid ${pending > 0 ? 'attention' : ''}`} onClick={keyChanged} disabled={disabled} title={`Key everything you changed in Studio (Shift+Enter)${autoKeyNew ? ' — creates tracks for moved bones/objects' : ''}`}>
-        Key changes{pending > 0 ? <span className="badge">{pending}</span> : null}
-      </button>
+
+      {!narrow && changed}
       <div className="split-btn">
         <button className={`btn ${autoKey ? 'rec' : 'solid'}`} onClick={() => setAutoKey(!autoKey)} disabled={disabled} title="Auto-key (R): whatever you change — in Studio, or in the Face tab — is keyed at the playhead">
           <span className="rec-dot" /> Auto

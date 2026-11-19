@@ -2,14 +2,15 @@ import { useState } from 'react';
 import { Help } from './Help';
 import { ask } from './Dialogs';
 import { bridge } from '../bridge/client';
-import { deleteMacro, describeStep, isRecording, retarget, saveMacro, startRecording, stopRecording, updateMacro, useMacros, useRecording, type Macro } from '../lib/macros';
+import { deleteMacro, describeStep, isRecording, replayProblem, retarget, saveMacro, startRecording, stopRecording, updateMacro, useMacros, useRecording, type Macro } from '../lib/macros';
 import { refreshTimeline, toast, useStore } from '../state/store';
 import { PromptDialog, type PromptState } from './PromptDialog';
 
 /** Replay a quick action, step by step; stops at the first step Studio refuses. */
 export async function runMacro(m: Macro) {
   const sel = useStore.getState().studioSelection;
-  if (m.useSelection && !sel.length && m.steps.some((s) => 'id' in s.args || 'ids' in s.args)) return toast(`Select what “${m.name}” should work on first`);
+  const problem = replayProblem(m, sel);
+  if (problem) return toast(problem, 'error');
   let n = 0;
   for (const step of m.steps) {
     try {

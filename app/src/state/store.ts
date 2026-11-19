@@ -78,6 +78,12 @@ export interface AppState {
   audio: AudioInfo | null;
   /** Shot sequencer: the scene's shots (time ranges with their own camera). */
   shots: Shot[];
+  workingShotId: string | null;
+  frameFullTimeline: boolean;
+  loopShot: boolean;
+  renderShotIds: string[] | null;
+  sceneName: string | null;
+  sceneFilter: 'all' | 'fav' | 'recent';
   audioPeaks: { perSecond: number; peaks: number[] } | null;
   /** Key edits were made but Studio held them back to protect the unkeyed changes (the pose doesn't show them yet). */
   poseStale: boolean;
@@ -108,7 +114,7 @@ const WORKSPACES: Workspace[] = ['animate', 'pose', 'look', 'shoot', 'library', 
 
 export function setWorkspace(w: Workspace) {
   const cur = get().workspace;
-  set({ workspace: w, ...(w === 'settings' && cur !== 'settings' ? { lastWorkspace: cur } : {}) });
+  set({ workspace: w, ...(w === 'animate' ? {} : { loopShot: false }), ...(w === 'settings' && cur !== 'settings' ? { lastWorkspace: cur } : {}) });
   if (w !== 'settings') lsSet('studioex.workspace', w);
 }
 
@@ -155,7 +161,7 @@ export const useStore = create<AppState>(() => ({
   poseStale: false,
   audio: null,
   audioPeaks: null,
-  shots: [],
+  shots: [], workingShotId: null, frameFullTimeline: false, loopShot: false, renderShotIds: null, sceneName: null, sceneFilter: 'all',
   groupMode: (lsGet('studioex.groupMode') as 'objects' | 'folders') || 'objects',
   settingsOpen: false,
   workspace: WORKSPACES.includes(lsGet('studioex.workspace') as Workspace) && lsGet('studioex.workspace') !== 'settings' ? (lsGet('studioex.workspace') as Workspace) : 'animate',
@@ -171,6 +177,22 @@ export const useStore = create<AppState>(() => ({
 // ---------------------------------------------------------------------------
 // Key what changed / auto-key
 // ---------------------------------------------------------------------------
+export function workingShot(s: AppState) {
+  return s.shots.find((shot) => shot.id === s.workingShotId);
+}
+
+export function renderShots(ids: string[]) {
+  set({ renderShotIds: ids, loopShot: false });
+  showTab('shoot', 'render');
+}
+
+export async function saveSceneFile() {
+  const result = await call<boolean | string>('scene.save', { returnName: true });
+  if (typeof result === 'string') toast(`Saved ${result}`);
+  else if (result === true) toast('Save requested in CharaStudio');
+  return result;
+}
+
 /** Re-read the scene's shots. */
 export async function refreshShots() {
   const s = await bridge.request<Shot[]>('shots.get').catch(() => null);
@@ -272,13 +294,18 @@ export function editTranslation(text: string) {
 
 /** Switch workspace and bring one of its center sub-tabs forward (e.g. Animate › Face). */
 export function showTab(workspace: Workspace, tab: string) {
+  let stored = false;
   try {
     localStorage.setItem(`kf.center.${workspace}`, tab);
+    stored = true;
   } catch {
     /* ignore */
   }
+  const alreadyMounted = get().workspace === workspace;
   setWorkspace(workspace);
-  requestAnimationFrame(() => window.dispatchEvent(new CustomEvent('kf:center-tab', { detail: { ws: workspace, tab } })));
+  const selectTab = () => window.dispatchEvent(new CustomEvent('kf:center-tab', { detail: { ws: workspace, tab } }));
+  if (alreadyMounted) selectTab();
+  else if (!stored) requestAnimationFrame(selectTab);
 }
 
 /** Switch workspace and open (and scroll to) one of its side-panel groups. */
@@ -430,7 +457,7 @@ export async function refreshScene() {
       if (n.type.startsWith('Char')) n.type = 'Char'; // older bridge builds sent CharFemale/CharMale
       nodes[n.id] = n;
     }
-    set((s) => ({ nodes, roots: data.roots, studioSelection: data.selected, revision: s.revision + 1 }));
+    set((s) => ({ nodes, sceneName: data.fileName ?? null, roots: data.roots, studioSelection: data.selected, revision: s.revision + 1 }));
   } catch {
     /* ignore */
   }
@@ -457,6 +484,7 @@ export function initBridge() {
     set({ status: s as ConnectionStatus });
     // Offline: stop extrapolating the playhead (and the canvases redrawing every frame for it).
     if (s !== 'open') {
+      set({ workingShotId: null, frameFullTimeline: false, loopShot: false, renderShotIds: null, sceneName: null });
       const tl = get().tl;
       if (tl?.playing) set({ tl: { ...tl, playing: false, time: liveTime() } });
     }
@@ -481,6 +509,12 @@ export function initBridge() {
   });
   bridge.on('timeline.tick', (d) => {
     const tick = d as TimelineState;
+    const state = get();
+    const shot = workingShot(state);
+    if (state.loopShot && shot && tick.playing && !state.pending &&
+        (tick.time >= Math.min(shot.end, tick.duration) || tick.time < shot.start)) {
+      if (shot.start < tick.duration) bridge.send('timeline.seek', { t: shot.start });
+    }
     // While scrubbing, ticks echoing *earlier* seeks arrive after the newer optimistic position:
     // keep our time for a moment so the playhead doesn't jump backwards.
     if (!tick.playing && performance.now() - lastLocalSeek < 250) {
@@ -494,7 +528,9 @@ export function initBridge() {
   });
   bridge.on('timeline.changed', scheduleTimelineRefresh);
   bridge.on('scene.changed', scheduleSceneRefresh);
+  bridge.on('scene.file', (name) => set({ sceneName: typeof name === 'string' ? name : null }));
   bridge.on('scene.reset', () => {
+    set({ workingShotId: null, frameFullTimeline: false, loopShot: false, renderShotIds: null, sceneName: null, shots: [] });
     set({ selKeys: new Set(), selTracks: new Set(), clipboard: null });
     window.setTimeout(() => {
       refreshAudio(); // a loaded scene may bring its own audio and shots

@@ -1,6 +1,6 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { bridge } from '../bridge/client';
-import { call, displayName, selectedCharacters, toast, useStore, type LibraryPage } from '../state/store';
+import { call, openLibrary, showTab, workingShot, renderShots, displayName, selectedCharacters, toast, useStore, type LibraryPage } from '../state/store';
 import { FaceAnimation } from './FaceAnimation';
 import { Group, SelectionHeader, Stack } from './InspectorStack';
 import { AudioPage } from './AudioPage';
@@ -28,6 +28,7 @@ import { AimLightsPanel, ProjectorsPanel } from './ProjectorsPanel';
 import { StudioWindowPage } from './StudioWindowPage';
 import { LookPresets } from './LookPresets';
 import { ModSettings } from './ModSettings';
+import { AttachmentPanel } from './AttachmentPanel';
 import { ObjectPanel } from './ObjectPanel';
 import { Outliner } from './Outliner';
 import { PosePanel } from './PosePanel';
@@ -39,7 +40,7 @@ import { ErrorBoundary } from './ErrorBoundary';
 import { SHORTCUTS } from './shortcuts';
 import { DiagnosticsPage } from './DiagnosticsPage';
 
-function Disconnected() {
+export function Disconnected() {
   const status = useStore((s) => s.status);
   const hello = useStore((s) => s.hello);
   if (status === 'open' && (!hello || hello.timeline)) return null;
@@ -58,6 +59,7 @@ function Disconnected() {
             Start <code>CharaStudio.exe</code> with <code>KKStudioEX.Bridge</code> in <code>BepInEx/plugins</code>. Keyframe Studio connects automatically.
           </>
         )}
+        <div><button className="btn solid" onClick={() => openLibrary('about')}>Open diagnostics</button></div>
       </div>
     </div>
   );
@@ -152,6 +154,9 @@ const ANIMATE_TABS: SubTab[] = [
 ];
 
 export function AnimateWorkspace() {
+  const shot = useStore(workingShot);
+  const loop = useStore((s) => s.loopShot);
+  const canRender = useStore((s) => s.hello?.features?.some((f) => f.id === 'render' && f.status !== 'off'));
   const sizes = usePanelSizes('animate');
   const [tab, pick] = useCenterTab('animate', ANIMATE_TABS);
   return (
@@ -160,6 +165,15 @@ export function AnimateWorkspace() {
       <ScenePanel />
       <main className="ws-center">
         <CenterTabBar tabs={ANIMATE_TABS} tab={tab} pick={pick} />
+        {shot && <div className="working-shot">
+          <b title={shot.name}>{shot.name}</b><span>{shot.start.toFixed(2)}–{shot.end.toFixed(2)} s</span>
+          <button className={`btn small ${loop ? 'on' : ''}`} aria-pressed={loop} onClick={() => useStore.setState({ loopShot: !loop })}>Loop shot</button>
+          {canRender && <button className="btn small" onClick={() => renderShots([shot.id])}>Render this shot</button>}
+          <button className="btn small" onClick={() => {
+            useStore.setState({ workingShotId: null, frameFullTimeline: true, loopShot: false });
+            showTab('animate', 'timeline');
+          }}>Show full timeline</button>
+        </div>}
         <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', position: 'relative' }}>
           <ErrorBoundary key={tab} name={ANIMATE_TABS.find((t) => t.id === tab)?.label ?? tab}>
             {tab === 'timeline' && <DopeSheet />}
@@ -254,6 +268,7 @@ export function PoseWorkspace() {
 }
 
 function PoseInspector() {
+  const item = useStore(s => s.studioSelection.length === 1 && s.nodes[s.studioSelection[0]]?.type === 'Item' ? s.studioSelection[0] : null);
   const any = useStore((s) => s.studioSelection.length > 0);
   const isChar = useStore((s) => s.studioSelection.length > 0 && s.nodes[s.studioSelection[0]]?.type === 'Char');
   return (
@@ -264,6 +279,9 @@ function PoseInspector() {
           <CharacterPanel bare sections={['anim', 'pose', 'abmx']} />
         </Group>
       )}
+      {item !== null && <Group ws="pose" id="attachment" icon="target" title="Attachment">
+        <AttachmentPanel key={item} id={item} />
+      </Group>}
       {any && (
         <Group ws="pose" id={isChar ? 'object' : 'object-item'} icon="target" title="Transform" defaultOpen={!isChar}>
           <ObjectPanel bare />

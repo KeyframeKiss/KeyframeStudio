@@ -39,6 +39,7 @@ export interface SceneNode {
 }
 
 export interface SceneData {
+  fileName?: string | null;
   roots: number[];
   nodes: SceneNode[];
   selected: number[];

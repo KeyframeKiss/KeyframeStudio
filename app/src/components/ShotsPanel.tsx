@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Help } from './Help';
 import { ask } from './Dialogs';
-import { call, editTimeline, liveTime, refreshShots, seekNow, showTab, toast, useStore, type Shot } from '../state/store';
+import { call, editTimeline, liveTime, refreshShots, seekNow, renderShots, showTab, toast, useStore, type Shot } from '../state/store';
 
 /**
  * Shoot › Shots: a storyboard of shots (time ranges with their own camera and notes). Click a shot to edit it
@@ -65,7 +65,7 @@ export function ShotsPanel() {
               Build camera cuts
             </button>
             {canRender && (
-              <button className="btn small solid" onClick={() => showTab('shoot', 'render')} title="Each shot as its own video">
+              <button className="btn small solid" onClick={() => renderShots(ordered.map((shot) => shot.id))} title="Each shot as its own video">
                 Render shots ›
               </button>
             )}
@@ -108,6 +108,12 @@ export function ShotsPanel() {
         )}
         {cur && (
           <div className="shot-edit">
+            <button className="btn small primary" onClick={() => {
+              useStore.setState({ workingShotId: cur.id, frameFullTimeline: false, loopShot: false });
+              showTab('animate', 'timeline');
+              seekNow(cur.start);
+            }}>Work on this shot</button>
+            {canRender && <button className="btn small solid" onClick={() => renderShots([cur.id])}>Render this shot</button>}
             <span className="shot-edit-n">#{n(cur)}</span>
             <input className="input" value={cur.name} onChange={(e) => useStore.setState({ shots: shots.map((x) => (x.id === cur.id ? { ...x, name: e.target.value } : x)) })} onBlur={(e) => patch(cur.id, { name: e.target.value || `Shot ${n(cur)}` })} style={{ width: 150 }} title="Name" />
             <input className="input mono" type="number" step={1 / fps} value={cur.start} onChange={(e) => patch(cur.id, { start: Number(e.target.value) })} title="Start (s)" style={{ width: 76 }} />

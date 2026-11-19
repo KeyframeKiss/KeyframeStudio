@@ -79,11 +79,20 @@ for (const s of chosen) {
   const t0 = Date.now();
   const { t, cleanups } = makeContext(studio, hello);
   let crashed = null;
+  let timer;
   try {
     await freshStudio(studio);
-    await Promise.race([s.run(t), new Promise((_, rej) => setTimeout(() => rej(new Error(`timed out after ${SUITE_TIMEOUT / 1000}s`)), SUITE_TIMEOUT))]);
+    // A pending suite can still send commands and write files. Stop the process before cleanup or another reset.
+    timer = setTimeout(() => {
+      console.error(`${s.name} timed out after ${SUITE_TIMEOUT / 1000}s. Run stopped. Test files and scene settings may need cleanup.`);
+      studio.close();
+      process.exit(1);
+    }, SUITE_TIMEOUT);
+    await s.run(t);
   } catch (e) {
     if (!e.skip) crashed = e;
+  } finally {
+    clearTimeout(timer);
   }
   for (const fn of cleanups.reverse()) {
     try {

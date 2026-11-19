@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon, TypeIcon } from './Icon';
 import { Popover } from './Shell';
+import { AttachmentPanel } from './AttachmentPanel';
 import { ContextMenu, type MenuItem } from './ContextMenu';
 import { call, displayName, lsSet, refreshScene, setNodeVisible, setWorkspace, showPanel, studioSelect, toast, useStore } from '../state/store';
 import type { SceneNode } from '../bridge/types';
@@ -28,6 +29,7 @@ function lsBool(k: string, def: boolean) {
 
 export function Outliner() {
   const nodes = useStore((s) => s.nodes);
+  const [attachmentId, setAttachmentId] = useState<number | null>(null);
   const roots = useStore((s) => s.roots);
   const selection = useStore((s) => s.studioSelection);
   const tracks = useStore((s) => s.tracks);
@@ -57,7 +59,7 @@ export function Outliner() {
 
   // reset view state on scene change
   useEffect(() => {
-    const reset = () => setExpanded(new Set());
+    const reset = () => { setExpanded(new Set()); setAttachmentId(null); };
     window.addEventListener('studioex:scene-reset', reset);
     return () => window.removeEventListener('studioex:scene-reset', reset);
   }, []);
@@ -239,6 +241,9 @@ export function Outliner() {
         lsSet('studioex.filter', 'selected');
       },
     });
+    if (n.type === 'Item') items.push({ label: 'Attach to…', action: () => {
+      setAttachmentId(n.id);
+    } });
     if (n.type === 'Char') items.push({ label: 'Open Character panel', action: () => showPanel('pose', 'character') });
     items.push({
       label: 'Add animation track…',
@@ -459,7 +464,31 @@ export function Outliner() {
         <span className="spacer" style={{ flex: 1 }} />
         <span title="Keyboard: ↑↓ select · ←→ collapse/expand · Shift+→ expand branch · H hide · Esc deselect">⌨ ↑↓←→</span>
       </div>
+      {attachmentId !== null && nodes[attachmentId]?.type === 'Item' && (
+        <AttachmentDialog key={attachmentId} id={attachmentId} name={displayName(nodes[attachmentId])} close={() => {
+          setAttachmentId(null);
+          window.dispatchEvent(new CustomEvent('kf:attachment-dialog-closed', { detail: attachmentId }));
+        }} />
+      )}
       {menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />}
     </>
+  );
+}
+
+
+function AttachmentDialog({ id, name, close }: { id: number; name: string; close: () => void }) {
+  const ref = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    const dialog = ref.current;
+    dialog?.showModal();
+    return () => dialog?.close();
+  }, []);
+  return (
+    <dialog ref={ref} className="dialog attachment-dialog" aria-label={`Attach ${name}`}
+      onCancel={e => { e.preventDefault(); close(); }} onKeyDown={e => e.stopPropagation()}>
+      <h2>Attach {name}</h2>
+      <AttachmentPanel id={id} focusSearch />
+      <button className="btn" onClick={close}>Done</button>
+    </dialog>
   );
 }

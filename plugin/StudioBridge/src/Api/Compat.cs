@@ -43,6 +43,11 @@ namespace StudioEX.Bridge.Api
         {
             new Feature
             {
+                Id = "attachments", Label = "Prop attachments", ModName = "NodesConstraints", Guid = Attachments.Guid,
+                Tested = new string[0], Probe = Attachments.Probe, Prefixes = new[] { "attachment." },
+            },
+            new Feature
+            {
                 Id = "timeline", Label = "Animation (dope sheet, graph, keys, auto-key, ghosts)",
                 ModName = "Timeline", Guid = StudioBridgePlugin.TimelineGuid, Tested = new[] { "1.3.0" },
                 Probe = TimelineApi.Probe, Prefixes = new[] { "timeline.", "motion." },

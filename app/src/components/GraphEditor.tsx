@@ -15,6 +15,7 @@ import {
   seekNow,
   selectKeys,
   targetTracks,
+  workingShot,
   useStore,
   visibleTracks,
 } from '../state/store';
@@ -169,6 +170,8 @@ type Interaction =
   | { mode: 'drag'; ch: Channel; keyIndex: number; x: number; y: number; axis: 'none' | 'time' | 'value'; dt: number; dv: number };
 
 export function GraphEditor() {
+  const shot = useStore(workingShot);
+  const full = useStore((s) => s.frameFullTimeline);
   const tracks = useStore((s) => s.tracks);
   const selKeys = useStore((s) => s.selKeys);
   const selTracks = useStore((s) => s.selTracks);
@@ -251,7 +254,7 @@ export function GraphEditor() {
     return yMin + (1 - (y - RULER_H - 8) / h) * (yMax - yMin);
   };
 
-  const frame = useCallback(() => {
+  const frame = useCallback((automatic = true) => {
     const { visible: vis } = state.current;
     const dur = useStore.getState().tl?.duration ?? 10;
     let tLo = Infinity, tHi = -Infinity, vLo = Infinity, vHi = -Infinity;
@@ -267,6 +270,8 @@ export function GraphEditor() {
       tLo = 0;
       tHi = dur;
     }
+    if (automatic && full) { tLo = 0; tHi = Math.max(0.5, dur); }
+    if (shot) { tLo = shot.start; tHi = shot.end; }
     if (!Number.isFinite(vLo)) {
       vLo = -1;
       vHi = 1;
@@ -280,7 +285,7 @@ export function GraphEditor() {
     view.current = { t0: tLo - 6 / (w / (tHi - tLo)), pps: w / (tHi - tLo), yMin: vLo - pad, yMax: vHi + pad };
     dirty.current = true;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [shot?.id, shot?.start, shot?.end, full]);
 
   // auto-frame when the set of channels changes
   const channelSig = visible.map((c) => c.id).join('|') + normalize;
@@ -289,7 +294,7 @@ export function GraphEditor() {
   }, [channelSig, frame]);
 
   useEffect(() => {
-    const onFrame = () => frame();
+    const onFrame = () => frame(false);
     window.addEventListener('studioex:frame', onFrame);
     return () => window.removeEventListener('studioex:frame', onFrame);
   }, [frame]);

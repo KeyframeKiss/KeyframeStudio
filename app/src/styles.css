@@ -5225,3 +5225,40 @@ html.frameless .tooltip {
   width: auto;
   flex: 1;
 }
+
+.transport.compact-transport {
+  gap: 4px;
+  padding-inline: 4px;
+  flex-wrap: wrap;
+}
+.compact-transport .time {
+  width: 132px;
+  max-width: 100%;
+  min-width: 0;
+  flex-shrink: 1;
+}
+.transport-menu { display: grid; gap: 6px; }
+.transport-menu .sep { display: none; }
+.disconnected .card .btn { margin-top: 12px; }
+.portrait-name { position: absolute; bottom: 6px; left: 6px; background: var(--bg-1); padding: 2px 6px; border-radius: 3px; }
+
+.scene-trigger { color: var(--text-1); background: transparent; border: 0; cursor: pointer; padding: 0; }
+.scene-trigger span, .working-shot b { max-width: 14ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.working-shot { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 4px 8px; background: var(--bg-2); }
+@media (max-width: 1200px) { .scene-trigger .brand-logo { display: none; } }
+
+.attachment-dialog { width: min(510px, calc(100vw - 32px)); color: var(--text-0); margin: auto; }
+.attachment-dialog::backdrop { background: rgba(0, 0, 0, .55); }
+
+.attachment-picker, .attachment-search { display: grid; gap: 8px; min-width: 0; }
+.attachment-picker { margin-bottom: 8px; }
+.attachment-picker fieldset, .attachment-search input { min-width: 0; }
+.attachment-filters { display: flex; flex-wrap: wrap; gap: 4px; margin-block: 4px; }
+.attachment-filters [aria-pressed=true] { color: var(--text-0); border-color: var(--accent); background: var(--bg-3); }
+.attachment-targets { max-height: min(220px, 30vh); overflow-y: auto; border: 1px solid var(--line); border-radius: 6px; }
+.attachment-targets label { display: flex; align-items: center; gap: 8px; padding: 6px 8px; cursor: pointer; }
+.attachment-targets label:hover, .attachment-targets label:has(:checked) { background: var(--bg-3); }
+.attachment-targets input { accent-color: var(--accent); }
+.attachment-targets span, .attachment-picker > button { overflow-wrap: anywhere; }
+.attachment-targets small { margin-left: auto; color: var(--text-2); }
+.attachment-empty { padding: 10px; color: var(--text-1); }

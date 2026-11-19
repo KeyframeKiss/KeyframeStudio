@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { parseTags, useLibMeta } from '../lib/libmeta';
 import { pressable } from '../lib/pressable';
-import { call, setWorkspace, toast, useStore } from '../state/store';
+import { saveSceneFile, call, setWorkspace, toast, useStore } from '../state/store';
 import { ContextMenu, type MenuItem } from './ContextMenu';
 import { PromptDialog, type PromptState } from './PromptDialog';
 import { StarIcon } from './StarIcon';
@@ -22,8 +22,9 @@ export function SceneBrowser() {
   const [scenes, setScenes] = useState<SceneFile[]>([]);
   const [query, setQuery] = useState('');
   const [sel, setSel] = useState<string | null>(null);
-  const [confirm, setConfirm] = useState<{ text: string; run: () => void } | null>(null);
-  const [show, setShow] = useState<Show>('all');
+  const [confirm, setConfirm] = useState<{ title: string; action: string; run: () => void } | null>(null);
+  const show = useStore((s) => s.sceneFilter);
+  const setShow = (sceneFilter: Show) => useStore.setState({ sceneFilter });
   const [sort, setSort] = useState<Sort>('modified');
   const [tagFilter, setTagFilter] = useState<string[]>([]);
   const [menu, setMenu] = useState<{ x: number; y: number; items: MenuItem[] } | null>(null);
@@ -72,10 +73,10 @@ export function SceneBrowser() {
     });
   const selected = scenes.find((s) => s.path === sel);
 
-  const ask = (text: string, run: () => void) => setConfirm({ text, run });
+  const ask = (title: string, action: string, run: () => void) => setConfirm({ title, action, run });
 
   const loadScene = (s: SceneFile) =>
-    ask(`Load “${s.rel}”? The current scene is replaced — unsaved changes are lost.`, async () => {
+    ask(`Load “${s.rel}”?`, 'Load scene', async () => {
       if ((await call('scene.load', { path: s.path })) !== undefined) {
         lib.markUsed(s.rel);
         toast('Loading scene…');
@@ -121,7 +122,7 @@ export function SceneBrowser() {
           <button
             className="btn solid"
             onClick={() =>
-              ask('Start a new, empty scene? Unsaved changes are lost.', async () => {
+              ask('Start a new scene?', 'Start new scene', async () => {
                 if ((await call('scene.new')) !== undefined) close();
               })
             }
@@ -132,8 +133,7 @@ export function SceneBrowser() {
             className="btn primary"
             title="Save the current scene as a new file (same as Studio's Save)"
             onClick={async () => {
-              if ((await call('scene.save')) !== undefined) {
-                toast('Scene saved');
+              if ((await saveSceneFile()) !== undefined) {
                 window.setTimeout(load, 1500);
               }
             }}
@@ -261,23 +261,22 @@ export function SceneBrowser() {
       {prompt && <PromptDialog p={prompt} onClose={() => setPrompt(null)} />}
       {confirm && (
         <div className="overlay" onClick={(e) => { e.stopPropagation(); setConfirm(null); }}>
-          <div className="dialog" style={{ width: 420 }} onClick={(e) => e.stopPropagation()}>
-            <h2>Are you sure?</h2>
-            <p style={{ color: 'var(--text-1)', lineHeight: 1.6 }}>{confirm.text}</p>
+          <div className="dialog" role="alertdialog" aria-modal="true" aria-labelledby="scene-confirm-title" onKeyDown={(e) => { if (e.key === 'Escape') setConfirm(null); }} style={{ width: 420 }} onClick={(e) => e.stopPropagation()}>
+            <h2 id="scene-confirm-title">{confirm.title}</h2>
+            <p style={{ color: 'var(--text-1)', lineHeight: 1.6 }}>You will lose unsaved changes in the current scene.</p>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-              <button className="btn" onClick={() => setConfirm(null)}>
+              <button className="btn" autoFocus onClick={() => setConfirm(null)}>
                 Cancel
               </button>
               <button
                 className="btn primary"
-                autoFocus
                 onClick={() => {
                   const run = confirm.run;
                   setConfirm(null);
                   run();
                 }}
               >
-                Continue
+                {confirm.action}
               </button>
             </div>
           </div>

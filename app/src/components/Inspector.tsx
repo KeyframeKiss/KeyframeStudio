@@ -240,6 +240,8 @@ export function useGettingStarted() {
 
 function Tips({ compact }: { compact?: boolean }) {
   const { steps, done } = useGettingStarted();
+  const emptyScene = useStore((s) => !s.roots.length);
+  if (emptyScene && !done) return <div className="panel-body">Add a character or item in CharaStudio to start animating.</div>;
   const items = [
     <>Pick an object in the <b>Scene</b> list (or click it in Studio)</>,
     <>Click <b>+ Track</b> above the dope sheet and choose what to animate</>,

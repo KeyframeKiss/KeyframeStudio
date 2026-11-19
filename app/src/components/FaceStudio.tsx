@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { bridge } from '../bridge/client';
 import { ALL_FACE_BONES, FACE_FEATURES, RANGES, isPaired, twinOf, type Channel, type FaceBone } from '../lib/faceBones';
-import { selectedCharacters, toast, useStore } from '../state/store';
+import { showTab, selectedCharacters, toast, useStore } from '../state/store';
 import { NumberField } from './TopBar';
 import { FacePresets } from './FacePresets';
 import { ExpressionControls } from './ExpressionControls';
@@ -351,6 +351,7 @@ export function FaceStudio() {
           <div className="face-nav-hint">Click a part to edit it · Drag to move · Right-drag to turn · Wheel to zoom · Double-click to reset</div>
         </div>
         <div className="face-view-bar">
+          <button className="btn solid" onClick={() => showTab('animate', 'face')}>Animate expression</button>
           <div className="seg">
             {ANGLES.map((a) => (
               <button

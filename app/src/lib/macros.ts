@@ -29,9 +29,21 @@ const subscribe = (l: () => void) => {
 };
 let version = 0;
 
+const replacesScene = (cmd: string) => cmd === 'scene.new' || cmd === 'scene.load';
+
+/** Check every step before replay so a blocked action cannot partially edit the scene. */
+export function replayProblem(m: Macro, selection: number[]): string | undefined {
+  if (m.steps.some((step) => replacesScene(step.cmd))) {
+    return `"${m.name}" contains a step that replaces the open scene. Record this action again without that step.`;
+  }
+  if (m.useSelection && !selection.length && m.steps.some(({ args }) =>
+    typeof args.id === 'number' || Array.isArray(args.ids) || (typeof args.oci === 'number' && args.oci >= 0)
+  )) return `Select what "${m.name}" should work on first`;
+}
+
 /** Called by the bridge client for every request. */
 export function noteRequest(cmd: string, args: Record<string, unknown>) {
-  if (!recording || SKIP.test(cmd) || (args as { noUndo?: boolean }).noUndo) return;
+  if (!recording || replacesScene(cmd) || SKIP.test(cmd) || (args as { noUndo?: boolean }).noUndo) return;
   recording.push({ cmd, args: JSON.parse(JSON.stringify(args)) });
   version++;
   emit();

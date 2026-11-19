@@ -43,8 +43,16 @@ export function RenderPanel() {
   const shots = useStore((s) => s.shots);
   const [st, setSt] = useState<RenderStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [what, setWhat] = useState<'timeline' | 'shots'>('timeline');
-  const [skip, setSkip] = useState<Set<string>>(new Set()); // shots left out of a shot render
+  const request = useStore((s) => s.renderShotIds);
+  const [what, setWhat] = useState<'timeline' | 'shots'>(request ? 'shots' : 'timeline');
+  const [included, setIncluded] = useState<string[] | null>(request);
+  useEffect(() => {
+    if (!request) return;
+    setWhat('shots');
+    setIncluded(request);
+    useStore.setState({ renderShotIds: null });
+  }, [request]);
+  const isIncluded = (id: string) => included === null || included.includes(id);
   const [queue, setQueue] = useState<QueueState | null>(null);
   const poll = useRef(0);
   const qpoll = useRef(0);
@@ -92,7 +100,7 @@ export function RenderPanel() {
     }
   };
   const startQueue = async () => {
-    const ids = shots.filter((s) => !skip.has(s.id)).map((s) => s.id);
+    const ids = shots.filter((s) => isIncluded(s.id)).map((s) => s.id);
     if (!ids.length) return toast('Tick at least one shot');
     const r = await call<QueueState>('render.queue', { ids });
     if (!r) return;
@@ -126,7 +134,7 @@ export function RenderPanel() {
   const s = st.settings;
   const size = s.resize ? SIZES.find((x) => x.w === s.width && x.h === s.height)?.label ?? 'Custom' : 'Window';
   const dims = s.resize ? `${s.width}×${s.height}` : 'window size';
-  const picked = shots.filter((x) => !skip.has(x.id));
+  const picked = shots.filter((x) => isIncluded(x.id));
   // VideoExport's number means loops in Timeline mode, seconds in Seconds mode, frames in Frames mode
   const seconds = what === 'shots' ? picked.reduce((a, x) => a + (x.end - x.start), 0) : s.limit === 'Timeline' && tl ? tl.duration * Math.max(1, s.limitNumber) : s.limit === 'Seconds' ? s.limitNumber : null;
   const frames = seconds != null ? Math.round(seconds * s.fps) : null;
@@ -160,7 +168,7 @@ export function RenderPanel() {
           </button>
         ) : (
           <button className="btn primary render-go" disabled={what === 'shots' && !picked.length} onClick={start} title="Studio plays the timeline and captures every frame from the current camera — leave it alone until it finishes">
-            {what === 'shots' ? `Render ${picked.length} shot${picked.length === 1 ? '' : 's'}` : 'Render'}
+            {what === 'shots' ? (picked.length === 1 ? `Render “${picked[0].name}”` : `Render ${picked.length} shots`) : 'Render'}
           </button>
         )}
       </div>
@@ -229,16 +237,9 @@ export function RenderPanel() {
                   <label key={x.id} className="render-shot">
                     <input
                       type="checkbox"
-                      checked={!skip.has(x.id)}
+                      checked={isIncluded(x.id)}
                       disabled={running}
-                      onChange={(e) =>
-                        setSkip((k) => {
-                          const n = new Set(k);
-                          if (e.target.checked) n.delete(x.id);
-                          else n.add(x.id);
-                          return n;
-                        })
-                      }
+                      onChange={(e) => setIncluded(e.target.checked ? [...picked.map((s) => s.id), x.id] : picked.filter((s) => s.id !== x.id).map((s) => s.id))}
                     />
                     {x.thumb ? <img src={x.thumb} alt="" onClick={() => seekNow(x.start)} /> : <span className="render-shot-ph">#{i + 1}</span>}
                     <span className="render-shot-text">

@@ -6,7 +6,7 @@ import { PreviewPanel } from './components/PreviewPanel';
 import { RecordingBadge } from './components/QuickActions';
 import { Header } from './components/Shell';
 import { SHORTCUTS } from './components/shortcuts';
-import { AnimateWorkspace, LibraryWorkspace, LookWorkspace, PoseWorkspace, SettingsWorkspace, ShootWorkspace } from './components/Workspaces';
+import { Disconnected, AnimateWorkspace, LibraryWorkspace, LookWorkspace, PoseWorkspace, SettingsWorkspace, ShootWorkspace } from './components/Workspaces';
 import { PRESETS, toFlat } from './lib/curve';
 import { isInteractive } from './lib/pressable';
 import { startAutoTranslate } from './lib/translate';
@@ -83,6 +83,7 @@ export function App() {
       const el = e.target as HTMLElement;
       if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable)) return;
       // Help overlay open: only its own keys (Esc / ?) — never delete keys etc. behind it.
+      if (document.querySelector('.overlay, dialog[open]') && !st.helpOpen) return;
       if (st.helpOpen && k !== 'escape' && e.key !== '?') return;
       // Holding a key: only stepping/zooming should repeat; K, Delete, Ctrl+Z… would spam edits.
       // Keyboard navigation: a control reached with the keyboard handles its own Enter/Space. (After a mouse
@@ -93,6 +94,14 @@ export function App() {
       if (e.repeat && !k.startsWith('arrow') && k !== '+' && k !== '-' && k !== '=') {
         e.preventDefault();
         return;
+      }
+      const editsSelection = ctrl ? ['a', 'c', 'v', 'd', 'g'].includes(k)
+        : ['delete', 'backspace', 'k', 'i', 'tab', 'f', '+', '=', '-'].includes(k) || /^[1-5]$/.test(k);
+      if (editsSelection) {
+        const sheet = document.querySelector('[data-timeline-editor]');
+        const inspector = el?.closest?.('[data-group="keys"]');
+        const otherPanel = el?.closest?.('.panel, .shoot-top');
+        if (!inspector && (!sheet || otherPanel)) return;
       }
       let handled = true;
       if (ctrl && k === 'z' && !e.shiftKey) undo();
@@ -152,10 +161,16 @@ export function App() {
     <div className="shell">
       <Header />
       <ErrorBoundary key={workspace} name={`The ${workspace[0].toUpperCase() + workspace.slice(1)} workspace`}>
-        {workspace === 'animate' && <AnimateWorkspace />}
-        {workspace === 'pose' && <PoseWorkspace />}
-        {workspace === 'look' && <LookWorkspace />}
-        {workspace === 'shoot' && <ShootWorkspace />}
+        {status !== 'open' && workspace !== 'library' && workspace !== 'settings' ? (
+          <main style={{ position: 'relative', flex: 1 }}><Disconnected /></main>
+        ) : (
+          <>
+            {workspace === 'animate' && <AnimateWorkspace />}
+            {workspace === 'pose' && <PoseWorkspace />}
+            {workspace === 'look' && <LookWorkspace />}
+            {workspace === 'shoot' && <ShootWorkspace />}
+          </>
+        )}
         {workspace === 'library' && <LibraryWorkspace />}
         {workspace === 'settings' && <SettingsWorkspace />}
       </ErrorBoundary>

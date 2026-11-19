@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Help } from './Help';
 import { bridge } from '../bridge/client';
 import type { WireTrack } from '../bridge/types';
-import { call, displayName, editTimeline, liveTime, seekNow, selectedCharacters, toast, useStore } from '../state/store';
+import { showTab, lsSet, call, displayName, editTimeline, liveTime, seekNow, selectedCharacters, toast, useStore } from '../state/store';
 import { AudioPanel } from './AudioPanel';
 import { ContextMenu, type MenuItem } from './ContextMenu';
 import { ExpressionControls, type ExpressionField } from './ExpressionControls';
@@ -60,22 +60,22 @@ export function FaceAnimation() {
   // one auto-key for everything: the transport's Auto (R) also keys the changes made here
   const autoKey = useStore((s) => s.autoKey);
   const autoNew = useStore((s) => s.autoKeyNew);
-  const [img, setImg] = useState<string | null>(null);
+  const [preview, setPreview] = useState<{ id: number; url: string | null } | null>(null);
 
   // ---------------- close-up (one request in flight; not while playing) ----------------
   const view = useRef({ busy: false, again: false });
   const want = useRef(id);
   want.current = id;
   const refreshView = useCallback(() => {
-    if (id == null || status !== 'open') return;
+    const cid = want.current;
+    if (cid == null || useStore.getState().status !== 'open') return;
     const v = view.current;
     if (v.busy) return void (v.again = true);
     v.busy = true;
-    const cid = id;
     bridge
       .request<string>('face.view', { id: cid, angle: 0, zoom: 1, size: 480 })
-      .then((url) => want.current === cid && setImg(url))
-      .catch(() => {})
+      .then((url) => want.current === cid && setPreview({ id: cid, url: url || null }))
+      .catch(() => want.current === cid && setPreview({ id: cid, url: null }))
       .finally(() => {
         v.busy = false;
         if (v.again) {
@@ -83,11 +83,11 @@ export function FaceAnimation() {
           refreshView();
         }
       });
-  }, [id, status]);
+  }, []);
   const stepTime = playing ? -1 : Math.round(time * 1000);
   useEffect(() => {
     if (!playing) refreshView();
-  }, [refreshView, revision, stepTime, playing]);
+  }, [id, status, refreshView, revision, stepTime, playing]);
 
   // ---------------- a change → key it at the playhead (after the drag settles) ----------------
   const toKey = useRef(new Set<string>());
@@ -129,31 +129,45 @@ export function FaceAnimation() {
       </div>
     );
 
+  const name = displayName(nodes[id]);
+  const portrait = preview?.id === id ? preview : null;
+  const keyLabel = chars.length > 1 ? `Key ${chars.length} faces` : 'Key face';
   return (
     <div className="face-anim">
       <div className="face-anim-bar">
         <span className="type-icon type-Char">♀</span>
         <b>{displayName(nodes[id])}</b>
+        <button className="btn small solid" onClick={() => {
+          lsSet('studioex.face.feature', 'eyes');
+          showTab('pose', 'face');
+        }}>Edit face shape</button>
         {chars.length > 1 && <span className="kbd">+{chars.length - 1}</span>}
         <span className="sel-bar-sub">at {time.toFixed(2)}s</span>
         <Help text="Move the playhead, change the face below. With Auto-key on (Auto under the timeline, R) each change is keyed there; otherwise press Key face when it looks right. ◆ beside a control: it has a key at the playhead. Look direction and the Blink / Lip sync switches can't be animated in Timeline." />
         <span style={{ flex: 1 }} />
         <span className={`face-auto ${autoKey ? 'on' : ''}`} title="Auto-key is the Auto button under the timeline (R)">
-          <span className="rec-dot" /> {autoKey ? (autoNew ? 'Auto-key: changes are keyed' : 'Auto-key: changes to animated parts are keyed') : 'Auto-key off — press Key face'}
+          <span className="rec-dot" /> {autoKey ? (autoNew ? 'Auto-key: changes are keyed' : 'Auto-key: changes to animated parts are keyed') : `Auto-key off — press ${keyLabel}`}
         </span>
         <button
           className="btn primary"
           onClick={async () => {
             const n = await keyFace(chars, FACE_ROWS.map((r) => r.model));
-            if (n) toast(`Keyed the whole face at ${liveTime().toFixed(2)}s`);
+            if (n) toast(`Keyed ${chars.length === 1 ? name : `${chars.length} faces`} at ${liveTime().toFixed(2)}s`);
           }}
           title="Key every face track (brows, eyes, mouth, blush, tears, neck) at the playhead"
         >
-          <Icon name="key" size={13} /> Key face
+          <Icon name="key" size={13} /> {keyLabel}
         </button>
       </div>
       <div className="face-anim-main">
-        <div className="face-anim-view">{img ? <img src={img} alt="Face close-up" draggable={false} /> : <div className="empty">Rendering close-up…</div>}</div>
+        <div className="face-anim-view" style={{ position: 'relative' }}>
+          {portrait?.url ? <img src={portrait.url} alt={`Face preview of ${name}`} draggable={false} /> :
+            <div className="empty" role="status">
+              {portrait ? 'Preview unavailable' : playing ? 'Pause playback to load the preview' : `Loading preview of ${name}…`}
+              {portrait && <button className="btn" onClick={() => { setPreview(null); refreshView(); }}>Retry</button>}
+            </div>}
+          {chars.length > 1 && <span className="portrait-name">Preview: {name}</span>}
+        </div>
         <div className="face-anim-controls">
           <ExpressionControls ids={chars} onChanged={onChanged} watch={stepTime} badge={(f) => (keyedHere.has(f) ? <span className="key-badge" title="Keyed at the playhead">◆</span> : null)} />
 

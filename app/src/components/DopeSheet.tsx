@@ -23,6 +23,7 @@ import {
   studioSelect,
   keyAllOfSelectedObjects,
   showTab,
+  workingShot,
   useStore,
   visibleTracks,
   type KeyId,
@@ -143,6 +144,8 @@ function cssVar(name: string) {
 }
 
 export function DopeSheet() {
+  const shot = useStore(workingShot);
+  const full = useStore((s) => s.frameFullTimeline);
   const tracks = useStore((s) => s.tracks);
   const nodes = useStore((s) => s.nodes);
   const filter = useStore((s) => s.filter);
@@ -273,7 +276,7 @@ export function DopeSheet() {
 
   /** True until the user zooms/pans; while true the view auto-fits on resize. */
   const autoView = useRef(true);
-  const frameAll = useCallback(() => {
+  const frameAll = useCallback((automatic = true) => {
     const st = useStore.getState();
     const dur = st.tl?.duration ?? 10;
     let lo = Infinity;
@@ -290,14 +293,20 @@ export function DopeSheet() {
       lo = 0;
       hi = Math.max(dur, 0.5);
     }
-    const w = Math.max(100, size.current.w - PAD * 2 - 20);
+    if (automatic && full) { lo = 0; hi = Math.max(0.5, dur); }
+    if (shot) { lo = shot.start; hi = shot.end; }
+    const w = Math.max(1, size.current.w - PAD * 2 - 20);
     view.current.pps = w / (hi - lo);
     view.current.t0 = lo;
     dirty.current = true;
-  }, []);
+  }, [shot?.id, shot?.start, shot?.end, full]);
 
   useEffect(() => {
-    const onFrame = () => useStore.getState().centerView !== 'graph' && frameAll();
+    if (shot || full) { autoView.current = true; frameAll(); }
+  }, [frameAll]);
+
+  useEffect(() => {
+    const onFrame = () => useStore.getState().centerView !== 'graph' && frameAll(false);
     window.addEventListener('studioex:frame', onFrame);
     return () => window.removeEventListener('studioex:frame', onFrame);
   }, [frameAll]);
@@ -939,7 +948,7 @@ export function DopeSheet() {
   const shown = rows.filter((r) => r.kind === 'track').length;
 
   return (
-    <div className="center">
+    <div className="center" data-timeline-editor>
       <SheetToolbar
         shown={shown}
         total={totalTracks}
