@@ -25,6 +25,27 @@ export default async function (t) {
     await ok('timeline.groupDelete', { group: gid });
     d = await tl();
     check('ungroup keeps tracks', !d.groups.some((x) => x.id === gid) && d.tracks.some((x) => x.id === a) && d.tracks.some((x) => x.id === b));
+
+    // every folder change is one undo step, and redo plays it again
+    await ok('undo');
+    d = await tl();
+    check('undo ungroup: the folder is back with its track', d.groups.find((x) => x.id === gid)?.name === 'Renamed' && d.tracks.find((x) => x.id === a).group === gid);
+    await ok('undo');
+    d = await tl();
+    check('undo move: the track is back in the folder', d.tracks.find((x) => x.id === b).group === gid);
+    await ok('undo');
+    check('undo rename: the old name', (await tl()).groups.find((x) => x.id === gid)?.name === 'Test folder');
+    await ok('undo');
+    d = await tl();
+    check('undo create: no folder, tracks at the top level', !d.groups.some((x) => x.id === gid) && d.tracks.find((x) => x.id === a).group === -1 && d.tracks.find((x) => x.id === b).group === -1);
+    await ok('redo');
+    await ok('redo');
+    d = await tl();
+    check('redo create + rename', d.groups.find((x) => x.id === gid)?.name === 'Renamed' && d.tracks.filter((x) => x.group === gid).length === 2);
+    await ok('redo');
+    await ok('redo');
+    d = await tl();
+    check('redo move + ungroup', !d.groups.some((x) => x.id === gid) && d.tracks.find((x) => x.id === a).group === -1);
   });
 
   const { items } = await t.loadSample();

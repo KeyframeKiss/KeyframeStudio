@@ -18,11 +18,11 @@ namespace StudioEX.Bridge.Api
     {
         private static void RegisterExtras(CommandRouter r)
         {
-            r.Add("timeline.groupCreate", GroupCreate);
-            r.Add("timeline.groupRename", a => { var g = FindGroup(a.GetInt("group")); SetGroupField(g, "name", a.GetString("name") ?? "Folder"); RefreshView(); return true; });
+            r.Add("timeline.groupCreate", a => Undoable("New folder", () => GroupCreate(a)));
+            r.Add("timeline.groupRename", a => Undoable("Rename folder", () => { var g = FindGroup(a.GetInt("group")); SetGroupField(g, "name", a.GetString("name") ?? "Folder"); RefreshView(); return true; }));
             r.Add("timeline.groupExpand", a => { var g = FindGroup(a.GetInt("group")); SetGroupField(g, "expanded", a.GetBool("expanded", true)); RefreshView(); return true; });
-            r.Add("timeline.groupDelete", GroupDelete);
-            r.Add("timeline.groupMove", GroupMove);
+            r.Add("timeline.groupDelete", a => Undoable("Ungroup folder", () => GroupDelete(a)));
+            r.Add("timeline.groupMove", a => Undoable("Move to folder", () => GroupMove(a)));
 
             r.Add("timeline.changes", a => ChangesSummary(Changes(a.GetBool("includeNew", true))));
             r.Add("timeline.keyChanged", a => KeyChanged(a.Has("t") ? a.GetFloat("t") : TL.playbackTime, a.GetBool("includeNew", true), a.GetBool("restKey", true)));
@@ -144,6 +144,103 @@ namespace StudioEX.Bridge.Api
                     g = up;
                 }
             }
+        }
+
+        /// <summary>A folder change as one step in the shared undo history.</summary>
+        private static object Undoable(string label, Func<object> change)
+        {
+            var before = FolderUndo.Capture(label);
+            var r = change();
+            UndoStack.Push(before);
+            return r;
+        }
+
+        /// <summary>
+        /// The whole folder tree as it was: every folder (with its name and open state) and every track, in order.
+        /// Restoring puts it back exactly; tracks deleted since stay deleted, tracks added since go to the top level.
+        /// </summary>
+        private sealed class FolderUndo : IUndoEntry
+        {
+            private struct Entry
+            {
+                public Timeline.INode Node;
+                public Timeline.IGroupNode Parent;
+                public string Name;
+                public bool Expanded;
+            }
+            private readonly List<Entry> _entries = new List<Entry>();
+            public string Label { get; }
+            private FolderUndo(string label) => Label = label;
+
+            public static FolderUndo Capture(string label)
+            {
+                var u = new FolderUndo(label);
+                void Walk(List<Timeline.INode> kids, Timeline.IGroupNode parent)
+                {
+                    foreach (var n in kids)
+                    {
+                        var e = new Entry { Node = n, Parent = parent };
+                        if (n is Timeline.IGroupNode g)
+                        {
+                            var obj = GroupObj(n);
+                            e.Name = GroupType.GetField("name").GetValue(obj) as string;
+                            e.Expanded = (bool)GroupType.GetField("expanded").GetValue(obj);
+                            u._entries.Add(e);
+                            Walk(g.children, g);
+                        }
+                        else u._entries.Add(e);
+                    }
+                }
+                Walk(RootNodes, null);
+                return u;
+            }
+
+            public IUndoEntry Restore()
+            {
+                var inverse = Capture(Label);
+                var root = RootGroup;
+                var dict = (System.Collections.IDictionary)AccessTools.Field(Tree.GetType(), "_nodes").GetValue(Tree);
+                var all = AllNodes(RootNodes).ToList();
+                var leaves = all.Where(n => !(n is Timeline.IGroupNode)).ToList();
+                var live = new HashSet<Timeline.INode>(leaves);
+                var groupsNow = all.OfType<Timeline.IGroupNode>().ToList();
+                var keepGroups = new HashSet<Timeline.INode>(_entries.Where(e => e.Node is Timeline.IGroupNode).Select(e => e.Node));
+                foreach (var g in groupsNow) g.children.Clear();
+                root.children.Clear();
+                foreach (var g in groupsNow)
+                    if (!keepGroups.Contains(g)) dict.Remove(g.GetHashCode());
+                var placed = new HashSet<Timeline.INode>();
+                foreach (var e in _entries)
+                {
+                    bool isGroup = e.Node is Timeline.IGroupNode;
+                    if (!isGroup && !live.Contains(e.Node)) continue; // deleted since: stays deleted
+                    (e.Parent ?? root).children.Add(e.Node);
+                    e.Node.parent = e.Parent;
+                    if (isGroup)
+                    {
+                        dict[e.Node.GetHashCode()] = e.Node;
+                        var obj = GroupObj(e.Node);
+                        GroupType.GetField("name").SetValue(obj, e.Name);
+                        GroupType.GetField("expanded").SetValue(obj, e.Expanded);
+                    }
+                    placed.Add(e.Node);
+                }
+                foreach (var l in leaves)
+                    if (!placed.Contains(l))
+                    {
+                        root.children.Add(l); // added since: top level
+                        l.parent = null;
+                    }
+                // folders left with no tracks inside go, as Timeline itself would have it
+                var remove = Tree.GetType().GetMethod("Remove", new[] { typeof(Timeline.INode) });
+                bool HasTrack(Timeline.IGroupNode g) => g.children.Any(c => !(c is Timeline.IGroupNode) || HasTrack((Timeline.IGroupNode)c));
+                foreach (var g in AllNodes(RootNodes).OfType<Timeline.IGroupNode>().ToList())
+                    if (!HasTrack(g)) remove.Invoke(Tree, new object[] { g });
+                RefreshView();
+                return inverse;
+            }
+
+            public bool Absorbs(IUndoEntry next) => false;
         }
 
         private static object GroupCreate(Dictionary<string, object> a)
