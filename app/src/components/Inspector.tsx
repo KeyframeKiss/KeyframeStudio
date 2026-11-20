@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Help } from './Help';
 import type { KeyInfo } from '../bridge/types';
 import { fromFlat, presetFor, PRESETS, toFlat } from '../lib/curve';
@@ -17,6 +17,7 @@ import {
 } from '../state/store';
 import { CurveEditor, CurveThumb } from './CurveEditor';
 import { Icon } from './Icon';
+import { KeyValueEditor, MyEasings } from './KeyEditors';
 import { parseTime } from '../lib/time';
 
 export function Inspector() {
@@ -52,9 +53,14 @@ function KeyInspector({ first, count }: { first: { track: number; t: number }; c
   const [info, setInfo] = useState<KeyInfo | null>(null);
   const [timeText, setTimeText] = useState<string | null>(null);
 
+  // a different key: start fresh; the same key changed (its easing, its value): keep showing it while it's re-read
+  // (clearing it made the panel collapse and spring back — the flash when picking an easing)
+  const shownFor = useRef('');
   useEffect(() => {
     let alive = true;
-    setInfo(null);
+    const id = `${first.track}@${first.t}`;
+    if (shownFor.current !== id) setInfo(null);
+    shownFor.current = id;
     const h = window.setTimeout(() => {
       getKeyInfo(first)
         .then((i) => alive && setInfo(i))
@@ -102,7 +108,12 @@ function KeyInspector({ first, count }: { first: { track: number; t: number }; c
           />
           <label>Value</label>
           <div style={{ minWidth: 0 }}>
-            {info ? <ValueView value={info.value} /> : <span className="value" style={{ color: 'var(--text-3)' }}>…</span>}
+            {info ? (
+              <KeyValueEditor track={track.id} model={track.model} t={first.t} value={info.value} onValue={(v) => setInfo({ ...info, value: v })} />
+            ) : (
+              <span className="value" style={{ color: 'var(--text-3)' }}>…</span>
+            )}
+            {info && count > 1 && <div className="hint" style={{ margin: '4px 0 0' }}>Editing the first selected key.</div>}
           </div>
         </div>
         <div style={{ display: 'flex', gap: 6, marginTop: 10 }}>
@@ -148,28 +159,8 @@ function KeyInspector({ first, count }: { first: { track: number; t: number }; c
           ))}
         </div>
         {count > 1 && <div className="hint">Changes apply to all {count} selected keys.</div>}
+        <MyEasings curve={curve} />
       </div>
-    </div>
-  );
-}
-
-function ValueView({ value }: { value: Record<string, string> }) {
-  const entries = Object.entries(value).filter(([k]) => !k.startsWith('_'));
-  if (!entries.length) return <span className="value">{value._text ?? '—'}</span>;
-  const fmt = (s: string) => {
-    const n = Number(s);
-    return Number.isFinite(n) && s.trim() !== '' ? (Math.abs(n) >= 1000 ? n.toFixed(1) : n.toFixed(3)) : s;
-  };
-  return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '1px 8px', fontFamily: 'var(--mono)', fontSize: 11 }}>
-      {entries.slice(0, 16).map(([k, v]) => (
-        <div key={k} style={{ display: 'contents' }}>
-          <span style={{ color: 'var(--text-3)' }}>{k.replace(/^value/, '') || 'v'}</span>
-          <span style={{ color: 'var(--text-1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={v}>
-            {fmt(v)}
-          </span>
-        </div>
-      ))}
     </div>
   );
 }

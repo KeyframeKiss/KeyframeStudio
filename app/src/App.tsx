@@ -43,6 +43,9 @@ import { bridge } from './bridge/client';
 
 const WS_KEYS: Record<string, Workspace> = { '1': 'animate', '2': 'pose', '3': 'look', '4': 'shoot', '5': 'library' };
 
+// development builds: the app's state for test scripts over the debugging connection (not in release builds)
+if (import.meta.env.DEV) (window as unknown as { __kfStore: typeof useStore }).__kfStore = useStore;
+
 export function App() {
   const status = useStore((s) => s.status);
   const hello = useStore((s) => s.hello);

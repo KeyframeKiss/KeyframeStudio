@@ -12,7 +12,7 @@ namespace StudioEX.Bridge.Api
     /// </summary>
     internal static class PresetStore
     {
-        private static readonly HashSet<string> Kinds = new HashSet<string> { "outfits", "templates" };
+        private static readonly HashSet<string> Kinds = new HashSet<string> { "outfits", "templates", "easings" };
 
         public static void Register(CommandRouter r)
         {

@@ -1047,7 +1047,8 @@ namespace StudioEX.Bridge.Api
             }
             if (current != null && current.TryGetValue("_xml", out var inner)) el.InnerXml = inner as string ?? "";
 
-            History.Record(new[] { ip });
+            // a drag in the app previews many values: only its first one is an undo step (the value before it)
+            if (!a.GetBool("noHistory")) History.Record(new[] { ip });
             kf.value = ip.ReadValueFromXml(el);
             AfterEdit();
             return DescribeValue(ip, kf.value);
