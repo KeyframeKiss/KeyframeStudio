@@ -40,12 +40,28 @@ namespace StudioEX.Bridge.Api
         private Texture2D _tex;
         private const int Size = 192;
 
+        /// <summary>Bump when pictures are made differently: the old ones are cleared once and made again.</summary>
+        private const string PictureVersion = "2"; // 2: from the front (1 showed the back)
+        private static bool _checked;
+
         private static string Folder
         {
             get
             {
                 var dir = Path.GetFullPath(Path.Combine(UserData.Path, "StudioEX/item-thumbs"));
                 Directory.CreateDirectory(dir);
+                if (!_checked)
+                {
+                    _checked = true;
+                    var mark = Path.Combine(dir, "version.txt");
+                    if (!File.Exists(mark) || File.ReadAllText(mark).Trim() != PictureVersion)
+                    {
+                        // only this cache's own files: pictures and "nothing to picture" marks
+                        foreach (var f in Directory.GetFiles(dir, "*.jpg").Concat(Directory.GetFiles(dir, "*.none")))
+                            try { File.Delete(f); } catch { /* in use: made again later anyway */ }
+                        File.WriteAllText(mark, PictureVersion);
+                    }
+                }
                 return dir;
             }
         }
@@ -273,7 +289,8 @@ namespace StudioEX.Bridge.Api
                 foreach (var r in rends.Skip(1)) b.Encapsulate(r.bounds);
                 float radius = Mathf.Max(0.02f, b.extents.magnitude);
                 const float fov = 30f;
-                var dir = (Quaternion.Euler(18f, -32f, 0f) * Vector3.back).normalized; // from the front, a little right and above
+                // models face +Z: look at the front, a little from the right and above
+                var dir = (Quaternion.Euler(-18f, 32f, 0f) * Vector3.forward).normalized;
                 float dist = radius / Mathf.Sin(fov * 0.5f * Mathf.Deg2Rad) * 1.02f;
                 _cam.transform.position = b.center + dir * dist;
                 _cam.transform.rotation = Quaternion.LookRotation(b.center - _cam.transform.position, Vector3.up);
