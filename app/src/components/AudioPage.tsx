@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Field, Page, Panel, Section } from './Page';
-import { addAudio, call, listenAudio, liveTime, pickAudio, refreshAudio, removeAudio, seekNow, setAudio, showTab, useStore, type AudioClipInfo } from '../state/store';
+import { Help } from './Help';
+import { addAudio, call, listenAudio, liveTime, pickAudio, refreshAudio, removeAudio, seekNow, setAudio, setAudioDelay, showTab, useStore, type AudioClipInfo } from '../state/store';
 import { clipSpan, fadeAt, fileTimeAt, laneRgb, loudest, timelineTimeAt } from '../lib/audioLanes';
 import { Slider } from './CharacterPanel';
 
@@ -65,6 +66,7 @@ export function AudioPage() {
         }
       >
         {clips.length ? <Overview /> : <div className="audio-empty">No audio yet — add a WAV above, or drop one onto Animate › Timeline where it should start.</div>}
+        {clips.length > 0 && <DelayRow />}
         {clips.length > 0 && (
           <div className="audio-transport">
             <button className="btn solid" onClick={playWithAnimation} title="Move the playhead to where the first clip starts and play the timeline">
@@ -88,6 +90,37 @@ export function AudioPage() {
         </div>
       )}
     </Page>
+  );
+}
+
+/** This PC's output delay: Bluetooth headphones are heard late, so Studio plays the audio early to match the picture. */
+function DelayRow() {
+  const d = useStore((s) => s.audioDelay);
+  const [ms, setMs] = useState(d.output);
+  useEffect(() => setMs(d.output), [d.output]);
+  const timer = useRef(0);
+  const change = (v: number) => {
+    setMs(v);
+    window.clearTimeout(timer.current);
+    timer.current = window.setTimeout(() => setAudioDelay(v), 200);
+  };
+  return (
+    <div className="audio-delay">
+      <span className="audio-delay-label">
+        Headphone delay
+        <Help text={`If the sound comes late while the timeline plays — lips and audio out of step — set how late. Bluetooth headphones and speakers are typically 150–500 ms; wired ones need 0. Studio then plays the audio that much early, so what you hear matches the picture. Only for playing in Studio on this PC: renders always have the audio exactly in place.${d.mixer ? ` (Studio's own audio buffer adds about ${d.mixer} ms on any output.)` : ''}`} />
+      </span>
+      <input type="range" min={0} max={800} step={10} value={ms} onChange={(e) => change(Number(e.target.value))} style={{ accentColor: 'var(--accent)' }} />
+      <span className="mono audio-delay-ms">{ms} ms</span>
+      <div className="seg">
+        <button className={ms === 0 ? 'on' : ''} onClick={() => change(0)} title="Wired headphones or speakers">
+          Wired
+        </button>
+        <button className={ms === 250 ? 'on' : ''} onClick={() => change(250)} title="A typical Bluetooth delay — fine-tune with the slider">
+          Bluetooth
+        </button>
+      </div>
+    </div>
   );
 }
 

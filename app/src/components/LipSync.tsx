@@ -3,7 +3,7 @@ import { Help } from './Help';
 import { Slider } from './CharacterPanel';
 import { Secs } from './AudioPage';
 import { bridge } from '../bridge/client';
-import { call, displayName, listenAudio, liveTime, pickAudio, toast, useStore, type AudioClipInfo } from '../state/store';
+import { call, displayName, listenAudio, liveTime, pickAudio, showTab, toast, useStore, type AudioClipInfo } from '../state/store';
 import { clipSpan, fileTimeAt, laneRgb, loudest } from '../lib/audioLanes';
 import { type LipSyncOptions } from '../lib/lipsync';
 import { DEFAULT_SETUP, generateLipSync, loadSetups, MOUTH_SLOTS, rangeOf, saveSetup, STYLES, voiceOf, voiceRef, type LipSetup, type LipStyle, type MouthPattern, type MouthSlot } from '../lib/lipsyncRun';
@@ -44,6 +44,7 @@ export function LipSyncCard({ charId }: { charId: number | undefined }) {
   const shots = useStore((s) => s.shots);
   const tl = useStore((s) => s.tl);
   const listen = useStore((s) => s.audioListen);
+  const delay = useStore((s) => s.audioDelay.output);
   const { setups, update } = useSetups();
   const [busy, setBusy] = useState(false);
   const [patterns, setPatterns] = useState<MouthPattern[]>([]);
@@ -238,6 +239,15 @@ export function LipSyncCard({ charId }: { charId: number | undefined }) {
             </details>
           )}
 
+          {delay === 0 && (
+            <div className="hint">
+              Lips look early while it plays? On Bluetooth headphones the sound arrives late — set{' '}
+              <button className="link-btn" onClick={() => showTab('shoot', 'audio')}>
+                Headphone delay
+              </button>{' '}
+              in Shoot › Audio.
+            </div>
+          )}
           <button className="btn primary wide" disabled={busy || charId == null || !voice || typeof range === 'string'} onClick={generate} title="Replaces the character's mouth keys in the chosen part only">
             {busy ? 'Working…' : charId == null ? 'Select the character who speaks' : `Generate lip-sync for ${who}`}
           </button>

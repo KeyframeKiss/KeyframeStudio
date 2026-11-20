@@ -107,6 +107,8 @@ export interface AppState {
   audioPeaks: Record<number, AudioPeaks>;
   /** While Studio plays one clip by itself (Listen): which, and seconds into it; null otherwise. */
   audioListen: { id: number; at: number } | null;
+  /** This PC's audio output delay (ms) and Unity's own mixer delay (ms). */
+  audioDelay: { output: number; mixer: number };
   /** Key edits were made but Studio held them back to protect the unkeyed changes (the pose doesn't show them yet). */
   poseStale: boolean;
   groupMode: 'objects' | 'folders';
@@ -184,6 +186,7 @@ export const useStore = create<AppState>(() => ({
   audio: [],
   audioPeaks: {},
   audioListen: null,
+  audioDelay: { output: 0, mixer: 0 },
   shots: [], workingShotId: null, frameFullTimeline: false, loopShot: false, renderShotIds: null, sceneName: null, sceneFilter: 'all',
   groupMode: (lsGet('studioex.groupMode') as 'objects' | 'folders') || 'objects',
   settingsOpen: false,
@@ -222,7 +225,7 @@ export async function refreshShots() {
   set({ shots: s ?? [] });
 }
 
-type AudioGet = { clips: AudioClipInfo[]; previewing: boolean; previewId: number; previewAt: number };
+type AudioGet = { clips: AudioClipInfo[]; previewing: boolean; previewId: number; previewAt: number; outputDelay?: number; mixerDelay?: number };
 let listenTimer = 0;
 const stopListenTimer = () => {
   window.clearInterval(listenTimer);
@@ -268,6 +271,11 @@ export async function setAudio(id: number, patch: AudioPatch) {
   await call('audio.set', { id, ...patch });
   await refreshAudio();
 }
+/** Play the audio this much early while the timeline plays (headphones heard late); this PC only, not in renders. */
+export async function setAudioDelay(ms: number) {
+  set({ audioDelay: { ...get().audioDelay, output: ms } });
+  await call('audio.setDelay', { ms: Math.round(ms) });
+}
 export async function removeAudio(id: number) {
   if (get().audioListen?.id === id) stopListenTimer();
   await call('audio.remove', { id });
@@ -282,7 +290,7 @@ export async function refreshAudio() {
   const clips = a?.clips ?? [];
   const listen = a?.previewing ? { id: a.previewId, at: a.previewAt } : null;
   if (!listen) stopListenTimer();
-  set({ audio: clips, audioListen: listen });
+  set({ audio: clips, audioListen: listen, audioDelay: { output: a?.outputDelay ?? 0, mixer: a?.mixerDelay ?? 0 } });
   const peaks = { ...get().audioPeaks };
   for (const id of Object.keys(peaks).map(Number)) if (!clips.some((c) => c.id === id)) delete peaks[id];
   for (const c of clips) {

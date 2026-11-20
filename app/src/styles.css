@@ -5848,3 +5848,25 @@ html.frameless .tooltip {
   flex: 1;
   min-width: 0;
 }
+
+.audio-delay {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--text-2);
+}
+.audio-delay-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.audio-delay-ms {
+  color: var(--text-1);
+  text-align: right;
+}
+.audio-delay input[type='range'] {
+  width: 240px;
+  max-width: 100%;
+}

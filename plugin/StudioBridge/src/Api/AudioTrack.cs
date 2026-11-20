@@ -61,6 +61,11 @@ namespace StudioEX.Bridge.Api
 
         private static string AudioDir => Path.GetFullPath(UserData.Create("audio"));
 
+        /// <summary>This PC's output delay (ms): while the timeline plays, clips play this much early so what you hear lines
+        /// up with the picture (Bluetooth headphones are heard late). Not used for renders, which mix the audio exactly.</summary>
+        public static BepInEx.Configuration.ConfigEntry<int> OutputDelay;
+        private static float Lead => OutputDelay == null ? 0f : Mathf.Clamp(OutputDelay.Value, 0, 2000) / 1000f;
+
         /// <summary>Set while a render runs: no clip plays (the audio is mixed into the video afterwards).</summary>
         public static bool Silenced;
 
@@ -107,6 +112,11 @@ namespace StudioEX.Bridge.Api
                 if (a.Has("muted")) c.Muted = a.GetBool("muted");
                 Shape(c, a);
                 return Changed();
+            });
+            r.Add("audio.setDelay", a =>
+            {
+                if (OutputDelay != null) OutputDelay.Value = Mathf.Clamp(a.GetInt("ms"), 0, 2000);
+                return Get();
             });
             r.Add("audio.remove", a => { Remove(Find(a)); return Changed(); });
             r.Add("audio.clear", a => { Clear(); return Changed(); });
@@ -198,6 +208,10 @@ namespace StudioEX.Bridge.Api
             d["previewing"] = _preview != null;
             d["previewId"] = _preview?.Id ?? 0;
             d["previewAt"] = _preview != null ? (double)_preview.Src.time : 0d;
+            d["outputDelay"] = OutputDelay?.Value ?? 0;
+            // Unity's own mixer buffer, for the app's hint (heard this much later even on wired headphones)
+            AudioSettings.GetDSPBufferSize(out int len, out int count);
+            d["mixerDelay"] = AudioSettings.outputSampleRate > 0 ? Math.Round(1000.0 * len * count / AudioSettings.outputSampleRate) : 0d;
             return d;
         }
 
@@ -446,7 +460,8 @@ namespace StudioEX.Bridge.Api
                 }
                 else pc.Src.volume = pc.Gain((pc.Src.time - pc.TrimIn) / pc.Speed);
             }
-            float now = TimelineApi.PlaybackTime();
+            // playing: run the audio ahead by the output delay so it's heard in step with the picture
+            float now = TimelineApi.PlaybackTime() + (tlPlaying ? Lead : 0f);
             foreach (var c in Clips)
             {
                 if (c == _preview) continue;

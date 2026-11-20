@@ -71,6 +71,27 @@ export default async function (t) {
     await ok('audio.set', { muted: false, volume: 1 });
   });
 
+  await t.step('headphone delay (plays early while the timeline plays)', async () => {
+    const before = (await ok('audio.get')).outputDelay;
+    t.defer(() => req('audio.setDelay', { ms: before }));
+    // the clip starts at 0.5 s: from 0.3 s it's silent without a delay, and already playing 300 ms early
+    await ok('audio.setDelay', { ms: 0 });
+    await ok('timeline.seek', { t: 0.3 });
+    await ok('timeline.play');
+    await sleep(60);
+    const off = (await ok('audio.get')).playing;
+    await ok('timeline.stop');
+    const g = await ok('audio.setDelay', { ms: 300 });
+    check('delay set', g.outputDelay === 300 && typeof g.mixerDelay === 'number');
+    await ok('timeline.seek', { t: 0.3 });
+    await ok('timeline.play');
+    await sleep(60);
+    const on = (await ok('audio.get')).playing;
+    await ok('timeline.stop');
+    check('with a 300 ms delay the audio starts 300 ms early', off === false && on === true, `without: ${off}, with: ${on}`);
+    await ok('audio.setDelay', { ms: before });
+  });
+
   await t.step('listen (plays by itself)', async () => {
     let g = await ok('audio.preview', { on: true, from: 1 });
     check('starts where asked, timeline still', g.previewing === true && g.playing === true && near(g.previewAt, 1, 0.05));
