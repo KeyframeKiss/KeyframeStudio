@@ -154,16 +154,67 @@ export default async function (t) {
     if (gap > 12) return check(`(hand target ${gap.toFixed(1)} px off the wrist: not on the joint here)`, true);
     await ok('gizmo.target', { kind: 'none' });
     await ok('gizmo.set', { gizmo: { on: false } }); // no rings in the way for this step
-    const centre = await hoverAt([hand.screen[0], hand.screen[1]]);
+    const P = [hand.screen[0], hand.screen[1]];
+    // a quick look (before the fan opens)
+    const quick = async (p) => {
+      await sim({ at: p });
+      await sleep(60);
+      return sim({ at: p });
+    };
+    const centre = await quick(P);
     check('the middle is the wrist joint', centre.hoverPick === `joint:${id}:${hand.index}`, centre.hoverPick);
-    check('with the IK target next in line', centre.hoverAll.includes(`ik:${id}:${handIk.i}`), JSON.stringify(centre.hoverAll));
-    const ring = await hoverAt([hand.screen[0] + 10, hand.screen[1]]); // the ring is drawn around the joint
+    check('with the IK target there too', centre.hoverAll.includes(`ik:${id}:${handIk.i}`), JSON.stringify(centre.hoverAll));
+    const ring = await quick([P[0] + 10, P[1]]); // the ring is drawn around the joint
     check('the ring around it is the IK target', ring.hoverPick === `ik:${id}:${handIk.i}`, ring.hoverPick);
-    await click([hand.screen[0], hand.screen[1]]);
-    check('first click: the joint', (await ok('gizmo.get')).target?.kind === 'bone');
-    await click([hand.screen[0], hand.screen[1]]);
-    check('same spot again: the IK target', (await ok('gizmo.get')).target?.kind === 'ik');
+
+    // rest the pointer there: they fan out, left and right
+    await sim({ at: P });
+    await sleep(500);
+    const fan = await sim({ at: P });
+    const keys = (fan.spread ?? []).map((x) => x.key);
+    check('resting on the overlap fans them out', keys.includes(`joint:${id}:${hand.index}`) && keys.includes(`ik:${id}:${handIk.i}`), JSON.stringify(fan.spread));
+    check('each chip named', (fan.spread ?? []).every((x) => x.label && !x.label.includes(':')), (fan.spread ?? []).map((x) => x.label).join(', '));
+    const chip = fan.spread?.find((x) => x.key === `ik:${id}:${handIk.i}`);
+    if (!chip) return;
+    const onChip = await quick(chip.at);
+    check('hovering a chip picks it (and the camera holds still)', onChip.hoverPick === chip.key && onChip.cameraBlocked && onChip.spread, JSON.stringify([onChip.hoverPick, onChip.cameraBlocked]));
+    await sim({ press: true });
+    await frame();
+    await sim({ release: true });
+    await frame();
+    const got = await ok('gizmo.get');
+    check('clicking the chip selects that one', got.target?.kind === 'ik' && got.target.index === handIk.i, JSON.stringify(got.target));
+    check('…and the fan folds away', !(await sim({ at: chip.at })).spread);
+
+    // the old way still works for quick hands: click, then click the same spot again
+    await sim({ at: [P[0] + 80, P[1] + 80] });
+    await frame();
+    await ok('gizmo.target', { kind: 'none' });
+    await click(P);
+    const first = (await ok('gizmo.get')).target?.kind;
+    await click(P);
+    const second = (await ok('gizmo.get')).target?.kind;
+    check('quick clicks step through them', first !== second && [first, second].includes('ik'), JSON.stringify([first, second]));
     await ok('gizmo.set', { gizmo: { on: true, mode: 1 } });
+  });
+
+  await t.step('press-drag a chip: the IK target moves straight away', async () => {
+    const hand = await sim({ id, bone: 'cf_j_hand_L' });
+    await ok('gizmo.target', { kind: 'none' });
+    await ok('gizmo.set', { gizmo: { on: true, mode: 0 } });
+    const P = [hand.screen[0], hand.screen[1]];
+    await sim({ at: P });
+    await sleep(500);
+    const fan = await sim({ at: P });
+    const chip = fan.spread?.find((x) => x.key === `ik:${id}:${handIk.i}`);
+    if (!chip) return check('fan opened with the IK target', false, JSON.stringify(fan.spread));
+    const k0 = await sim({ id, ik: handIk.i });
+    const [cx, cy] = chip.at;
+    await drag([[cx, cy], [cx + 10, cy + 5], [cx + 30, cy + 15]]);
+    const k1 = await sim({ id, ik: handIk.i });
+    check('the IK target moved from its chip', dist(k1.world, k0.world) > 0.01, `${dist(k1.world, k0.world).toFixed(3)} m`);
+    await ok('undo');
+    await ok('gizmo.set', { gizmo: { mode: 1 } });
   });
 
   await t.step('drag an IK target', async () => {

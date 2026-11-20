@@ -808,6 +808,7 @@ namespace StudioEX.Bridge.Api
                 _hover = H.None;
                 _hoverList.Clear();
                 _hoverPick = null;
+                CloseSpread();
                 return;
             }
             if (_gizmo && !_hidAxis && Singleton<Studio.Studio>.Instance?.workInfo.visibleAxis == true) SyncStudioHandles();
@@ -823,10 +824,28 @@ namespace StudioEX.Bridge.Api
             // hover: the focus marker, handles, then pickable things
             _hover = overUi ? H.None : FocusHit(cam, m) ? H.Focus : _gizmo ? HitHandle(cam, m) : H.None;
             _hoverList = overUi ? new List<Cand>() : PickAt(cam, m, false);
-            // a joint / IK target / accessory right under the pointer wins over a ring or arrow passing behind it
-            if (_hover != H.None && _hover != H.Free && _hover != H.ScaleAll && _hover != H.Focus && _hoverList.Count > 0 && _hoverList[0].Tight && _hoverList[0].Key != CurrentKey())
+            if (_spread != null && (overUi || (m - _spreadAt).magnitude > SpreadRadius() + ChipR + 26f)) CloseSpread();
+            if (_spread != null)
+            {
+                // things fanned out: the chips are what's under the pointer now
+                _spreadHot = _spread.FindIndex(x => (x.At - m).magnitude < ChipR + 3f);
                 _hover = H.None;
-            _hoverPick = _hover == H.None && _hoverList.Count > 0 ? _hoverList[0].Key : null;
+                _hoverPick = _spreadHot >= 0 ? _spread[_spreadHot].Key : null;
+            }
+            else
+            {
+                // a joint / IK target / accessory right under the pointer wins over a ring or arrow passing behind it
+                if (_hover != H.None && _hover != H.Free && _hover != H.ScaleAll && _hover != H.Focus && _hoverList.Count > 0 && _hoverList[0].Tight && _hoverList[0].Key != CurrentKey())
+                    _hover = H.None;
+                _hoverPick = _hover == H.None && _hoverList.Count > 0 ? _hoverList[0].Key : null;
+                // rest the pointer where several things overlap: they fan out to pick from
+                var cluster = _hoverList.Where(x => x.Score < 1000f).GroupBy(x => x.Key).Select(g => g.First()).ToList();
+                bool canSpread = !overUi && !Held && cluster.Count >= 2 && (_hover == H.None || _hover == H.Free || _hover == H.ScaleAll);
+                string sig = canSpread ? string.Join("|", cluster.Select(x => x.Key).OrderBy(x => x).ToArray()) : null;
+                if (sig == null) _dwellSig = null;
+                else if (sig != _dwellSig || (m - _dwellAt).magnitude > 6f) { _dwellSig = sig; _dwellAt = m; _dwellSince = Time.unscaledTime; }
+                else if (Time.unscaledTime - _dwellSince > SpreadDelay) OpenSpread(cluster);
+            }
 
             if (Pressed && !overUi)
             {
@@ -845,8 +864,17 @@ namespace StudioEX.Bridge.Api
             if (_down && Released)
             {
                 _down = false;
+                // a click on a fanned-out chip: that one (a click on the spot itself is an ordinary click there)
+                bool handled = false;
+                if (_spread != null)
+                {
+                    bool onSpot = (m - _spreadAt).magnitude < 12f;
+                    if (!_moved && _spreadHot >= 0) Select(_spread[_spreadHot].Key);
+                    handled = !onSpot || _spreadHot >= 0 || _moved;
+                    CloseSpread();
+                }
                 // a click (not a camera drag): select what's under the pointer, or let go of the handles' target
-                if (!_moved && !overUi)
+                if (!handled && !_moved && !overUi)
                 {
                     var list = PickAt(cam, m, true);
                     if (list.Count > 0)
@@ -896,6 +924,54 @@ namespace StudioEX.Bridge.Api
 
         private void Broadcast() => StudioBridgePlugin.Instance?.Broadcast("gizmo.target", TargetInfo());
 
+        // ---------------- fanning out what overlaps ----------------
+
+        private sealed class Chip
+        {
+            public string Key, Label;
+            public Vector2 Real, At;
+        }
+        private List<Chip> _spread;
+        private Vector2 _spreadAt, _dwellAt;
+        private string _dwellSig;
+        private float _dwellSince;
+        private int _spreadHot = -1;
+        private const float ChipR = 12f, SpreadDelay = 0.22f;
+
+        private float SpreadRadius() => 50f + Mathf.Max(0, (_spread?.Count ?? 0) - 4) * 9f;
+
+        /// <summary>
+        /// Several things under the pointer (a wrist joint, its IK target, a finger, an accessory...): they fan out
+        /// round the spot - two to the left and right, more along an arc above - each a chip with a line back to
+        /// where it really is. Hover a chip to light its marker, click to pick it, or press-drag an IK target's chip
+        /// to move it straight away.
+        /// </summary>
+        private void OpenSpread(List<Cand> cluster)
+        {
+            var c = cluster.Take(9).ToList();
+            var centre = new Vector2(c.Average(x => x.Pos.x), c.Average(x => x.Pos.y));
+            _spread = new List<Chip>();
+            _spreadAt = centre;
+            float R = 50f + Mathf.Max(0, c.Count - 4) * 9f;
+            for (int k = 0; k < c.Count; k++)
+            {
+                float ang = (c.Count == 1 ? 90f : 180f - 180f * k / (c.Count - 1)) * Mathf.Deg2Rad;
+                var at = centre + new Vector2(Mathf.Cos(ang), Mathf.Sin(ang)) * R;
+                at.x = Mathf.Clamp(at.x, ChipR + 4, Screen.width - ChipR - 4);
+                at.y = Mathf.Clamp(at.y, ChipR + 4, Screen.height - ChipR - 22);
+                _spread.Add(new Chip { Key = c[k].Key, Real = c[k].Pos, At = at, Label = LabelOf(c[k].Key) ?? c[k].Key });
+            }
+            _spreadHot = -1;
+            _dwellSig = null;
+        }
+
+        private void CloseSpread()
+        {
+            _spread = null;
+            _spreadHot = -1;
+            _dwellSig = null;
+        }
+
         // ---------------- Studio's camera: still while the pointer is on a handle ----------------
 
         private Studio.CameraControl.NoCtrlFunc _camOrig, _camWrap;
@@ -934,6 +1010,7 @@ namespace StudioEX.Bridge.Api
             if (_drag != H.None) return true;
             if (!Any || Time.captureFramerate > 0) return false;
             if (_hover != H.None) return true;
+            if (_spread != null && _spreadHot >= 0) return true; // on a fanned-out chip
             // pressing an IK target (or an accessory in Move) grabs it
             return _gizmo && _hoverPick != null && (_hoverPick.StartsWith("ik:", StringComparison.Ordinal) || _hoverPick.StartsWith("acc:", StringComparison.Ordinal) && StudioMode() == 0);
         }
@@ -945,6 +1022,7 @@ namespace StudioEX.Bridge.Api
             public string Key;
             public float Score; // lower is better
             public bool Tight;  // right on it (beats a handle passing behind)
+            public Vector2 Pos;  // where it is on screen
         }
 
         private static bool OnScreen(Camera cam, Vector3 w, out Vector2 s)
@@ -962,7 +1040,7 @@ namespace StudioEX.Bridge.Api
         private List<Cand> PickAt(Camera cam, Vector2 m, bool items)
         {
             var list = new List<Cand>();
-            void Add(string key, float score, bool tight) => list.Add(new Cand { Key = key, Score = score, Tight = tight });
+            void Add(string key, float score, bool tight, Vector2 pos) => list.Add(new Cand { Key = key, Score = score, Tight = tight, Pos = pos });
             var studio = Singleton<Studio.Studio>.Instance;
             if (studio == null) return list;
             if (_show)
@@ -978,7 +1056,7 @@ namespace StudioEX.Bridge.Api
                         joints.Add(s);
                         if (!_skeleton || !_pickChars) continue;
                         float d = (s - m).magnitude, r = Finger(kv.Key) ? 6f : 8f;
-                        if (d < r) Add("joint:" + id + ":" + fi, d, d < 5f);
+                        if (d < r) Add("joint:" + id + ":" + fi, d, d < 5f, s);
                     }
                     if (_ik && _pickChars)
                         for (int i = 0; i < c.listIKTarget.Count; i++)
@@ -990,24 +1068,24 @@ namespace StudioEX.Bridge.Api
                             if (onJoint)
                             {
                                 // the ring around the joint
-                                if (d >= 5f && d < 15f) Add("ik:" + id + ":" + i, Mathf.Abs(d - 10f) * 0.5f, true);
-                                else if (d < 5f) Add("ik:" + id + ":" + i, 6f + d, false); // second in line (click again)
+                                if (d >= 5f && d < 15f) Add("ik:" + id + ":" + i, Mathf.Abs(d - 10f) * 0.5f, true, s);
+                                else if (d < 5f) Add("ik:" + id + ":" + i, 6f + d, false, s); // second in line (click again)
                             }
-                            else if (d < 11f) Add("ik:" + id + ":" + i, d, d < 7f);
+                            else if (d < 11f) Add("ik:" + id + ":" + i, d, d < 7f, s);
                         }
                     if (_acc && _pickAcc)
                         foreach (var a in AccsOf(c))
                         {
                             if (!OnScreen(cam, a.Node.position, out var s)) continue;
                             float d = (s - m).magnitude;
-                            if (d < 8f) Add("acc:" + id + ":" + a.Slot, d + 0.5f, d < 5f);
+                            if (d < 8f) Add("acc:" + id + ":" + a.Slot, d + 0.5f, d < 5f, s);
                         }
                 }
             foreach (var oci in studio.dicObjectCtrl.Values)
             {
                 int id = oci.objectInfo.dicKey;
-                if (oci is OCILight l && _show && _lights && _pickLights && l.light != null && OnScreen(cam, l.light.transform.position, out var ls) && (ls - m).magnitude < 13f) Add("object:" + id, (ls - m).magnitude, true);
-                else if (oci is OCICamera oc && _show && _cameras && _pickCameras && oc.guideObject?.transformTarget != null && OnScreen(cam, oc.guideObject.transformTarget.position, out var cs) && (cs - m).magnitude < 13f) Add("object:" + id, (cs - m).magnitude, true);
+                if (oci is OCILight l && _show && _lights && _pickLights && l.light != null && OnScreen(cam, l.light.transform.position, out var ls) && (ls - m).magnitude < 13f) Add("object:" + id, (ls - m).magnitude, true, ls);
+                else if (oci is OCICamera oc && _show && _cameras && _pickCameras && oc.guideObject?.transformTarget != null && OnScreen(cam, oc.guideObject.transformTarget.position, out var cs) && (cs - m).magnitude < 13f) Add("object:" + id, (cs - m).magnitude, true, cs);
             }
             list.Sort((a, b) => a.Score.CompareTo(b.Score));
             // items: inside their outline on screen, the smallest first
@@ -1018,7 +1096,7 @@ namespace StudioEX.Bridge.Api
                 foreach (var oci in studio.dicObjectCtrl.Values)
                     if (oci is OCIItem it && it.objectItem != null && it.objectItem.activeInHierarchy && ScreenRect(cam, it.objectItem, out var r, out var wb) && !wb.Contains(eye) && r.Contains(m))
                         its.Add(new KeyValuePair<float, string>(r.width * r.height, "object:" + oci.objectInfo.dicKey));
-                foreach (var kv in its.OrderBy(x => x.Key)) Add(kv.Value, 1000f + list.Count, false);
+                foreach (var kv in its.OrderBy(x => x.Key)) Add(kv.Value, 1000f + list.Count, false, m);
             }
             return list;
         }
@@ -1193,6 +1271,7 @@ namespace StudioEX.Bridge.Api
 
         private void BeginDrag(Camera cam, Vector2 m, H h)
         {
+            CloseSpread();
             if (h == H.Focus) { BeginFocus(cam, m); return; }
             if (!Frame(out var t, out var c, out var axes, out _)) return;
             var undo = Begin(t);
@@ -1489,6 +1568,7 @@ namespace StudioEX.Bridge.Api
                 if (_show && (_skeleton || _ik || _acc)) foreach (var c in Shown()) DrawRig(cam, c);
                 if (_gizmo) DrawGizmo(cam);
                 if (FocusShown) DrawFocus(cam);
+                if (_spread != null) DrawSpread();
                 GL.PopMatrix();
             }
             catch (Exception e) { StudioBridgePlugin.Logger.LogDebug("overlay: " + e.Message); }
@@ -1752,6 +1832,27 @@ namespace StudioEX.Bridge.Api
             }
         }
 
+        // ---- the fan of chips ----
+        private void DrawSpread()
+        {
+            Disc(_spreadAt, 3.5f, new Color(1, 1, 1, 0.8f));
+            for (int k = 0; k < _spread.Count; k++)
+            {
+                var c = _spread[k];
+                bool hot = k == _spreadHot;
+                var kind = c.Key.Substring(0, c.Key.IndexOf(':'));
+                var col = kind == "ik" ? IkCol : kind == "acc" ? AccCol : kind == "joint" ? Bone : new Color(0.8f, 0.88f, 1f);
+                Line(c.Real, c.At, hot ? 2f : 1.2f, hot ? A(Accent, 0.9f) : new Color(1, 1, 1, 0.35f));
+                float r = hot ? ChipR + 2f : ChipR;
+                Disc(c.At, r + 2f, new Color(0, 0, 0, 0.45f));
+                Disc(c.At, r, new Color(0.09f, 0.1f, 0.12f, 0.94f));
+                Circle2(c.At, r, hot ? 2.4f : 1.5f, hot ? Accent : A(col, 0.85f));
+                if (kind == "ik") DiamondOutline(c.At, 6.5f, 1.8f, col);
+                else if (kind == "acc") Square(c.At, 4.5f, col);
+                else Disc(c.At, kind == "joint" ? 4.5f : 4f, col);
+            }
+        }
+
         // ---- the focus point: a camera-style reticle ----
         private void DrawFocus(Camera cam)
         {
@@ -1863,6 +1964,25 @@ namespace StudioEX.Bridge.Api
                 _tagStyle = new GUIStyle(GUI.skin.label) { fontSize = 12, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleLeft };
                 _tagStyle.normal.textColor = Color.white;
             }
+            if (_spread != null && _drag == H.None)
+            {
+                for (int k = 0; k < _spread.Count; k++)
+                {
+                    var c = _spread[k];
+                    bool hot = k == _spreadHot;
+                    var sz = _tagStyle.CalcSize(new GUIContent(c.Label));
+                    // above the chips on the arc, below the ones level with the spot
+                    bool above = c.At.y > _spreadAt.y + 8f;
+                    float y = Screen.height - c.At.y + (above ? -(ChipR + sz.y + 6) : ChipR + 4);
+                    var lr = new Rect(c.At.x - sz.x / 2 - 5, y, sz.x + 10, sz.y + 2);
+                    var was = GUI.color;
+                    GUI.color = hot ? new Color(0.95f, 0.55f, 0.15f, 0.95f) : new Color(0.06f, 0.07f, 0.09f, 0.82f);
+                    GUI.DrawTexture(lr, Texture2D.whiteTexture);
+                    GUI.color = was;
+                    GUI.Label(new Rect(lr.x + 5, lr.y + 1, sz.x, sz.y), c.Label, _tagStyle);
+                }
+                return;
+            }
             string text = _drag != H.None ? _tag : _labels ? HoverLabel() : null;
             var at = _drag != H.None ? _tagAt : (Vector2)Mouse;
             if (string.IsNullOrEmpty(text)) return;
@@ -1893,8 +2013,8 @@ namespace StudioEX.Bridge.Api
             if (_hoverPick == null) return null;
             var top = LabelOf(_hoverPick);
             // more here: say what a second click gets
-            var more = _hoverList.Where(x => x.Score < 1000f && x.Key != _hoverPick).Select(x => LabelOf(x.Key)).FirstOrDefault(x => x != null);
-            return more != null ? top + "   (click again: " + more + ")" : top;
+            int more = _hoverList.Where(x => x.Score < 1000f).Select(x => x.Key).Distinct().Count() - 1;
+            return more > 0 ? top + "   (+" + more + " here - hold still to spread them)" : top;
         }
 
         // ================================================================== tests
@@ -1957,6 +2077,7 @@ namespace StudioEX.Bridge.Api
             st["anchor"] = Anchor();
             st["screen"] = new List<object> { Screen.width, Screen.height };
             st["cameraBlocked"] = BlockCamera();
+            st["spread"] = _spread?.Select(x => (object)new Dictionary<string, object> { { "key", x.Key }, { "label", x.Label }, { "at", new List<object> { (double)x.At.x, (double)x.At.y } } }).ToList();
             return st;
         }
 
