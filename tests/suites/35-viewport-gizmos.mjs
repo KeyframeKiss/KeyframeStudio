@@ -1,3 +1,6 @@
+import fs from 'node:fs';
+import path from 'node:path';
+
 export const name = 'Viewport overlays & handles: joints, rings, IK without jumps, accessories, focus point, guides, undo';
 
 export default async function (t) {
@@ -269,5 +272,51 @@ export default async function (t) {
     await frame();
     const hidden = await sim({ at: b.screen });
     check('nothing to click with the overlays off', !String(hidden.hoverPick ?? '').startsWith('joint:'), hidden.hoverPick);
+  });
+
+  await t.step('FK on the body and an IK arm together: the hand follows its target, and it survives save + load', async () => {
+    // FK first (a small turn of the spine), the way people pose
+    const spine = await sim({ id, bone: 'cf_j_spine02' });
+    await ok('gizmo.target', { kind: 'bone', id, index: spine.index });
+    const r = (await ok('gizmo.get')).target.rot;
+    await ok('gizmo.value', { rot: [r[0], r[1], r[2] + 2] });
+    await frame();
+    const h0 = await sim({ id, bone: 'cf_j_hand_L' });
+    check('FK is on for the body', h0.fk && h0.activeFK.some(Boolean), JSON.stringify(h0.activeFK));
+    await ok('gizmo.target', { kind: 'ik', id, index: 3 });
+    const tg = (await ok('gizmo.get')).target;
+    await ok('gizmo.value', { pos: [tg.pos[0] + 0.12, tg.pos[1], tg.pos[2]] });
+    await sleep(400);
+    const h1 = await sim({ id, bone: 'cf_j_hand_L' });
+    check('the hand follows its IK target (FK lets go of that arm)', dist(h1.world, h0.world) > 0.06, `${dist(h1.world, h0.world).toFixed(3)} m`);
+    check('FK and IK both on', h1.fk && h1.ik, JSON.stringify([h1.fk, h1.ik]));
+    // relative to the hips: the sample's idle animation moves the whole body around
+    const rel = (b) => [b.world[0] - b.hips[0], b.world[1] - b.hips[1], b.world[2] - b.hips[2]];
+    const other = rel(await sim({ id, bone: 'cf_j_hand_R' }));
+
+    const sceneDir = path.join(t.paths.userData, 'studio', 'scene');
+    const before = new Set(fs.readdirSync(sceneDir));
+    await ok('scene.save');
+    let added = [];
+    for (let i = 0; i < 20 && !added.length; i++) {
+      await sleep(500);
+      added = fs.readdirSync(sceneDir).filter((f) => !before.has(f));
+    }
+    t.defer(() => {
+      for (const f of added) if (/^\d{4}_\d{4}_\d{4}_\d{2}_\d{3}\.png$/.test(f) && fs.existsSync(path.join(sceneDir, f))) fs.unlinkSync(path.join(sceneDir, f));
+    });
+    if (added.length !== 1) return check('scene saved', false);
+    await ok('scene.load', { path: path.join(sceneDir, added[0]) });
+    let ch2;
+    for (let i = 0; i < 40 && !ch2; i++) {
+      await sleep(700);
+      ch2 = (await ok('scene.get')).nodes.find((n) => n.type === 'Char');
+    }
+    await sleep(3000); // other plugins finish loading, then the bridge puts the saved FK parts back
+    const l = await sim({ id: ch2.id, bone: 'cf_j_hand_L' });
+    check('reloaded with FK and IK both on', l.fk && l.ik, JSON.stringify([l.fk, l.ik]));
+    check('…the IK arm where it was', dist(rel(l), rel(h1)) < 0.02, `${dist(rel(l), rel(h1)).toFixed(3)} m`);
+    const o2 = rel(await sim({ id: ch2.id, bone: 'cf_j_hand_R' }));
+    check('…and the FK arm too', dist(o2, other) < 0.02, `${dist(o2, other).toFixed(3)} m`);
   });
 }

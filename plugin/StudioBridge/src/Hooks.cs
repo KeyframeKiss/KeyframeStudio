@@ -49,6 +49,35 @@ namespace StudioEX.Bridge
             StudioBridgePlugin.Instance?.Broadcast("scene.file", SceneApi.CurrentFile);
         }
 
+        // A character saved with FK and IK both on (posed in the viewport: a limb in IK, the rest in FK) — Studio's
+        // loader turns IK off whenever FK is on, which would drop those limbs back to old FK values. Put IK back.
+
+        [HarmonyPrefix, HarmonyPatch(typeof(Studio.AddObjectFemale), "Add", new[] { typeof(ChaControl), typeof(Studio.OICharInfo), typeof(Studio.ObjectCtrlInfo), typeof(Studio.TreeNodeObject), typeof(bool), typeof(int) })]
+        private static void FemaleLoading(Studio.OICharInfo _info, out bool[] __state) => __state = Both(_info);
+
+        [HarmonyPostfix, HarmonyPatch(typeof(Studio.AddObjectFemale), "Add", new[] { typeof(ChaControl), typeof(Studio.OICharInfo), typeof(Studio.ObjectCtrlInfo), typeof(Studio.TreeNodeObject), typeof(bool), typeof(int) })]
+        private static void FemaleLoaded(Studio.OCICharFemale __result, bool[] __state) { if (__state != null && __result != null) Try(() => ViewportGizmos.KeepFkAndIk(__result, __state)); }
+
+        [HarmonyPrefix, HarmonyPatch(typeof(Studio.AddObjectMale), "Add", new[] { typeof(ChaControl), typeof(Studio.OICharInfo), typeof(Studio.ObjectCtrlInfo), typeof(Studio.TreeNodeObject), typeof(bool), typeof(int) })]
+        private static void MaleLoading(Studio.OICharInfo _info, out bool[] __state) => __state = Both(_info);
+
+        [HarmonyPostfix, HarmonyPatch(typeof(Studio.AddObjectMale), "Add", new[] { typeof(ChaControl), typeof(Studio.OICharInfo), typeof(Studio.ObjectCtrlInfo), typeof(Studio.TreeNodeObject), typeof(bool), typeof(int) })]
+        private static void MaleLoaded(Studio.OCICharMale __result, bool[] __state) { if (__state != null && __result != null) Try(() => ViewportGizmos.KeepFkAndIk(__result, __state)); }
+
+        [HarmonyPrefix, HarmonyPatch(typeof(Studio.OCIChar), nameof(Studio.OCIChar.ChangeChara))]
+        private static void Swapping(Studio.OCIChar __instance, out bool[] __state) => __state = Both(__instance?.oiCharInfo);
+
+        [HarmonyPostfix, HarmonyPatch(typeof(Studio.OCIChar), nameof(Studio.OCIChar.ChangeChara))]
+        private static void Swapped(Studio.OCIChar __instance, bool[] __state) { if (__state != null) Try(() => ViewportGizmos.KeepFkAndIk(__instance, __state)); }
+
+        /// <summary>The FK parts a character was saved with, when it had FK and IK both on (else null).</summary>
+        private static bool[] Both(Studio.OICharInfo info) => info != null && info.enableFK && info.enableIK && info.activeFK != null ? (bool[])info.activeFK.Clone() : null;
+
+        // Studio applies FK after IK each frame: with both on, the spine / shoulder turns would carry an IK limb off
+        // its target — so IK solves once more right after FK.
+        [HarmonyPostfix, HarmonyPatch(typeof(Studio.FKCtrl), "LateUpdate")]
+        private static void FkApplied(Studio.FKCtrl __instance) => ViewportGizmos.AfterFk(__instance);
+
         private static void Try(System.Action a)
         {
             try { a(); }

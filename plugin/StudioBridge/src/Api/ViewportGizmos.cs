@@ -492,6 +492,146 @@ namespace StudioEX.Bridge.Api
             for (int k = 0; k < 4; k++) c.preparation.pvCopy[k] = false; // what Studio sets while FK is on
         }
 
+        // ---- FK and IK together: a limb IK drives is IK's alone ----
+        // Studio's FK writes every body bone after IK has solved, so with both on an IK limb wouldn't move: its FK
+        // bones (upper arm, forearm, hand / thigh, calf, foot) stand down while IK drives that limb, and take over
+        // from wherever IK left them when it stops. Studio files them all under "Body", so it's done bone by bone.
+        private static readonly string[][] LimbBones =
+        {
+            null,
+            new[] { "cf_j_thigh00_R", "cf_j_leg01_R", "cf_j_foot_R" }, // IK part 1: right leg
+            new[] { "cf_j_thigh00_L", "cf_j_leg01_L", "cf_j_foot_L" }, // 2: left leg
+            new[] { "cf_j_arm00_R", "cf_j_forearm01_R", "cf_j_hand_R" }, // 3: right arm
+            new[] { "cf_j_arm00_L", "cf_j_forearm01_L", "cf_j_hand_L" }, // 4: left arm
+        };
+        private static int LimbOf(string bone)
+        {
+            if (bone == null) return -1;
+            for (int i = 1; i < LimbBones.Length; i++) if (Array.IndexOf(LimbBones[i], bone) >= 0) return i;
+            return -1;
+        }
+
+        private sealed class FkLimbs
+        {
+            public readonly List<object>[] Targets = new List<object>[5];
+            public System.Reflection.PropertyInfo Enable;
+            public System.Reflection.MethodInfo Copy;
+        }
+        private static readonly Dictionary<FKCtrl, FkLimbs> _fkLimbs = new Dictionary<FKCtrl, FkLimbs>();
+        private static readonly int BodyPart = Array.IndexOf(FKCtrl.parts, OIBoneInfo.BoneGroup.Body);
+
+        private static FkLimbs LimbsOf(FKCtrl fk)
+        {
+            if (fk == null) return null;
+            if (_fkLimbs.TryGetValue(fk, out var hit)) return hit;
+            var r = new FkLimbs();
+            var list = HarmonyLib.Traverse.Create(fk).Field("listBones").GetValue() as System.Collections.IEnumerable;
+            if (list != null)
+                foreach (var t in list)
+                {
+                    if (t == null) continue;
+                    var type = t.GetType();
+                    r.Enable = r.Enable ?? type.GetProperty("enable");
+                    r.Copy = r.Copy ?? type.GetMethod("CopyBone", Type.EmptyTypes);
+                    var go = type.GetField("gameObject")?.GetValue(t) as GameObject;
+                    int limb = go != null ? LimbOf(go.name) : -1;
+                    if (limb < 0) continue;
+                    (r.Targets[limb] = r.Targets[limb] ?? new List<object>()).Add(t);
+                }
+            _fkLimbs[fk] = r;
+            return r;
+        }
+
+        /// <summary>FK on each limb's bones exactly when FK poses the body and IK isn't driving that limb.</summary>
+        private static void SyncLimbs(OCIChar c)
+        {
+            if (c?.fkCtrl == null || c.oiCharInfo == null || BodyPart < 0) return;
+            if (!FkOn(c, BodyPart)) return; // FK isn't on the body: Studio has its bones off already
+            var limbs = LimbsOf(c.fkCtrl);
+            if (limbs?.Enable == null) return;
+            for (int i = 1; i < 5; i++)
+            {
+                var ts = limbs.Targets[i];
+                if (ts == null) continue;
+                bool want = !IkOn(c, i);
+                foreach (var t in ts)
+                {
+                    if ((bool)limbs.Enable.GetValue(t, null) == want) continue;
+                    if (want) limbs.Copy?.Invoke(t, null); // hold the pose IK left (no snap back to old FK values)
+                    limbs.Enable.SetValue(t, want, null);
+                }
+            }
+        }
+
+        private static readonly Dictionary<FKCtrl, OCIChar> _fkOwner = new Dictionary<FKCtrl, OCIChar>();
+
+        private void SyncAllLimbs()
+        {
+            var studio = Singleton<Studio.Studio>.Instance;
+            if (studio == null) return;
+            if (_fkOwner.Count > 64) _fkOwner.Clear();
+            foreach (var oci in studio.dicObjectCtrl.Values)
+                if (oci is OCIChar c && c.charInfo != null && c.oiCharInfo.enableFK)
+                {
+                    if (c.fkCtrl != null) _fkOwner[c.fkCtrl] = c;
+                    SyncLimbs(c);
+                }
+        }
+
+        /// <summary>Right after Studio's FK has posed a character: with IK on as well, IK solves again on top of it.</summary>
+        public static void AfterFk(FKCtrl fk)
+        {
+            if (fk == null || !_fkOwner.TryGetValue(fk, out var c) || c?.charInfo == null || c.finalIK == null) return;
+            var info = c.oiCharInfo;
+            if (!info.enableFK || !info.enableIK || !c.finalIK.enabled) return;
+            bool anyIk = false;
+            for (int j = 0; j < info.activeIK.Length; j++) anyIk |= info.activeIK[j];
+            if (!anyIk) return;
+            try { c.finalIK.solver.Update(); }
+            catch (Exception e) { StudioBridgePlugin.Logger.LogDebug("FK+IK solve: " + e.Message); }
+        }
+
+        /// <summary>After Studio loads a character saved with both FK and IK on (it turns IK off when FK is on).</summary>
+        public static void KeepFkAndIk(OCIChar c, bool[] fkParts)
+        {
+            if (c?.oiCharInfo == null) return;
+            Restore(c, fkParts);
+            // other plugins finish their own loading afterwards (KK_FKIK turns body FK off for its FK&IK mode):
+            // look again a moment later, and once more after that
+            _recheck.Add(new Recheck { Chara = c, Parts = fkParts, Frame = Time.frameCount + 10 });
+            _recheck.Add(new Recheck { Chara = c, Parts = fkParts, Frame = Time.frameCount + 90 });
+        }
+
+        private sealed class Recheck
+        {
+            public OCIChar Chara;
+            public bool[] Parts;
+            public int Frame;
+        }
+        private static readonly List<Recheck> _recheck = new List<Recheck>();
+
+        private static void Restore(OCIChar c, bool[] fkParts)
+        {
+            if (c?.charInfo == null || c.oiCharInfo == null) return;
+            if (!c.oiCharInfo.enableFK) return; // someone turned FK off on purpose
+            for (int i = 0; i < FKCtrl.parts.Length && i < fkParts.Length; i++)
+                if (fkParts[i] && !c.oiCharInfo.activeFK[i]) c.ActiveFK(FKCtrl.parts[i], true, false);
+            if (!c.oiCharInfo.enableIK) IkAlongside(c);
+            SyncLimbs(c);
+        }
+
+        private static void RunRechecks()
+        {
+            for (int i = _recheck.Count - 1; i >= 0; i--)
+            {
+                var r = _recheck[i];
+                if (Time.frameCount < r.Frame) continue;
+                _recheck.RemoveAt(i);
+                try { Restore(r.Chara, r.Parts); }
+                catch (Exception e) { StudioBridgePlugin.Logger.LogDebug("FK+IK restore: " + e.Message); }
+            }
+        }
+
         private static void IkAlongside(OCIChar c)
         {
             c.finalIK.enabled = true;
@@ -509,7 +649,7 @@ namespace StudioEX.Bridge.Api
             for (int i = 1; i < 5; i++)
             {
                 var bit = (OIBoneInfo.BoneGroup)(1 << i);
-                if ((b.boneGroup & bit) != 0 && IkOn(c, i)) handOver.Add(bit);
+                if (LimbOf(b.guideObject?.transformTarget?.name) == i && IkOn(c, i)) handOver.Add(bit);
             }
             if (FkOn(c, part) && handOver.Count == 0) return;
             if (!c.oiCharInfo.enableFK)
@@ -526,6 +666,7 @@ namespace StudioEX.Bridge.Api
                 if (!FkOn(c, part)) c.ActiveFK(FKCtrl.parts[part], true, false);
             }
             foreach (var bit in handOver) c.ActiveIK(bit, false, false);
+            SyncLimbs(c); // that limb's FK bones take over from where IK left them
         }
 
         /// <summary>Before an IK target is moved by hand: IK for its limb only, every idle target where its bone is now.</summary>
@@ -544,6 +685,7 @@ namespace StudioEX.Bridge.Api
                 if (fk) FkAlongside(c); // …so it comes straight back as it was
             }
             else c.ActiveIK((OIBoneInfo.BoneGroup)(1 << part), true, false);
+            SyncLimbs(c); // FK lets go of that limb's bones
         }
 
         /// <summary>FK / IK switches, so undo puts the character's mode back with the pose.</summary>
@@ -567,6 +709,7 @@ namespace StudioEX.Bridge.Api
                 if (fk && ik && !info.enableFK) FkAlongside(c);
                 if (info.enableFK) for (int i = 0; i < FKCtrl.parts.Length; i++) c.ActiveFK(FKCtrl.parts[i], info.activeFK[i], true);
                 if (info.enableIK) for (int j = 0; j < 5; j++) c.ActiveIK((OIBoneInfo.BoneGroup)(1 << j), info.activeIK[j], true);
+                SyncLimbs(c);
             };
         }
 
@@ -644,6 +787,8 @@ namespace StudioEX.Bridge.Api
             try
             {
                 HookCamera();
+                RunRechecks();
+                SyncAllLimbs();
                 Step();
             }
             catch (Exception e)
