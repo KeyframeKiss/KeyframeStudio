@@ -171,7 +171,7 @@ function createWindow() {
       const b = onScreen(saved) ? saved : { width: w, height: h, x: Math.max(a.x, Math.min(miniFrom.bounds.x, a.x + a.width - w)), y: a.y + a.height - h };
       win.setBounds({ x: Math.round(b.x), y: Math.round(b.y), width: Math.round(b.width), height: Math.round(b.height) });
       win.setAlwaysOnTop(true);
-      try { win.setTitleBarOverlay({ height: 32 }); } catch { /* older Electron */ }
+      try { win.setTitleBarOverlay({ height: 38 }); } catch { /* older Electron */ }
     } else if (!on && miniFrom) {
       const st = loadState();
       st.miniBounds = win.getNormalBounds();

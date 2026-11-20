@@ -6450,11 +6450,19 @@ input[type='range']:hover {
   height: 100vh;
 }
 .header.mini-header {
-  height: 32px;
-  min-height: 32px;
+  height: 38px; /* the same as Windows' buttons beside it (titleBarOverlay in main.cjs) */
+  min-height: 38px;
+  flex: none;
   gap: 8px;
-  padding-left: 10px;
+  padding-left: 12px;
   font-size: 12px;
+}
+.mini-header .btn {
+  height: 24px;
+  padding: 0 10px 0 8px;
+  gap: 6px;
+  font-size: 11.5px;
+  border-radius: 6px;
 }
 html.frameless .header.mini-header {
   padding-right: 146px; /* Windows' minimize / maximize / close */
