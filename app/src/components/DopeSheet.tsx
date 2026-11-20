@@ -32,6 +32,10 @@ import {
   removeAudio,
   setAudio,
   type KeyId,
+  setTrackKinds,
+  trackKind,
+  TRACK_KINDS,
+  type TrackKind,
 } from '../state/store';
 import { Icon, TypeIcon } from './Icon';
 import { ContextMenu, type MenuItem } from './ContextMenu';
@@ -180,7 +184,59 @@ export function DopeSheet({ compact = false }: { compact?: boolean } = {}) {
   const centerView = useStore((s) => s.centerView);
   const groupMode = useStore((s) => s.groupMode);
   const groups = useStore((s) => s.groups);
+  const trackKinds = useStore((s) => s.trackKinds);
   const [renamingGroup, setRenamingGroup] = useState<number | null>(null);
+  // a folder just made from the toolbar opens straight into naming it
+  useEffect(() => {
+    const on = (e: Event) => setRenamingGroup((e as CustomEvent<number>).detail);
+    window.addEventListener('kf:rename-folder', on);
+    return () => window.removeEventListener('kf:rename-folder', on);
+  }, []);
+  // Ctrl+F: the track search
+  useEffect(() => {
+    const on = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 'f' || e.shiftKey || e.altKey) return;
+      const el = document.getElementById('track-search') as HTMLInputElement | null;
+      if (!el) return;
+      e.preventDefault();
+      el.focus();
+      el.select();
+    };
+    window.addEventListener('keydown', on);
+    return () => window.removeEventListener('keydown', on);
+  }, []);
+  // dragging tracks into / out of folders
+  const [dropOn, setDropOn] = useState<number | null>(null); // folder id, or -1 for "out of folders"
+  const dragIds = (e: React.DragEvent): number[] | null => {
+    if (!e.dataTransfer.types.includes('application/x-kf-tracks')) return null;
+    try {
+      return JSON.parse(e.dataTransfer.getData('application/x-kf-tracks') || '[]');
+    } catch {
+      return [];
+    }
+  };
+  const dropZone = (gid: number) => ({
+    onDragOver: (e: React.DragEvent) => {
+      if (!e.dataTransfer.types.includes('application/x-kf-tracks')) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      if (dropOn !== gid) setDropOn(gid);
+    },
+    onDragLeave: (e: React.DragEvent) => {
+      if (!e.currentTarget.contains(e.relatedTarget as Node)) setDropOn((d) => (d === gid ? null : d));
+    },
+    onDrop: (e: React.DragEvent) => {
+      const ids = dragIds(e);
+      setDropOn(null);
+      if (!ids?.length) return;
+      e.preventDefault();
+      e.stopPropagation();
+      moveToFolder(ids, gid).then(() => {
+        const g = useStore.getState().groups.find((x) => x.id === gid);
+        toast(gid === -1 ? `Moved ${ids.length} track${ids.length > 1 ? 's' : ''} out of folders` : `Moved ${ids.length} track${ids.length > 1 ? 's' : ''} into “${g?.name ?? 'folder'}”`);
+      });
+    },
+  });
 
   const [nameW, setNameW] = useState(() => Number(localStorage.getItem('studioex.nameW')) || 250);
   const [scrollY, setScrollY] = useState(0);
@@ -250,7 +306,7 @@ export function DopeSheet({ compact = false }: { compact?: boolean } = {}) {
       if (!collapsed.has(oci)) for (const t of list) out.push({ kind: 'track', key: `t${t.id}`, track: t });
     }
     return out;
-  }, [tracks, nodes, filter, studioSelection, search, collapsed, showEnglish, groupMode, groups]);
+  }, [tracks, nodes, filter, studioSelection, search, collapsed, showEnglish, groupMode, groups, trackKinds]);
 
   const rowsRef = useRef(rows);
   rowsRef.current = rows;
@@ -1292,8 +1348,27 @@ export function DopeSheet({ compact = false }: { compact?: boolean } = {}) {
         onDrop={onDrop}
       >
         <div className="sheet-names" style={{ width: nameW }} onWheel={onNameWheel}>
-          <div className="sheet-names-header" style={{ height: RULER_H }}>
-            <span style={{ flex: 1 }}>Tracks</span>
+          <div className={`sheet-names-header ${dropOn === -1 ? 'drop-on' : ''}`} style={{ height: RULER_H }} {...(groupMode === 'folders' ? dropZone(-1) : {})} title={groupMode === 'folders' ? 'Drop tracks here to take them out of their folder' : undefined}>
+            <span style={{ flex: 1 }}>{dropOn === -1 ? 'Out of folders' : 'Tracks'}</span>
+            {rows.some((r) => r.kind !== 'track') && (
+              <button
+                className="sheet-head-btn"
+                onClick={() => {
+                  const st = useStore.getState();
+                  if (groupMode === 'folders') {
+                    const anyOpen = st.groups.some((g) => g.expanded);
+                    for (const g of st.groups) if (g.expanded === anyOpen) setFolderExpanded(g.id, !anyOpen);
+                  } else {
+                    const objs = rows.filter((r) => r.kind === 'obj').map((r) => (r as { oci: number }).oci);
+                    const allClosed = objs.every((o) => st.collapsed.has(o));
+                    useStore.setState({ collapsed: allClosed ? new Set() : new Set(objs) });
+                  }
+                }}
+                title={groupMode === 'folders' ? 'Open or close every folder' : 'Open or close every object'}
+              >
+                <Icon name={(groupMode === 'folders' ? groups.some((g) => g.expanded) : rows.some((r) => r.kind === 'track')) ? 'collapseAll' : 'expandAll'} size={12} />
+              </button>
+            )}
             {window.studioEx?.openAudio && (
               <button className="sheet-add-audio" onClick={() => pickAudio(Math.round(liveTime() * 1000) / 1000)} title="Add a WAV at the playhead (or drop one onto the timeline where it should start)">
                 + Audio
@@ -1358,12 +1433,13 @@ export function DopeSheet({ compact = false }: { compact?: boolean } = {}) {
                 return (
                   <div {...pressable}
                     key={row.key}
-                    className="sheet-row obj"
+                    className={`sheet-row obj folder ${dropOn === row.gid ? 'drop-on' : ''}`}
                     style={{ top, height: ROW_H, paddingLeft: 4 + row.depth * 14 }}
                     onClick={(e) => selectTracks(row.tracks.map((t) => t.id), e.ctrlKey ? 'add' : 'replace')}
                     onDoubleClick={() => setRenamingGroup(row.gid)}
                     onContextMenu={(e) => folderMenu(e, row)}
-                    title="Timeline folder · click selects its tracks · double-click renames"
+                    {...dropZone(row.gid)}
+                    title="Timeline folder · click selects its tracks · double-click renames · drop tracks here to move them in"
                   >
                     <span
                       {...pressable}
@@ -1376,13 +1452,16 @@ export function DopeSheet({ compact = false }: { compact?: boolean } = {}) {
                     >
                       <Icon name={row.expanded ? 'chevronDown' : 'chevronRight'} size={12} />
                     </span>
-                    <span className="type-icon type-Folder">▤</span>
+                    <span className="type-icon type-Folder">
+                      <Icon name="folder" size={13} />
+                    </span>
                     {renamingGroup === row.gid ? (
                       <input
                         className="input"
                         style={{ height: 20, flex: 1 }}
                         autoFocus
                         defaultValue={row.label}
+                        onFocus={(e) => e.target.select()}
                         onClick={(e) => e.stopPropagation()}
                         onBlur={(e) => {
                           setRenamingGroup(null);
@@ -1411,6 +1490,14 @@ export function DopeSheet({ compact = false }: { compact?: boolean } = {}) {
                   key={row.key}
                   className={`sheet-row ${isSel ? 'selected' : ''} ${tr.enabled ? '' : 'disabled'}`}
                   style={{ top, height: ROW_H, paddingLeft: 10 + (row.depth ?? 0) * 14 }}
+                  draggable={groupMode === 'folders' && renaming !== tr.id}
+                  onDragStart={(e) => {
+                    // the selected tracks go together when this one is among them
+                    const ids = selTracks.has(tr.id) ? [...selTracks] : [tr.id];
+                    e.dataTransfer.setData('application/x-kf-tracks', JSON.stringify(ids));
+                    e.dataTransfer.effectAllowed = 'move';
+                  }}
+                  onDragEnd={() => setDropOn(null)}
                   onClick={(e) => onTrackClick(e, tr)}
                   onContextMenu={(e) => trackMenu(e, tr)}
                   onDoubleClick={() => setRenaming(tr.id)}
@@ -1435,6 +1522,7 @@ export function DopeSheet({ compact = false }: { compact?: boolean } = {}) {
                       style={{ height: 20, flex: 1 }}
                       autoFocus
                       defaultValue={tr.alias || displayName({ name: tr.name, nameEn: tr.nameEn })}
+                      onFocus={(e) => e.target.select()}
                       onClick={(e) => e.stopPropagation()}
                       onBlur={(e) => {
                         setRenaming(null);
@@ -1557,6 +1645,15 @@ function SheetToolbar({ shown, total, viewExtra }: { shown: number; total: numbe
     useStore.setState({ groupMode: m });
     lsSet('studioex.groupMode', m);
   };
+  const newFolder = async () => {
+    const st = useStore.getState();
+    // the selected tracks, else the tracks of the selected keys
+    const ids = st.selTracks.size ? [...st.selTracks] : [...new Set([...st.selKeys].map((k) => parseKeyId(k).track))];
+    const id = await createFolder('New folder', ids);
+    if (id === undefined) return;
+    setGroup('folders');
+    requestAnimationFrame(() => window.dispatchEvent(new CustomEvent('kf:rename-folder', { detail: id })));
+  };
   return (
     <div className="sheet-toolbar">
       <Popover
@@ -1581,7 +1678,40 @@ function SheetToolbar({ shown, total, viewExtra }: { shown: number; total: numbe
           Graph
         </button>
       </div>
-      <input className="input" style={{ width: 150 }} placeholder="Search tracks…" value={search} onChange={(e) => useStore.setState({ search: e.target.value })} />
+      <div className="track-search">
+        <Icon name="search" size={12} />
+        <input
+          id="track-search"
+          className="input"
+          placeholder="Search tracks…"
+          title="Search track names, objects, folders and types (Ctrl+F) — several words narrow it down · Esc clears"
+          value={search}
+          onChange={(e) => useStore.setState({ search: e.target.value })}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') {
+              useStore.setState({ search: '' });
+              (e.target as HTMLInputElement).blur();
+            }
+          }}
+        />
+        {search && (
+          <button className="track-search-clear" onClick={() => useStore.setState({ search: '' })} title="Clear the search">
+            ×
+          </button>
+        )}
+      </div>
+      <KindFilter />
+      <div className="seg" title="Group the track list by object, or by your own folders (saved in the scene with Timeline)">
+        <button className={groupMode === 'objects' ? 'on' : ''} onClick={() => setGroup('objects')}>
+          Objects
+        </button>
+        <button className={groupMode === 'folders' ? 'on' : ''} onClick={() => setGroup('folders')}>
+          Folders
+        </button>
+      </div>
+      <button className="btn" onClick={newFolder} title="New folder from the selected tracks (Ctrl+G) — then drag more tracks onto it">
+        <Icon name="folderPlus" size={14} /> Folder
+      </button>
       {filter === 'selected' && (
         <button className="filter-chip" onClick={() => setFilter('all')} title="Showing only the tracks of objects selected in Studio — click to show all">
           Selected objects <span>×</span>
@@ -1612,17 +1742,6 @@ function SheetToolbar({ shown, total, viewExtra }: { shown: number; total: numbe
             </button>
             <button className={filter === 'all' ? 'on' : ''} style={{ flex: 1 }} onClick={() => setFilter('all')} title="Show every animated object">
               All objects
-            </button>
-          </div>
-          <div className="menu-label" style={{ padding: 0 }}>
-            Group by
-          </div>
-          <div className="seg" title="Group tracks by object, or by Timeline's own folders">
-            <button className={groupMode === 'objects' ? 'on' : ''} style={{ flex: 1 }} onClick={() => setGroup('objects')}>
-              Objects
-            </button>
-            <button className={groupMode === 'folders' ? 'on' : ''} style={{ flex: 1 }} onClick={() => setGroup('folders')}>
-              Folders
             </button>
           </div>
           {centerView === 'dope' && viewExtra}
@@ -1675,5 +1794,48 @@ function SelectionBar() {
         </button>
       )}
     </div>
+  );
+}
+
+/** Show only some kinds of track (bones, face, camera…); none ticked = all. */
+function KindFilter() {
+  const kinds = useStore((s) => s.trackKinds);
+  const tracks = useStore((s) => s.tracks);
+  const counts = new Map<TrackKind, number>();
+  for (const t of tracks) counts.set(trackKind(t), (counts.get(trackKind(t)) ?? 0) + 1);
+  const on = new Set(kinds);
+  const toggle = (k: TrackKind) => setTrackKinds(on.has(k) ? kinds.filter((x) => x !== k) : [...kinds, k]);
+  return (
+    <Popover
+      placement="down"
+      width={220}
+      trigger={(open, toggleOpen) => (
+        <button className={`btn ${open || kinds.length ? 'on' : ''}`} onClick={toggleOpen} title="Show only some kinds of track: bones, face, camera, lights…">
+          <Icon name="funnel" size={13} />
+          {kinds.length ? <span className="badge">{kinds.length}</span> : null}
+        </button>
+      )}
+    >
+      <div className="layout-menu kind-filter">
+        <div className="layout-menu-h">
+          Show tracks of
+          {kinds.length > 0 && (
+            <button className="btn small solid" onClick={() => setTrackKinds([])}>
+              Show all
+            </button>
+          )}
+        </div>
+        {TRACK_KINDS.map((k) => {
+          const n = counts.get(k) ?? 0;
+          return (
+            <label key={k} className={n ? '' : 'empty'}>
+              <input type="checkbox" checked={on.has(k)} onChange={() => toggle(k)} /> {k}
+              <span className="sub">{n}</span>
+            </label>
+          );
+        })}
+        <small className="hint" style={{ margin: '4px 0 0' }}>Nothing ticked shows every kind. Tick one or more to narrow the list.</small>
+      </div>
+    </Popover>
   );
 }

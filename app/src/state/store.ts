@@ -74,6 +74,8 @@ export interface AppState {
   selTracks: Set<number>;
   filter: 'selected' | 'all';
   search: string;
+  /** track kinds shown (empty = all) */
+  trackKinds: TrackKind[];
   collapsed: Set<number>;
   snap: boolean;
   /** which keys snapping lands on: the tracks being worked on, every track, or none */
@@ -172,6 +174,14 @@ export const useStore = create<AppState>(() => ({
   selTracks: new Set(),
   filter: (lsGet('studioex.filter') as 'selected' | 'all') || 'selected',
   search: '',
+  trackKinds: ((): TrackKind[] => {
+    try {
+      const v = JSON.parse(lsGet('studioex.trackKinds') ?? '[]');
+      return Array.isArray(v) ? v.filter((x) => (TRACK_KINDS as readonly string[]).includes(x)) : [];
+    } catch {
+      return [];
+    }
+  })(),
   collapsed: new Set(),
   snap: true,
   snapKeys: ((v) => (v === 'all' || v === 'none' ? v : 'track'))(lsGet('studioex.snapKeys')),
@@ -346,10 +356,14 @@ export async function setAutoKey(on: boolean, newTracks = get().autoKeyNew) {
 // ---------------------------------------------------------------------------
 // Timeline folders
 // ---------------------------------------------------------------------------
-export async function createFolder(name: string, trackIds: number[]) {
-  if (!trackIds.length) return toast('Select tracks first (click track names, Ctrl/Shift for several)');
-  await call('timeline.groupCreate', { name, tracks: trackIds });
+export async function createFolder(name: string, trackIds: number[]): Promise<number | undefined> {
+  if (!trackIds.length) {
+    toast('Select tracks first (click track names, Ctrl/Shift for several), then make a folder from them');
+    return undefined;
+  }
+  const id = await call<number>('timeline.groupCreate', { name, tracks: trackIds });
   await refreshTimeline();
+  return id;
 }
 export async function moveToFolder(trackIds: number[], group: number) {
   await call('timeline.groupMove', { tracks: trackIds, group });
@@ -732,17 +746,57 @@ export function displayName(n: { name: string; nameEn?: string; alias?: string }
 }
 
 export function visibleTracks(): WireTrack[] {
-  const { tracks, filter, studioSelection, search, nodes } = get();
+  const { tracks, filter, studioSelection, search, nodes, trackKinds, groups } = get();
   const q = search.trim().toLowerCase();
   const sel = new Set(studioSelection);
+  const kinds = new Set(trackKinds);
+  // a track inside a folder whose name matches is found too (folders inside folders included)
+  const byId = new Map(groups.map((g) => [g.id, g]));
+  const folderNames = (gid: number) => {
+    let out = '';
+    for (let g = byId.get(gid), n = 0; g && n < 32; g = byId.get(g.parent), n++) out += ` ${g.name}`;
+    return out;
+  };
   return tracks.filter((t) => {
     if (filter === 'selected' && studioSelection.length > 0 && t.oci !== -1 && !sel.has(t.oci)) return false;
+    if (kinds.size && !kinds.has(trackKind(t))) return false;
     if (q) {
-      const hay = `${t.name} ${t.nameEn ?? ''} ${t.alias} ${t.owner} ${nodes[t.oci]?.name ?? ''} ${nodes[t.oci]?.nameEn ?? ''}`.toLowerCase();
-      if (!hay.includes(q)) return false;
+      const hay = `${t.name} ${t.nameEn ?? ''} ${t.alias} ${t.owner} ${nodes[t.oci]?.name ?? ''} ${nodes[t.oci]?.nameEn ?? ''} ${trackKind(t)}${t.group !== -1 ? folderNames(t.group) : ''}`.toLowerCase();
+      if (!q.split(/\s+/).every((w) => hay.includes(w))) return false;
     }
     return true;
   });
+}
+
+/** What a track animates, for the track list's type filter. */
+export const TRACK_KINDS = ['Bones', 'Transform', 'Face', 'Character', 'Camera', 'Lights', 'Items', 'Look & effects', 'Other'] as const;
+export type TrackKind = (typeof TRACK_KINDS)[number];
+
+const kindCache = new WeakMap<WireTrack, TrackKind>();
+export function trackKind(t: WireTrack): TrackKind {
+  const hit = kindCache.get(t);
+  if (hit) return hit;
+  const m = t.model ?? '';
+  const n = t.name ?? '';
+  const o = t.owner ?? '';
+  let k: TrackKind = 'Other';
+  if (/^guideObject/i.test(m)) k = /\((cf_|cm_|f_t_|k_f_|cf_J|J_|N_move)/i.test(n) ? 'Bones' : 'Transform';
+  else if (/^camera/i.test(m)) k = 'Camera';
+  else if (/^light/i.test(m)) k = 'Lights';
+  else if (/^(item|object)/i.test(m)) k = 'Items';
+  else if (/^(characterEye|characterMouth|characterNeck|blush|tears)/i.test(m)) k = 'Face';
+  else if (/^(char|character|female|juice)/i.test(m)) k = 'Character';
+  else if (/^fx\.|effect|bloom|dof|vignette|fog|lut|grade|toon|shadow|material/i.test(`${m} ${o}`)) k = 'Look & effects';
+  else if (/kkpe|hspe|pose/i.test(o)) k = /blend|shape|face|eye|mouth|brow|lip|tongue/i.test(`${m} ${n}`) ? 'Face' : 'Bones';
+  else if (/abmx/i.test(o)) k = 'Character';
+  else if (/face|expression/i.test(`${m} ${o}`)) k = 'Face';
+  kindCache.set(t, k);
+  return k;
+}
+
+export function setTrackKinds(kinds: TrackKind[]) {
+  set({ trackKinds: kinds });
+  lsSet('studioex.trackKinds', JSON.stringify(kinds));
 }
 
 // ---------------------------------------------------------------------------

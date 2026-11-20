@@ -32,6 +32,10 @@ const paths: Record<string, string> = {
   library: 'M2.5 2.5h3v11h-3zM6.5 2.5h3v11h-3zM10.5 3l2.8-.7 2 10.8-2.8.6z',
   // tools
   paths: 'M2 12c2-6 4-1 6-5s4-3 6-4M2 12h.01M8 7h.01M14 3h.01',
+  folder: 'M2 4.5h4.2l1.4 1.5H14v6.5H2zM2 6h12',
+  folderPlus: 'M2 4.5h4.2l1.4 1.5H14v6.5H2zM8 7.5v3.5M6.25 9.25h3.5',
+  expandAll: 'M4 3.5l4 3 4-3M4 9l4 3 4-3',
+  collapseAll: 'M4 6.5l4-3 4 3M4 12.5l4-3 4 3',
   skeleton: 'M8 1.8a1.4 1.4 0 110 2.8 1.4 1.4 0 010-2.8zM8 4.6v5M4.2 6.6L8 6l3.8.6M8 9.6l-2.6 4.6M8 9.6l2.6 4.6',
   gizmo: 'M4 12V3.5M4 12h8.5M4 12l5-5M2.5 5L4 3.5 5.5 5M11 10.5l1.5 1.5-1.5 1.5M7 7h2v2',
   ghost: 'M4 14V7a4 4 0 018 0v7l-1.5-1.2L9 14l-1-1.2L7 14l-1.5-1.2zM6.5 7.5h.01M9.5 7.5h.01',
