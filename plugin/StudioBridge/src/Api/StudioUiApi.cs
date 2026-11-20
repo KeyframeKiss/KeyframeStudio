@@ -103,7 +103,7 @@ namespace StudioEX.Bridge.Api
             }
         }
 
-        private static void SetAxis(bool on)
+        internal static void SetAxis(bool on)
         {
             var scene = UnityEngine.Object.FindObjectOfType<StudioScene>();
             if (scene != null)

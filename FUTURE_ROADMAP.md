@@ -140,6 +140,13 @@ Direct manipulation is drawn in CharaStudio's own viewport, extending the system
 
 **Deliverable:** Click-and-drag editing in the viewport users already work in, ready for later tools to build on.
 
+**Status (done, `ViewportGizmos.cs` + `ViewportOverlays.tsx`, test suite 35):**
+- **Overlays:** skeleton with clickable joints (blue where FK poses them), IK targets as diamonds (solid when IK drives the limb), corner brackets on the selection, lights (bulb, direction, spot cone, point reach), scene cameras (view frame with an up mark), names on hover. Drawn over the finished screen, so depth of field and bloom never blur them and renders, stills and videos never include them.
+- **Handles:** rings on a bone (its own axes plus a view ring), arrows / cubes / free-move centre for objects and IK targets, following Studio's Move / Rotate / Scale mode; Local or World axes; constant size on screen; a live value tag while dragging. Turning a bone switches its part to FK keeping the pose, and an IK-driven limb hands over to FK; dragging an IK target turns IK on for its limb. Ctrl snaps (steps set in the app), Shift is fine control. Studio's camera holds still during a drag, and Studio's own handles are hidden while ours are on.
+- **Selection:** click to select joints, IK targets, lights, cameras and items (smallest under the pointer), with filters; click empty space to let go of a bone.
+- **Shared:** each drag or typed value is one step in the shared undo history; auto-key and "unkeyed changes" see the edits like any Studio edit; numeric entry for the handles' target in the app.
+- **Not done:** accessories as handle targets, composition guides in the viewport, a focus-point overlay.
+
 ---
 
 ## Phase 3 — Streamed Preview Spike (Go/No-Go)

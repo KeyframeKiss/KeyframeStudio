@@ -25,6 +25,7 @@ namespace StudioEX.Bridge.Api
 
         // a running batch
         private static bool _running;
+        internal static bool Capturing => _running;
         private static int _done, _total;
         private static string _current, _error;
         private static readonly List<object> _results = new List<object>();

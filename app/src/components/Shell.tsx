@@ -4,6 +4,7 @@ import { Help } from './Help';
 import { Icon } from './Icon';
 import { NumberField, TimeField } from './TopBar';
 import { ViewportControls } from './ViewportControls';
+import { ViewportOverlays } from './ViewportOverlays';
 import { saveSceneFile, jumpKey, keyChanged, lsSet, openLibrary, redo, seek, setAutoKey, setSettings, setTimelineUiVisible, setWorkspace, stepFrames, togglePlay, undo, useStore, useTlInfo, type Workspace, setMiniMode } from '../state/store';
 import { parseTime } from '../lib/time';
 
@@ -246,6 +247,7 @@ export function TransportBar() {
   const viewOptions = (
     <>
       <ViewportControls />
+      <ViewportOverlays />
       <span className="sep" />
       <button className={`btn icon ${snap ? 'on' : ''}`} title="Snap keys to frames (Alt while dragging bypasses)" onClick={() => useStore.setState({ snap: !snap })}>
         <Icon name="magnet" />

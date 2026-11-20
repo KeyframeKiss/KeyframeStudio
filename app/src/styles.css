@@ -6526,3 +6526,94 @@ html.frameless .header.mini-header {
 .bridge-setup .diag-row {
   grid-template-columns: 120px minmax(0, 1fr) auto;
 }
+
+/* ---- viewport overlays & handles ---- */
+.vo-pop {
+  display: grid;
+  gap: 9px;
+  padding: 6px;
+}
+.vo-pop .menu-label {
+  padding: 0;
+}
+.vo-check {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 12px;
+}
+.vo-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 10px;
+}
+.vo-snaps {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 11.5px;
+  color: var(--text-2);
+}
+.vo-snaps > span {
+  flex: 1;
+}
+.vo-target {
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 10.5px;
+  max-width: 110px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.vo-card {
+  display: grid;
+  gap: 5px;
+  padding: 9px 10px 10px;
+  border-radius: 8px;
+  background: var(--bg-2);
+  border: 1px solid var(--line-soft);
+}
+.vo-card-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 2px;
+}
+.vo-card-head small {
+  color: var(--text-3);
+  font-size: 11px;
+}
+.vo-axes,
+.vo-row {
+  display: grid;
+  grid-template-columns: 40px repeat(3, 1fr);
+  gap: 5px;
+  align-items: center;
+}
+.vo-row > span {
+  font-size: 11.5px;
+  color: var(--text-2);
+}
+.vo-row .input {
+  width: 100% !important;
+  min-width: 0;
+}
+.vo-axes i {
+  font-style: normal;
+  font-size: 10px;
+  font-weight: 700;
+  text-align: center;
+}
+.vo-axes .x {
+  color: #f0545c;
+}
+.vo-axes .y {
+  color: #72d95a;
+}
+.vo-axes .z {
+  color: #5599ff;
+}
