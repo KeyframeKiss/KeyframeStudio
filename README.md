@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="../../releases/latest"><img alt="Download" src="https://img.shields.io/badge/download-beta-ff4fa3?style=for-the-badge"></a>
+  <a href="../../releases"><img alt="Download" src="https://img.shields.io/badge/download-beta-ff4fa3?style=for-the-badge"></a>
   <a href="../../issues/new/choose"><img alt="Report a bug" src="https://img.shields.io/badge/report-a%20bug-7c5cff?style=for-the-badge"></a>
   <img alt="Windows" src="https://img.shields.io/badge/windows-10%20%7C%2011-3a3f4b?style=for-the-badge">
   <img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-3a3f4b?style=for-the-badge">
@@ -89,7 +89,7 @@ has them — and the **Timeline** plugin for animation. Other plugins (KKPE, Mat
 Screencap, NodesConstraints, xukmi FX, RealPOV, LockOnPlugin, LightManager, HideAllUI) are used when you have them;
 features that need a missing one say so.
 
-1. **Download** the latest zip from [Releases](../../releases/latest) and unzip it anywhere.
+1. **Download** the latest zip from [Releases](../../releases) and unzip it anywhere.
 2. Start **Keyframe Studio.exe** and press **Set up the bridge**. It finds your Koikatsu folder (or you choose it),
    checks BepInEx and installs the small bridge plugin in one click.
 3. Start **CharaStudio**. Keyframe Studio connects by itself — the dot in the top bar turns green.
