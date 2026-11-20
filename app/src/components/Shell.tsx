@@ -246,10 +246,42 @@ export function TransportBar() {
     </Popover>
   );
   const viewOptions = <ViewCluster />;
+  const snapKeys = useStore((s) => s.snapKeys);
+  const setSnapKeys = (v: 'track' | 'all' | 'none') => {
+    useStore.setState({ snapKeys: v, snap: true });
+    lsSet('studioex.snapKeys', v);
+  };
   const snapButton = (
+    <div className="split-btn">
     <button className={`btn icon ${snap ? 'on' : ''}`} title="Snap: dragging keys, scrubbing or moving audio lands on nearby keys, the playhead, ruler ticks and clip edges (an orange tag shows what), otherwise on whole frames. Hold Alt while dragging to place freely." aria-pressed={snap} onClick={() => useStore.setState({ snap: !snap })}>
       <Icon name="magnet" />
     </button>
+    <Popover
+      align="right"
+      width={250}
+      trigger={(open, toggle) => (
+        <button className={`btn icon split-btn-more ${open ? 'on' : snap ? 'on' : ''}`} onClick={toggle} title="What snapping lands on">
+          <Icon name="chevronDown" size={11} />
+        </button>
+      )}
+    >
+      <div className="layout-menu">
+        <div className="layout-menu-h">Snap to keys on…</div>
+        {(
+          [
+            ['track', 'This track only', 'Dragging keys: other keys on the same tracks. Scrubbing: keys on the selected tracks.'],
+            ['all', 'All tracks', 'Any key on any track'],
+            ['none', 'No keys', 'Just the playhead, ruler ticks, clip edges and frames'],
+          ] as const
+        ).map(([v, label, hint]) => (
+          <label key={v} title={hint}>
+            <input type="radio" name="snapKeys" checked={snapKeys === v} onChange={() => setSnapKeys(v)} /> {label}
+          </label>
+        ))}
+        <small className="hint" style={{ margin: '4px 0 0' }}>Always: the playhead, ruler ticks, clip edges, whole frames. Hold Alt to place freely.</small>
+      </div>
+    </Popover>
+    </div>
   );
   const changed = (
     <button className={`btn solid ${pending > 0 ? 'attention' : ''}`} onClick={keyChanged} disabled={disabled} title={`Key everything you changed in Studio (Shift+Enter)${autoKeyNew ? ' — creates tracks for moved bones/objects' : ''}`}>

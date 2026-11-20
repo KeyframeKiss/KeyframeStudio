@@ -833,9 +833,18 @@ export function DopeSheet({ compact = false }: { compact?: boolean } = {}) {
         label = l;
       }
     };
-    for (const tr of st.tracks) {
-      if (!tr.keys) continue;
-      for (const k of tr.keys) if (!o?.skipKeys?.has(keyId(tr.id, k[0]))) near(k[0], 'key');
+    // keys: only on the tracks being worked on (the dragged keys' tracks, else the selected tracks), or all of them
+    if (st.snapKeys !== 'none') {
+      let only: Set<number> | null = null;
+      if (st.snapKeys === 'track') {
+        only = new Set<number>();
+        if (o?.skipKeys?.size) o.skipKeys.forEach((id) => only!.add(parseKeyId(id).track));
+        else st.selTracks.forEach((id) => only!.add(id));
+      }
+      for (const tr of st.tracks) {
+        if (!tr.keys || (only && !only.has(tr.id))) continue;
+        for (const k of tr.keys) if (!o?.skipKeys?.has(keyId(tr.id, k[0]))) near(k[0], 'key');
+      }
     }
     if (!o?.noPlayhead) near(liveTime(), 'playhead');
     near(0, 'start');

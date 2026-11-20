@@ -76,6 +76,8 @@ export interface AppState {
   search: string;
   collapsed: Set<number>;
   snap: boolean;
+  /** which keys snapping lands on: the tracks being worked on, every track, or none */
+  snapKeys: 'track' | 'all' | 'none';
   showEnglish: boolean;
   clipboard: { refs: KeyRef[]; base: number } | null;
 
@@ -172,6 +174,7 @@ export const useStore = create<AppState>(() => ({
   search: '',
   collapsed: new Set(),
   snap: true,
+  snapKeys: ((v) => (v === 'all' || v === 'none' ? v : 'track'))(lsGet('studioex.snapKeys')),
   showEnglish: lsGet('studioex.english') !== '0',
   clipboard: null,
   toasts: [],
