@@ -6489,3 +6489,40 @@ html.frameless .header.mini-header {
 .shell.mini .toasts {
   bottom: 52px;
 }
+
+/* Settings › About: one-click bridge setup */
+.bridge-setup {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.bridge-setup-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.bridge-setup-head small {
+  color: var(--text-3);
+}
+.bridge-setup .diag-row {
+  align-items: center;
+}
+.bridge-path {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.bridge-warn {
+  color: var(--accent);
+}
+.bridge-go {
+  align-self: flex-start;
+}
+.bridge-setup {
+  margin-bottom: 14px;
+}
+.bridge-setup .diag-row {
+  grid-template-columns: 120px minmax(0, 1fr) auto;
+}

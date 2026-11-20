@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { pressable } from '../lib/pressable';
 import { Help } from './Help';
 import { bridge } from '../bridge/client';
 import { call, refreshShots, seekNow, toast, useStore } from '../state/store';
@@ -296,7 +297,7 @@ export function RenderPanel() {
                       disabled={running}
                       onChange={(e) => setIncluded(e.target.checked ? [...picked.map((s) => s.id), x.id] : picked.filter((s) => s.id !== x.id).map((s) => s.id))}
                     />
-                    {x.thumb ? <img src={x.thumb} alt="" onClick={() => seekNow(x.start)} /> : <span className="render-shot-ph">#{i + 1}</span>}
+                    {x.thumb ? <img {...pressable} src={x.thumb} alt={`Go to ${x.name}`} onClick={() => seekNow(x.start)} /> : <span className="render-shot-ph">#{i + 1}</span>}
                     <span className="render-shot-text">
                       <b>{x.name}</b>
                       <small>

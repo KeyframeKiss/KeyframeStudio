@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { pressable } from '../lib/pressable';
 
 export type MenuItem =
   | { sep: true }
@@ -19,6 +20,20 @@ export function ContextMenu({ x, y, items, onClose }: { x: number; y: number; it
     });
   }, [x, y]);
 
+  // keyboard: the first item has focus; ↑ ↓ Home End move between items, Enter / Space picks
+  useEffect(() => {
+    ref.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus({ preventScroll: true });
+  }, []);
+  const move = (e: React.KeyboardEvent) => {
+    const all = [...(ref.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? [])];
+    if (!all.length) return;
+    const at = all.indexOf(document.activeElement as HTMLElement);
+    const go = e.key === 'ArrowDown' ? (at + 1) % all.length : e.key === 'ArrowUp' ? (at - 1 + all.length) % all.length : e.key === 'Home' ? 0 : e.key === 'End' ? all.length - 1 : -1;
+    if (go < 0) return;
+    e.preventDefault();
+    all[go].focus();
+  };
+
   useEffect(() => {
     const close = (e: Event) => {
       if (ref.current && e.target instanceof Node && ref.current.contains(e.target)) return;
@@ -36,13 +51,15 @@ export function ContextMenu({ x, y, items, onClose }: { x: number; y: number; it
   }, [onClose]);
 
   return (
-    <div className="menu" ref={ref} style={{ left: pos.x, top: pos.y }} onContextMenu={(e) => e.preventDefault()}>
+    <div className="menu" role="menu" ref={ref} style={{ left: pos.x, top: pos.y }} onContextMenu={(e) => e.preventDefault()} onKeyDown={move}>
       {items.map((it, i) => {
         if ('sep' in it) return <div key={i} className="menu-sep" />;
         if ('header' in it) return <div key={i} className="menu-label">{it.label}</div>;
         return (
           <div
             key={i}
+            {...pressable}
+            role="menuitem"
             className={`menu-item ${it.danger ? 'danger' : ''}`}
             onClick={() => {
               onClose();

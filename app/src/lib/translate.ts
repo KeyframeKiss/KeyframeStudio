@@ -31,6 +31,16 @@ interface Bridge {
   models(settings: TranslateSettings): Promise<string[]>;
 }
 
+/** Where the Keyframe Studio bridge plugin stands in the Koikatsu folder (one-click setup). */
+export interface BridgeSetup {
+  gameDir: string | null;
+  found: boolean;
+  bepinex: boolean;
+  installed: boolean;
+  upToDate: boolean;
+  bundled: boolean;
+}
+
 declare global {
   interface Window {
     studioEx?: {
@@ -52,6 +62,11 @@ declare global {
       pathForFile?(file: File): string;
       openImage?(): Promise<string | null>;
       openFolder?(path: string): Promise<string>;
+      setup?: {
+        status(dir?: string): Promise<BridgeSetup>;
+        install(dir: string): Promise<BridgeSetup>;
+        pick(): Promise<BridgeSetup | null>;
+      };
       appInfo?(): Promise<{ version: string; electron: string; chrome: string; node: string; os: string; logFile: string; home: string }>;
     };
   }

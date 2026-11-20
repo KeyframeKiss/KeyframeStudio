@@ -38,6 +38,8 @@ The goal is not to replace working systems. It is to make existing tools easier 
 - Plan for Windows SmartScreen: code signing, or clear first-run instructions.
 - Publish a source repository with version history.
 
+**Status (2026-11-20): one-click setup done, without an installer.** The release stays a portable zip (the user's choice). The app carries the bridge plugin inside it. Settings › About › Studio bridge finds the Koikatsu folder (the usual install places, or "Choose…"), checks BepInEx, compares the installed plugin with the app's copy, and installs or updates it in one click. This works while CharaStudio runs: the old DLL is renamed aside and the new one loads on Studio's next start. The "Waiting for CharaStudio" screen offers "Set up the bridge". Still open: code signing / SmartScreen, an uninstall button, update checks.
+
 **Note (2026-11-18):** the effect shaders are compiled with Unity 5.6.2f1 (`npm run build:shaders`) and embedded in the bridge DLL, so the installer ships one DLL and users never need Unity.
 
 ### 0.3 Test Infrastructure

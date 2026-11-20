@@ -3,6 +3,7 @@ import { bridge } from '../bridge/client';
 import type { Feature } from '../bridge/types';
 import { buildReport, type DiagInfo } from '../lib/diagnostics';
 import { toast, useStore } from '../state/store';
+import { BridgeSetupCard } from './BridgeSetup';
 
 const STATUS: Record<Feature['status'], { label: string; cls: string }> = {
   ok: { label: 'Works', cls: 'ok' },
@@ -54,6 +55,8 @@ export function DiagnosticsPage() {
         <img className="about-logo" src="brand/logo-large.png" alt="Keyframe Studio" draggable={false} />
         <h2 className="page-title">About &amp; diagnostics</h2>
 
+        <BridgeSetupCard />
+
         <section className="diag-card">
           <div className="diag-row">
             <span>Keyframe Studio</span>
@@ -81,7 +84,7 @@ export function DiagnosticsPage() {
               </button>
             )}
             {status === 'open' && (
-              <button className="btn" onClick={load}>
+              <button className="btn solid" onClick={load}>
                 Refresh
               </button>
             )}

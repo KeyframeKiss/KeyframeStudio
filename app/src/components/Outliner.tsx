@@ -392,6 +392,8 @@ export function Outliner() {
                   title={node.nameEn ? `${node.name}\n${node.nameEn}` : node.name}
                 >
                   <span
+                    {...pressable}
+                    aria-label={open ? 'Close' : 'Open'}
                     className="chev"
                     onClick={(e) => {
                       e.stopPropagation();
@@ -441,6 +443,8 @@ export function Outliner() {
                   {hasKids && !open && <span className="sub">{node.children.length}</span>}
                   {count ? <span className="sub" title={`${count} animated track(s)`}>◆{count}</span> : null}
                   <span
+                    {...pressable}
+                    aria-label={node.visible ? 'Hide' : 'Show'}
                     className={`toggle eye ${node.visible ? '' : 'off'}`}
                     title={node.visible ? 'Hide' : 'Show'}
                     onClick={(e) => {

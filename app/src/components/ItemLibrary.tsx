@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { pressable } from '../lib/pressable';
 import { bridge } from '../bridge/client';
 import { useLibMeta } from '../lib/libmeta';
 import { call, displayName, toast, useStore } from '../state/store';
@@ -233,6 +234,8 @@ export function ItemLibrary() {
                 }}
               >
                 <i
+                  {...pressable}
+                  aria-label={open.has(g) ? 'Close the group' : 'Open the group'}
                   className="items-twist"
                   onClick={(e) => {
                     e.stopPropagation();
@@ -284,7 +287,7 @@ export function ItemLibrary() {
               </button>
             )
           )}
-          <button className="btn small" onClick={() => load(true)} title="Read Studio's item lists again (after adding mods)">
+          <button className="btn small solid" onClick={() => load(true)} title="Read Studio's item lists again (after adding mods)">
             Refresh
           </button>
         </div>
@@ -299,6 +302,8 @@ export function ItemLibrary() {
               return (
                 <div
                   key={i.key}
+                  {...pressable}
+                  aria-label={nameOf(i)}
                   className={`items-tile ${picked === i.key ? 'on' : ''}`}
                   style={{ left: (idx % cols) * TILE_W, top: Math.floor(idx / cols) * TILE_H, width: TILE_W - 8, height: TILE_H - 8 }}
                   onClick={() => setPicked(i.key)}

@@ -16,6 +16,12 @@ contextBridge.exposeInMainWorld('studioEx', {
     openFolder: () => ipcRenderer.invoke('log:openFolder'),
   },
   appInfo: () => ipcRenderer.invoke('app:info'),
+  // one-click setup: find Koikatsu, check / install the bridge plugin
+  setup: {
+    status: (dir) => ipcRenderer.invoke('setup:status', dir),
+    install: (dir) => ipcRenderer.invoke('setup:install', dir),
+    pick: () => ipcRenderer.invoke('setup:pick'),
+  },
   openAudio: () => ipcRenderer.invoke('dialog:openAudio'),
   // the full path of a file dropped onto the window (Studio reads and copies it itself)
   pathForFile: (f) => webUtils.getPathForFile(f),

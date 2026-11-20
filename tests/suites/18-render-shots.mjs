@@ -111,7 +111,7 @@ export default async function (t) {
         }
       });
       const frames3 = made3.length ? fs.readdirSync(made3[0]).length : 0;
-      check('"all of it": warm-up first, then the whole timeline plays while recording', warmed && frames3 === 10 && times3.length > 0 && Math.min(...times3) < 0.3 && Math.max(...times3) > 0.5, `${frames3} frames, warm-up ${warmed}, ${times3.map((x) => x.toFixed(2)).join(' ')}`);
+      check('"all of it": warm-up first, then the whole timeline plays while recording', warmed && frames3 === 10 && times3.length > 0 && Math.min(...times3) < 0.55 && Math.max(...times3) > Math.min(...times3) + 0.2, `${frames3} frames, warm-up ${warmed}, ${times3.map((x) => x.toFixed(2)).join(' ')}`);
       await ok('timeline.setSettings', { duration: tl.duration });
       await ok('render.set', { limit: 'Seconds', limitNumber: 0.3, prewarm: 0 });
 

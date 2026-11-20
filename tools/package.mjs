@@ -50,6 +50,9 @@ fs.mkdirSync(res, { recursive: true });
 fs.cpSync(path.join(appDir, 'electron'), path.join(res, 'electron'), { recursive: true });
 fs.cpSync(path.join(appDir, 'dist'), path.join(res, 'dist'), { recursive: true });
 fs.cpSync(path.join(appDir, 'build'), path.join(res, 'build'), { recursive: true });
+// the bridge plugin, carried inside the app too: Settings › About › Studio bridge installs or updates it in one click
+fs.mkdirSync(path.join(res, 'bridge'), { recursive: true });
+fs.copyFileSync(dll, path.join(res, 'bridge', 'KKStudioEX.Bridge.dll'));
 fs.writeFileSync(
   path.join(res, 'package.json'),
   JSON.stringify({ name: pkg.name, productName: 'Keyframe Studio', version, description: pkg.description, main: 'electron/main.cjs' }, null, 2),
@@ -69,6 +72,8 @@ fs.writeFileSync(
     '     The plugin lands in BepInEx\\plugins\\KKStudioEX.',
     '  2. The "Keyframe Studio" folder can stay there or move anywhere you like — keep its files together.',
     '  3. Start CharaStudio, then "Keyframe Studio\\Keyframe Studio.exe". It connects by itself.',
+    '  Or skip step 1: start Keyframe Studio from anywhere and press "Set up the bridge" — it finds your',
+    '  Koikatsu folder and installs (or later updates) the plugin in one click.',
     '',
     'NEEDS',
     '  - Koikatsu with BepInEx 5.4 and KKAPI (any HF Patch / BetterRepack has them).',

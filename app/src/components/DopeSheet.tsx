@@ -1260,6 +1260,8 @@ export function DopeSheet({ compact = false }: { compact?: boolean } = {}) {
                     onDoubleClick={() => toggleCollapsed(row.oci)}
                   >
                     <span
+                      {...pressable}
+                      aria-label="Open or close"
                       className="toggle"
                       onClick={(e) => {
                         e.stopPropagation();
@@ -1286,6 +1288,8 @@ export function DopeSheet({ compact = false }: { compact?: boolean } = {}) {
                     title="Timeline folder · click selects its tracks · double-click renames"
                   >
                     <span
+                      {...pressable}
+                      aria-label="Open or close"
                       className="toggle"
                       onClick={(e) => {
                         e.stopPropagation();
@@ -1336,6 +1340,8 @@ export function DopeSheet({ compact = false }: { compact?: boolean } = {}) {
                 >
                   <span className="swatch" style={{ background: white ? 'transparent' : `rgb(${tr.color.map((c) => Math.round(c * 255)).join(',')})` }} />
                   <span
+                    {...pressable}
+                    aria-label={tr.enabled ? 'Mute track' : 'Unmute track'}
                     className="toggle"
                     title={tr.enabled ? 'Mute track' : 'Unmute track'}
                     onClick={(e) => {

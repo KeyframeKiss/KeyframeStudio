@@ -77,7 +77,7 @@ export function CameraPanel() {
             </button>
           }
         >
-          {preview ? <img className="cam-preview" src={preview} alt="" onClick={snap} title="Click to refresh" /> : <div className="cam-preview empty-prev" onClick={snap}>Click Snapshot to see Studio's view here</div>}
+          {preview ? <img {...pressable} className="cam-preview" src={preview} alt="Studio's view — press to refresh" onClick={snap} title="Click to refresh" /> : <div {...pressable} className="cam-preview empty-prev" onClick={snap}>Click Snapshot to see Studio's view here</div>}
           <Field label="Field of view">
             <Slider
               value={st.fov}

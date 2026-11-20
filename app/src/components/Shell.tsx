@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { pressable } from '../lib/pressable';
 import { Help } from './Help';
 import { Icon } from './Icon';
 import { NumberField, TimeField } from './TopBar';
@@ -323,7 +324,7 @@ function TimelineMoreMenu() {
   const showEnglish = useStore((s) => s.showEnglish);
   const tl = useTlInfo();
   const Row = ({ on, label, hint, onClick }: { on: boolean; label: string; hint?: string; onClick: () => void }) => (
-    <div className="menu-item" onClick={onClick} title={hint}>
+    <div {...pressable} role="menuitemcheckbox" aria-checked={on} className="menu-item" onClick={onClick} title={hint}>
       <span style={{ width: 14, display: 'inline-flex' }}>{on ? <Icon name="check" size={13} /> : null}</span>
       {label}
     </div>

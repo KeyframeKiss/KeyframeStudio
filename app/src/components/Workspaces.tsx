@@ -58,10 +58,17 @@ export function Disconnected() {
           <>
             <span className={`status-dot ${status === 'connecting' ? 'connecting' : ''}`} style={{ display: 'inline-block' }} />
             <h2>Waiting for CharaStudio…</h2>
-            Start <code>CharaStudio.exe</code> with <code>KKStudioEX.Bridge</code> in <code>BepInEx/plugins</code>. Keyframe Studio connects automatically.
+            Start <code>CharaStudio.exe</code>. Keyframe Studio connects by itself once its bridge plugin is in Koikatsu — first time here? Set it up in one click.
           </>
         )}
-        <div><button className="btn solid" onClick={() => openLibrary('about')}>Open diagnostics</button></div>
+        <div style={{ display: 'flex', gap: 6, justifyContent: 'center' }}>
+          {status !== 'open' && window.studioEx?.setup && (
+            <button className="btn primary" onClick={() => openLibrary('about')}>
+              Set up the bridge
+            </button>
+          )}
+          <button className="btn solid" onClick={() => openLibrary('about')}>Open diagnostics</button>
+        </div>
       </div>
     </div>
   );

@@ -220,6 +220,7 @@ app.whenReady().then(() => {
   protocol.handle('sximg', thumbHandler);
   require('./log.cjs').register(ipcMain);
   require('./translate.cjs').register(ipcMain);
+  require('./setup.cjs').register(ipcMain);
   createWindow();
 });
 app.on('window-all-closed', () => app.quit());

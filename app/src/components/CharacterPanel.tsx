@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { pressable } from '../lib/pressable';
 import { bridge } from '../bridge/client';
 import { call, displayName, selectedCharacters, showTab, toast, useStore } from '../state/store';
 import { Icon } from './Icon';
@@ -304,7 +305,7 @@ export function CharacterPanel({ bare, sections = ['anim', 'pose', 'face', 'outf
 export function CollapsibleSection({ title, children, extra, open, onToggle }: { title: string; children: React.ReactNode; extra?: React.ReactNode; open: boolean; onToggle: () => void }) {
   return (
     <div className="section">
-      <h3 style={{ cursor: 'pointer' }} onClick={onToggle}>
+      <h3 {...pressable} aria-expanded={open} style={{ cursor: 'pointer' }} onClick={onToggle}>
         <Icon name={open ? 'chevronDown' : 'chevronRight'} size={11} /> {title}
         <span className="spacer" />
         <span onClick={(e) => e.stopPropagation()}>{extra}</span>
