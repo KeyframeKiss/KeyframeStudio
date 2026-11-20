@@ -69,15 +69,16 @@ namespace StudioEX.Bridge.Api
                 {
                     float dur = TimelineApi.Duration();
                     float n = Convert.ToSingle(Get("_limitDurationNumber"));
+                    var versions = ShotApi.Versions(a);
                     if (mode == "Timeline")
                     {
-                        ShotApi.StartRange(0f, dur, Warmups());
+                        ShotApi.StartRange(0f, dur, Warmups(), versions);
                         return Status();
                     }
                     float start = a.Has("from") ? a.GetFloat("from") : TimelineApi.PlaybackTime();
                     if (start >= dur - 0.01f) start = 0f; // at the end: from the start
                     float secs = mode == "Seconds" ? n : mode == "Frames" ? n / Math.Max(1, (int)Get("_fps")) : dur - start;
-                    ShotApi.StartRange(start, secs, Warmups());
+                    ShotApi.StartRange(start, secs, Warmups(), versions);
                     return Status();
                 }
                 AccessTools.Method(T, "RecordVideo").Invoke(Plugin, null);
@@ -107,6 +108,49 @@ namespace StudioEX.Bridge.Api
         }
 
         // ---------------- picture size: render at the size, never stretch ----------------
+
+        /// <summary>The size settings (resize on/off, width, height), to put back after versions changed them.</summary>
+        public static object[] SaveSizeSettings() => Plugin == null ? null : new[] { Get("_resize"), Get("_resizeX"), Get("_resizeY") };
+
+        public static void RestoreSizeSettings(object[] s)
+        {
+            if (s == null || Plugin == null) return;
+            Set("_resize", s[0]);
+            Set("_resizeX", s[1]);
+            Set("_resizeY", s[2]);
+        }
+
+        /// <summary>A version's size: {width, height}; 0 (or missing) = no size (Screencap's own, or the window).</summary>
+        public static void UseSize(Dictionary<string, object> v)
+        {
+            int w = v.GetInt("width", 0), h = v.GetInt("height", 0);
+            if (w >= 16 && h >= 16)
+            {
+                Set("_resize", true);
+                Set("_resizeX", w);
+                Set("_resizeY", h);
+            }
+            else Set("_resize", false);
+        }
+
+        /// <summary>Rename a finished video to "<its name> <suffix>" (characters Windows forbids are dropped); the new path.</summary>
+        public static string NameVideo(string video, string suffix)
+        {
+            try
+            {
+                foreach (var c in Path.GetInvalidFileNameChars()) suffix = suffix.Replace(c.ToString(), "");
+                string dir = Path.GetDirectoryName(video), ext = Path.GetExtension(video), stem = Path.GetFileNameWithoutExtension(video) + " " + suffix.Trim();
+                var dest = Path.Combine(dir, stem + ext);
+                for (int n = 2; File.Exists(dest); n++) dest = Path.Combine(dir, stem + " (" + n + ")" + ext);
+                File.Move(video, dest);
+                return dest;
+            }
+            catch (Exception e)
+            {
+                StudioBridgePlugin.Logger.LogWarning("Render: couldn't name " + video + ": " + e.Message);
+                return video;
+            }
+        }
 
         /// <summary>What PrepareSize changed, to put back; Crop set when the video still needs cutting to shape.</summary>
         public sealed class SizeState

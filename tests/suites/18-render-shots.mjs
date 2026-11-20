@@ -173,6 +173,34 @@ export default async function (t) {
       const stream = info2.split('\n').find((l) => /Video:/.test(l)) ?? '';
       check('vertical 180×320 comes out 180×320', /\b180x320\b/.test(stream), `${videos2.join()} ${stream.trim()} — capture ${JSON.stringify(cap0)}`);
       check('…with square pixels (cut to shape, not squished)', !/SAR (?!1:1)\d+:\d+/.test(stream), stream.trim());
+      // several versions from one render: each its own size (and framing), named after it
+      const before3 = (await ok('render.status')).settings;
+      const view = await ok('render.view');
+      check('Studio’s view can be grabbed', view.pos.length === 3 && view.rot.length === 4 && view.fov > 0);
+      check('a framing preview turns on and off', (await ok('render.framingPreview', { framing: { mode: 'adjust', x: 0.3, y: 0, zoom: 1.2 } })) === true && (await ok('render.framingPreview', { framing: null })) === false);
+      const outBefore3 = new Set(fs.readdirSync(outDir));
+      await ok('timeline.seek', { t: 0 });
+      await sleep(300);
+      await framesMadeBy(() =>
+        ok('render.start', {
+          versions: [
+            { label: 'Wide', width: 320, height: 180, framing: { mode: 'timeline' } },
+            { label: 'Tall', width: 180, height: 320, framing: { mode: 'adjust', x: 0.3, y: 0, zoom: 1.2 } },
+          ],
+        }),
+      );
+      const q3 = await ok('render.queueStatus');
+      const made3v = fs.readdirSync(outDir).filter((f) => !outBefore3.has(f) && /\.mp4$/.test(f));
+      t.defer(() => made3v.forEach((f) => fs.rmSync(path.join(outDir, f), { force: true })));
+      const ffmpeg3 = path.join(path.dirname(t.paths.userData), 'BepInEx', 'plugins', 'VideoExport', 'ffmpeg', 'ffmpeg-64.exe');
+      const dimsOf = (f) => /, (\d{2,})x(\d{2,})/.exec((spawnSync(ffmpeg3, ['-hide_banner', '-i', path.join(outDir, f)], { encoding: 'utf8' }).stderr ?? '').split('\n').find((l) => /Video:/.test(l)) ?? '')?.slice(1, 3).join('x');
+      const wide = made3v.find((f) => / Wide\.mp4$/.test(f)),
+        tall = made3v.find((f) => / Tall\.mp4$/.test(f));
+      check('two versions, two videos, named after them', made3v.length === 2 && !!wide && !!tall && q3.done === 2 && (q3.files ?? []).length === 2, `${made3v.join(', ')} ${JSON.stringify(q3)}`);
+      check('…each at its own size', wide && tall && dimsOf(wide) === '320x180' && dimsOf(tall) === '180x320', `${wide && dimsOf(wide)} / ${tall && dimsOf(tall)}`);
+      const after3 = (await ok('render.status')).settings;
+      check('the size picked before comes back after', after3.resize === before3.resize && after3.width === before3.width && after3.height === before3.height, `${JSON.stringify(before3)} → ${JSON.stringify(after3)}`);
+
       const cap1 = await ok('render.capture');
       check('VideoExport\'s capture and Screencap size are put back after', cap1.selected === cap0.selected && JSON.stringify(cap1.screencapSize) === JSON.stringify(cap0.screencapSize) && (await ok('render.status')).settings.resize === true, `${JSON.stringify(cap0)} → ${JSON.stringify(cap1)}`);
       const bad = await req('render.set', { format: 'MOV' });

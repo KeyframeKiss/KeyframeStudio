@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Help } from './Help';
 import { bridge } from '../bridge/client';
 import { call, refreshShots, seekNow, toast, useStore } from '../state/store';
+import { needsVersions, sameSize, SIZES, toWire, useRenderVersions, type RenderVersion } from '../lib/renderVersions';
+import { FramingCard } from './RenderFraming';
 
 interface RenderStatus {
   recording: boolean;
@@ -26,17 +28,10 @@ interface QueueState {
   phase?: string | null;
   /** why the audio couldn't be added to the last video */
   audioError?: string | null;
+  /** the videos made (named after the shot / version) */
+  files?: string[];
 }
 
-const SIZES: { label: string; w?: number; h?: number; hint: string }[] = [
-  { label: 'Window', hint: "Studio's window size" },
-  { label: '720p', w: 1280, h: 720, hint: 'HD' },
-  { label: '1080p', w: 1920, h: 1080, hint: 'Full HD' },
-  { label: '1440p', w: 2560, h: 1440, hint: 'QHD' },
-  { label: '4K', w: 3840, h: 2160, hint: 'UHD' },
-  { label: 'Square', w: 1080, h: 1080, hint: 'Social posts' },
-  { label: 'Vertical', w: 1080, h: 1920, hint: 'Phones, shorts' },
-];
 const FORMAT_HINT: Record<string, string> = { MP4: 'Best for sharing', WEBM: 'Web, smaller files', GIF: 'Short loops, no sound', AVI: 'For editing software' };
 
 /** Shoot › Render: make a video of the timeline (or of each shot) through the installed VideoExport plugin. */
@@ -62,6 +57,7 @@ export function RenderPanel() {
   const poll = useRef(0);
   const qpoll = useRef(0);
   const feature = hello?.features?.find((f) => f.id === 'render');
+  const { versions: savedVersions, setVersions } = useRenderVersions();
   // what VideoExport captures with: through Screencap, "Window" really means Screencap's own size
   const [capture, setCapture] = useState<{ plugins: string[]; selected: number; screencap: number; screencapSize: [number, number] | null; window: [number, number] } | null>(null);
 
@@ -101,7 +97,7 @@ export function RenderPanel() {
   };
   const start = async () => {
     if (what === 'shots') return startQueue();
-    const r = await call<RenderStatus>('render.start', {});
+    const r = await call<RenderStatus>('render.start', needsVersions(versions) ? { versions: toWire(versions) } : {});
     if (!r) return;
     setSt(r);
     toast('Rendering — Studio plays the animation and captures every frame. Leave it alone until it finishes.');
@@ -117,7 +113,7 @@ export function RenderPanel() {
   const startQueue = async () => {
     const ids = shots.filter((s) => isIncluded(s.id)).map((s) => s.id);
     if (!ids.length) return toast('Tick at least one shot');
-    const r = await call<QueueState>('render.queue', { ids });
+    const r = await call<QueueState>('render.queue', needsVersions(versions) ? { ids, versions: toWire(versions) } : { ids });
     if (!r) return;
     setQueue(r);
     pollQueue();
@@ -131,7 +127,7 @@ export function RenderPanel() {
       load();
       if (!q.running) {
         window.clearInterval(qpoll.current);
-        toast(q.error ? `Render stopped: ${q.error}` : q.shot === 'Timeline' ? 'Render finished' : `Rendered ${q.done} of ${q.total} shot${q.total === 1 ? '' : 's'}`);
+        toast(q.error ? `Render stopped: ${q.error}` : (q.total ?? 1) > 1 ? `Rendered ${q.done} of ${q.total} videos` : 'Render finished');
         if (q.audioError) toast(`The video is fine, but the audio couldn't be added: ${q.audioError}`, 'error');
       }
     }, 1000);
@@ -158,6 +154,27 @@ export function RenderPanel() {
   const native = viaScreencap ? capture!.screencapSize! : capture?.window ?? null;
   const nativeLabel = native ? `${native[0]}×${native[1]}` : '';
   const dims = s.resize ? `${s.width}×${s.height}` : nativeLabel || 'window size';
+  // the versions to make: the saved ones, else the one size picked now
+  const current: RenderVersion = { label: s.resize ? size : viaScreencap ? 'Screencap' : 'Window', w: s.resize ? s.width : 0, h: s.resize ? s.height : 0, framing: { mode: 'timeline' } };
+  const versions: RenderVersion[] = savedVersions ?? [current];
+  const has = (x: { w?: number; h?: number }) => versions.some((v) => sameSize(v, x));
+  const labelOf = (x: { label: string; w?: number }) => (x.w ? x.label : viaScreencap ? 'Screencap' : 'Window');
+  /** only this size (its framing kept if it was already a version) */
+  const pickOnly = (x: { label: string; w?: number; h?: number }) => {
+    const keep = versions.find((v) => sameSize(v, x));
+    setVersions([keep ?? { label: labelOf(x), w: x.w ?? 0, h: x.h ?? 0, framing: { mode: 'timeline' } }]);
+    set(x.w ? { resize: true, width: x.w, height: x.h } : { resize: false });
+  };
+  /** add or remove this size as one more version */
+  const toggle = (x: { label: string; w?: number; h?: number }) => {
+    if (has(x)) {
+      if (versions.length === 1) return;
+      const rest = versions.filter((v) => !sameSize(v, x));
+      setVersions(rest);
+      const first = rest[0];
+      set(first.w ? { resize: true, width: first.w, height: first.h } : { resize: false });
+    } else setVersions([...versions, { label: labelOf(x), w: x.w ?? 0, h: x.h ?? 0, framing: { mode: 'timeline' } }]);
+  };
   const picked = shots.filter((x) => isIncluded(x.id));
   // VideoExport's number means loops in Timeline mode, seconds in Seconds mode, frames in Frames mode
   // timed renders start at the playhead (at the very end: from the start)
@@ -177,9 +194,10 @@ export function RenderPanel() {
   const pct = Math.round((st.frameLimit > 0 ? st.frame / st.frameLimit : st.progress) * 100);
   const summary = [
     s.format,
-    dims,
+    versions.length > 1 ? `${versions.length} versions (${versions.map((v) => v.label).join(', ')})` : dims,
     `${s.fps} fps`,
     what === 'shots' ? `${picked.length} shot${picked.length === 1 ? '' : 's'}, one video each` : s.limit === 'Timeline' ? 'the whole timeline' : `from ${from.toFixed(2)} s`,
+    versions.length > 1 || what === 'shots' ? `${(what === 'shots' ? picked.length : 1) * versions.length} video${(what === 'shots' ? picked.length : 1) * versions.length === 1 ? '' : 's'}` : '',
     seconds != null ? `${seconds.toFixed(1)} s` : '',
     frames != null ? `${frames.toLocaleString()} frames` : '',
     s.prewarm ? `${s.prewarm} warm-up play${s.prewarm > 1 ? 's' : ''}` : '',
@@ -297,17 +315,29 @@ export function RenderPanel() {
             <div>
               <b>
                 Picture
-                <Help text="Size of the video and frames per second" />
+                <Help text="Click a size to render at it. Tick more sizes (the + in a tile's corner) to get one video of each from one render — each can have its own framing below." />
               </b>
             </div>
           </div>
           <div className="look-card-body">
             <div className="render-sizes">
               {SIZES.map((x) => (
-                <button key={x.label} className={`render-size ${size === x.label ? 'on' : ''}`} disabled={running} onClick={() => set(x.w ? { resize: true, width: x.w, height: x.h } : { resize: false })} title={x.w ? `${x.w}×${x.h} — rendered at this size (another shape is framed, never stretched)` : viaScreencap ? `Screencap's size (${nativeLabel}), set in its own settings` : "Studio's window size"}>
+                <button key={x.label} className={`render-size ${has(x) ? 'on' : ''}`} disabled={running} onClick={() => pickOnly(x)} title={x.w ? `${x.w}×${x.h} — rendered at this size (another shape is framed, never stretched)` : viaScreencap ? `Screencap's size (${nativeLabel}), set in its own settings` : "Studio's window size"}>
                   <i style={x.w ? { aspectRatio: `${x.w} / ${x.h}` } : { aspectRatio: native ? `${native[0]} / ${native[1]}` : '16 / 10', borderStyle: 'dashed' }} />
                   <b>{x.w ? x.label : viaScreencap ? 'Screencap' : x.label}</b>
                   <small>{x.w ? x.hint : nativeLabel || x.hint}</small>
+                  <span
+                    className={`render-also ${has(x) ? 'on' : ''}`}
+                    role="checkbox"
+                    aria-checked={has(x)}
+                    title={has(x) ? (versions.length > 1 ? 'Don’t make this version' : 'The only version') : 'Also make this size — one video each'}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (!running) toggle(x);
+                    }}
+                  >
+                    {has(x) ? '✓' : '+'}
+                  </span>
                 </button>
               ))}
               {size === 'Custom' && (
@@ -332,6 +362,8 @@ export function RenderPanel() {
             </div>
           </div>
         </div>
+
+        <FramingCard versions={versions} setVersions={setVersions} running={running} native={native} />
 
         <div className="look-card">
           <div className="look-card-head">

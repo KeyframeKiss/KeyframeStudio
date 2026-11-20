@@ -5870,3 +5870,57 @@ html.frameless .tooltip {
   width: 240px;
   max-width: 100%;
 }
+
+/* Shoot › Render: several versions */
+.render-size {
+  position: relative;
+}
+.render-also {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 16px;
+  height: 16px;
+  display: grid;
+  place-items: center;
+  border-radius: 4px;
+  border: 1px solid var(--line);
+  background: var(--bg-2);
+  color: var(--text-3);
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+}
+.render-also:hover {
+  color: var(--text-0);
+  border-color: var(--accent);
+}
+.render-also.on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #1a1206;
+}
+.render-framing {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.render-version {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+}
+.render-version-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.render-version-head small {
+  color: var(--text-3);
+}
+.render-modes {
+  align-self: flex-start;
+}

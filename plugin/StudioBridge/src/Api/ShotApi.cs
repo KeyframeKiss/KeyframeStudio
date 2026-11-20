@@ -119,7 +119,7 @@ namespace StudioEX.Bridge.Api
 
         // ---------------- render queue ----------------
 
-        /// <summary>args: {ids:[shot ids]} — render each shot (its time range) as its own video, in order.</summary>
+        /// <summary>args: {ids:[shot ids], versions?} — render each shot (its time range) as its own video, in order, once per version.</summary>
         private static object StartQueue(Dictionary<string, object> a)
         {
             if ((bool)QueueState["running"]) throw new BridgeException("The render queue is already running");
@@ -130,13 +130,13 @@ namespace StudioEX.Bridge.Api
             if (TimelineApi.Pending() > 0) throw new BridgeException("Key or reset your unkeyed changes first — rendering plays the timeline");
             // VideoExport must be usable before we start moving the playhead around
             if (RenderApi.Probe() != null) throw new BridgeException("Render needs VideoExport");
-            _queue = _i.StartCoroutine(_i.RunQueue(shots, RenderApi.Warmups()));
+            _queue = _i.StartCoroutine(_i.RunQueue(Jobs(shots, Versions(a), true), RenderApi.Warmups()));
             return QueueState;
         }
 
-        /// <summary>Render `seconds` of the timeline from `start` as one video, playing it while recording (VideoExport's
-        /// own Seconds/Frames modes only record whatever is on screen, so the animation wouldn't move).</summary>
-        public static object StartRange(float start, float seconds, int warmups = 0)
+        /// <summary>Render `seconds` of the timeline from `start` as one video per version, playing it while recording
+        /// (VideoExport's own modes only record whatever is on screen, so the animation wouldn't move).</summary>
+        public static object StartRange(float start, float seconds, int warmups = 0, List<Dictionary<string, object>> versions = null)
         {
             if ((bool)QueueState["running"]) throw new BridgeException("A render is already running");
             if (!TimelineApi.Available) throw new BridgeException("Rendering the animation needs Timeline");
@@ -144,8 +144,31 @@ namespace StudioEX.Bridge.Api
             if (RenderApi.Probe() != null) throw new BridgeException("Render needs VideoExport");
             if (seconds <= 0.01f) throw new BridgeException("Nothing to render: the playhead is at the end of the timeline");
             var range = new Dictionary<string, object> { { "name", "Timeline" }, { "start", (double)start }, { "end", (double)(start + seconds) } };
-            _queue = _i.StartCoroutine(_i.RunQueue(new List<Dictionary<string, object>> { range }, warmups));
+            _queue = _i.StartCoroutine(_i.RunQueue(Jobs(new List<Dictionary<string, object>> { range }, versions, false), warmups));
             return QueueState;
+        }
+
+        /// <summary>The "versions" arg: [{label, width, height (0 = no size), framing}] — several sizes/framings from one render.</summary>
+        public static List<Dictionary<string, object>> Versions(Dictionary<string, object> a) =>
+            a.ContainsKey("versions") ? a.GetList("versions").OfType<Dictionary<string, object>>().ToList() : null;
+
+        /// <summary>Every range × every version, as the jobs the queue runs; the file gets the shot's and/or version's name.</summary>
+        private static List<Dictionary<string, object>> Jobs(List<Dictionary<string, object>> ranges, List<Dictionary<string, object>> versions, bool shotsByName)
+        {
+            var jobs = new List<Dictionary<string, object>>();
+            bool several = versions != null && versions.Count > 1;
+            foreach (var r in ranges)
+                foreach (var v in versions != null && versions.Count > 0 ? versions : new List<Dictionary<string, object>> { null })
+                {
+                    var j = new Dictionary<string, object>(r) { { "version", v } };
+                    var parts = new List<string>();
+                    if (shotsByName) parts.Add(r.GetString("name"));
+                    if (several && v != null) parts.Add(v.GetString("label") ?? "");
+                    j["suffix"] = string.Join(" - ", parts.Where(p => !string.IsNullOrEmpty(p)).ToArray());
+                    j["label"] = string.Join(" · ", new[] { shotsByName ? r.GetString("name") : null, v?.GetString("label") }.Where(p => !string.IsNullOrEmpty(p)).ToArray());
+                    jobs.Add(j);
+                }
+            return jobs;
         }
 
         private static void CancelQueue()
@@ -155,30 +178,38 @@ namespace StudioEX.Bridge.Api
             RenderApi.Stop();
         }
 
-        /// <summary>Record each range as its own video: warm-up plays, then record while the timeline plays, then mix the
-        /// scene's audio into the finished video. The audio stays silent the whole time (VideoExport slows the game
-        /// clock while it records, so playing along would stutter and repeat).</summary>
-        private IEnumerator RunQueue(List<Dictionary<string, object>> shots, int warmups)
+        /// <summary>Record each job as its own video: its size and framing, warm-up plays, record while the timeline plays,
+        /// then cut to shape if needed, mix the scene's audio in, and name the file. The audio stays silent the whole time
+        /// (VideoExport slows the game clock while it records, so playing along would stutter and repeat).</summary>
+        private IEnumerator RunQueue(List<Dictionary<string, object>> jobs, int warmups)
         {
             QueueState["running"] = true;
             QueueState["cancel"] = false;
-            QueueState["total"] = shots.Count;
+            QueueState["total"] = jobs.Count;
             QueueState["done"] = 0;
             QueueState["error"] = null;
             QueueState["phase"] = null;
             QueueState["audioError"] = null;
+            QueueState["files"] = new List<object>();
             AudioTrack.Silenced = true;
-            var size = RenderApi.PrepareSize(); // render at the picture size, never stretched
-            var limit = RenderApi.SaveLimit(); // each shot is recorded in Seconds mode; the user's own mode comes back after
+            var sizeSettings = RenderApi.SaveSizeSettings(); // each version sets its own size; the user's comes back after
+            var limit = RenderApi.SaveLimit(); // each job is recorded in Seconds mode; the user's own mode comes back after
+            var preview = RenderFraming.Active; // a framing preview pauses during the render
+            RenderApi.SizeState size = null;
             try
             {
-                for (int i = 0; i < shots.Count; i++)
+                for (int i = 0; i < jobs.Count; i++)
                 {
                     if ((bool)QueueState["cancel"]) break;
-                    var s = shots[i];
+                    var s = jobs[i];
+                    var version = s["version"] as Dictionary<string, object>;
                     QueueState["index"] = i;
-                    QueueState["shot"] = s.GetString("name");
+                    QueueState["shot"] = s.GetString("label") is string l && l.Length > 0 ? l : s.GetString("name");
                     float start = s.GetFloat("start"), end = s.GetFloat("end");
+                    // this version's picture size (rendered at that size, never stretched) and camera framing
+                    if (version != null) RenderApi.UseSize(version);
+                    size = RenderApi.PrepareSize();
+                    RenderFraming.Active = RenderFraming.From(version?.ContainsKey("framing") == true ? version["framing"] as Dictionary<string, object> : null);
                     // warm-up: play the range first (in real time) so hair and clothes physics have settled
                     for (int w = 0; w < warmups && !(bool)QueueState["cancel"]; w++)
                     {
@@ -202,12 +233,14 @@ namespace StudioEX.Bridge.Api
                     yield return null;
                     while (RenderApi.Busy()) yield return null;
                     TimelineApi.PauseAt(start);
-                    // the finished video: cut to shape if it couldn't be rendered at the size, and the scene's audio mixed in
-                    // (ffmpeg on a worker thread)
+                    RenderFraming.Active = null;
+                    // the finished video: cut to shape if it couldn't be rendered at the size, the scene's audio mixed in
+                    // (ffmpeg on a worker thread), and the shot's / version's name on the file
                     var clips = RenderApi.WithAudio ? AudioTrack.ForRender(start, end) : null;
                     bool crop = size != null && size.CropW > 0;
-                    var video = ((clips != null && clips.Count > 0) || crop) && !(bool)QueueState["cancel"] ? RenderApi.NewestVideo(startedAt) : null;
-                    if (video != null)
+                    string suffix = s.GetString("suffix") ?? "";
+                    var video = !(bool)QueueState["cancel"] ? RenderApi.NewestVideo(startedAt) : null;
+                    if (video != null && ((clips != null && clips.Count > 0) || crop))
                     {
                         QueueState["phase"] = crop ? "Cutting to size" + (clips != null && clips.Count > 0 ? " and adding the audio" : "") : "Adding the audio";
                         string audioErr = null;
@@ -227,13 +260,22 @@ namespace StudioEX.Bridge.Api
                             StudioBridgePlugin.Logger.LogWarning("Render: the audio wasn't added to " + video + ": " + audioErr);
                         }
                     }
+                    if (video != null)
+                    {
+                        var named = suffix.Length > 0 ? RenderApi.NameVideo(video, suffix) : video;
+                        ((List<object>)QueueState["files"]).Add(named);
+                    }
+                    RenderApi.RestoreSize(size);
+                    size = null;
                     QueueState["done"] = i + 1;
                 }
             }
             finally
             {
                 AudioTrack.Silenced = false;
+                RenderFraming.Active = preview;
                 RenderApi.RestoreSize(size);
+                RenderApi.RestoreSizeSettings(sizeSettings);
                 RenderApi.RestoreLimit(limit);
                 QueueState["running"] = false;
                 _queue = null;
