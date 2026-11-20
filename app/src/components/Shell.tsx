@@ -3,8 +3,9 @@ import { pressable } from '../lib/pressable';
 import { Help } from './Help';
 import { Icon } from './Icon';
 import { NumberField, TimeField } from './TopBar';
-import { ViewportControls } from './ViewportControls';
-import { ViewportOverlays } from './ViewportOverlays';
+import { ViewCluster } from './ViewCluster';
+import { PathsGhostsSync } from './ViewportControls';
+import { OverlaySync } from './ViewportOverlays';
 import { saveSceneFile, jumpKey, keyChanged, lsSet, openLibrary, redo, seek, setAutoKey, setSettings, setTimelineUiVisible, setWorkspace, stepFrames, togglePlay, undo, useStore, useTlInfo, type Workspace, setMiniMode } from '../state/store';
 import { parseTime } from '../lib/time';
 
@@ -187,7 +188,7 @@ export function TransportBar() {
 
   const bar = useRef<HTMLDivElement>(null);
   const [barWidth, setBarWidth] = useState(0);
-  const compact = barWidth < 1120;
+  const compact = barWidth < 900;
   const narrow = barWidth < 660;
   useLayoutEffect(() => {
     const el = bar.current!;
@@ -244,15 +245,11 @@ export function TransportBar() {
       </div>
     </Popover>
   );
-  const viewOptions = (
-    <>
-      <ViewportControls />
-      <ViewportOverlays />
-      <span className="sep" />
-      <button className={`btn icon ${snap ? 'on' : ''}`} title="Snap keys to frames (Alt while dragging bypasses)" onClick={() => useStore.setState({ snap: !snap })}>
-        <Icon name="magnet" />
-      </button>
-    </>
+  const viewOptions = <ViewCluster />;
+  const snapButton = (
+    <button className={`btn icon ${snap ? 'on' : ''}`} title="Snap keys to frames (Alt while dragging bypasses)" aria-pressed={snap} onClick={() => useStore.setState({ snap: !snap })}>
+      <Icon name="magnet" />
+    </button>
   );
   const changed = (
     <button className={`btn solid ${pending > 0 ? 'attention' : ''}`} onClick={keyChanged} disabled={disabled} title={`Key everything you changed in Studio (Shift+Enter)${autoKeyNew ? ' — creates tracks for moved bones/objects' : ''}`}>
@@ -262,6 +259,8 @@ export function TransportBar() {
 
   return (
     <div ref={bar} className={`transport ${compact ? 'compact-transport' : ''}`}>
+      <PathsGhostsSync />
+      <OverlaySync />
       <button className={`btn play ${tl?.playing ? 'on' : ''}`} title="Play / Pause (Space)" onClick={togglePlay} disabled={disabled}>
         <Icon name={tl?.playing ? 'pause' : 'play'} />
       </button>
@@ -270,23 +269,8 @@ export function TransportBar() {
       {!compact && settings}
       <div className="spacer" />
       {!compact && viewOptions}
-      <Popover
-        align="right"
-        width={240}
-        trigger={(open, toggle) => (
-          <button className={`btn icon ${open ? 'on' : ''}`} onClick={toggle} title="More timeline options">
-            <Icon name="more" />
-          </button>
-        )}
-      >
-        <div className="transport-menu">
-          {narrow && navigation}
-          {compact && <>{settings}{viewOptions}</>}
-          {narrow && changed}
-          <TimelineMoreMenu />
-        </div>
-      </Popover>
-
+      {!compact && <span className="sep" />}
+      {!narrow && snapButton}
       {!narrow && changed}
       <div className="split-btn">
         <button className={`btn ${autoKey ? 'rec' : 'solid'}`} onClick={() => setAutoKey(!autoKey)} disabled={disabled} title="Auto-key (R): whatever you change — in Studio, or in the Face tab — is keyed at the playhead">
@@ -318,6 +302,22 @@ export function TransportBar() {
       <button className="btn primary" onClick={() => window.dispatchEvent(new CustomEvent('studioex:key'))} disabled={disabled} title="Key selected tracks at playhead (K)">
         <Icon name="key" size={13} /> Key
       </button>
+      <Popover
+        align="right"
+        width={240}
+        trigger={(open, toggle) => (
+          <button className={`btn icon ${open ? 'on' : ''}`} onClick={toggle} title="More timeline options">
+            <Icon name="more" />
+          </button>
+        )}
+      >
+        <div className="transport-menu">
+          {narrow && navigation}
+          {compact && <>{settings}{viewOptions}</>}
+          {narrow && <>{snapButton}{changed}</>}
+          <TimelineMoreMenu />
+        </div>
+      </Popover>
     </div>
   );
 }

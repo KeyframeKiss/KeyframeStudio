@@ -6665,3 +6665,50 @@ html.frameless .header.mini-header {
   margin: 2px 6px 6px;
   padding-left: 12px;
 }
+
+/* ---- what's shown in Studio's view: one compact group in the transport bar ---- */
+.view-cluster {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 3px 2px 8px;
+  border-radius: 9px;
+  background: var(--bg-2);
+  border: 1px solid var(--line-soft);
+}
+.view-cluster .vc-label {
+  font-size: 11px;
+  color: var(--text-3);
+  margin-right: 4px;
+  user-select: none;
+}
+.view-cluster .btn.icon {
+  position: relative;
+  width: 30px;
+  height: 28px;
+}
+.view-cluster .vc-sep {
+  width: 1px;
+  height: 16px;
+  background: var(--line);
+  margin: 0 3px;
+}
+.view-cluster .vc-more {
+  width: 22px !important;
+}
+.view-cluster .vc-dot {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.vc-tabs {
+  margin: 6px 6px 4px;
+  display: flex;
+}
+.vc-tabs button {
+  flex: 1;
+}
