@@ -131,7 +131,10 @@ namespace StudioEX.Bridge.Net
             try
             {
                 _stream = _tcp.GetStream();
+                // a connection that never finishes its handshake mustn't hold a thread forever
+                _stream.ReadTimeout = 10000;
                 if (!Handshake()) { _tcp.Close(); return; }
+                _stream.ReadTimeout = Timeout.Infinite;
                 _open = true;
                 _server.OnOpen(this);
                 ReadLoop();
@@ -177,6 +180,16 @@ namespace StudioEX.Bridge.Net
             {
                 _server.OnLog("Rejected WebSocket from origin " + origin);
                 var body = Encoding.ASCII.GetBytes("HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\n\r\n");
+                _stream.Write(body, 0, body.Length);
+                return false;
+            }
+            // …and an origin can be faked (a sandboxed iframe sends "null"), so every client also proves it can read
+            // the bridge token, which only programs running as this Windows user can (see BridgeToken)
+            int eol = request.IndexOf("\r\n", StringComparison.Ordinal);
+            if (!BridgeToken.Matches(BridgeToken.FromRequestLine(eol > 0 ? request.Substring(0, eol) : request)))
+            {
+                _server.OnLog("Rejected a connection without the bridge token (origin " + (origin ?? "none") + ")");
+                var body = Encoding.ASCII.GetBytes("HTTP/1.1 401 Unauthorized\r\nContent-Length: 0\r\n\r\n");
                 _stream.Write(body, 0, body.Length);
                 return false;
             }

@@ -120,7 +120,7 @@ namespace StudioEX.Bridge.Api
         private static string CheckedCard(Dictionary<string, object> a)
         {
             var p = Path.GetFullPath(a.GetString("path") ?? "");
-            if (!p.StartsWith(Root, StringComparison.OrdinalIgnoreCase) || !p.EndsWith(".png", StringComparison.OrdinalIgnoreCase) || !File.Exists(p))
+            if (!Net.SafePaths.IsInside(p, Root) || !p.EndsWith(".png", StringComparison.OrdinalIgnoreCase) || !File.Exists(p))
                 throw new BridgeException("Character card not found");
             return p;
         }

@@ -252,8 +252,18 @@ namespace StudioEX.Bridge.Api
             {
                 var node = FindNode(Convert.ToInt32(raw));
                 if (node == null) continue;
-                if (first && !additive) ctrl.SelectSingle(node, false);
-                else AddSelectNode.Invoke(ctrl, new object[] { node, true });
+                // Studio runs every plugin's selection hooks inside these calls; one that throws (a plugin that
+                // failed to start, say) mustn't fail the selection, which has happened by then
+                try
+                {
+                    if (first && !additive) ctrl.SelectSingle(node, false);
+                    else AddSelectNode.Invoke(ctrl, new object[] { node, true });
+                }
+                catch (Exception e)
+                {
+                    var inner = e is System.Reflection.TargetInvocationException t && t.InnerException != null ? t.InnerException : e;
+                    StudioBridgePlugin.Logger.LogWarning("Selecting: another plugin's selection handler failed — " + inner.GetType().Name + ": " + inner.Message + Environment.NewLine + inner.StackTrace);
+                }
                 first = false;
             }
             return SelectedIds();

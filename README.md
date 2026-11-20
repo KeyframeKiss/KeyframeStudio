@@ -193,7 +193,8 @@ people); Keyframe Studio's own version fills in when it's missing.
 
 The **bridge** is a BepInEx plugin (C#, .NET 3.5 / Unity 5.6) with a local WebSocket server: it exposes the
 scene and Timeline, draws the overlays and handles in Studio's view, and keeps one shared undo history. It only
-listens on your own machine (`127.0.0.1`); the port is in `BepInEx/config/studioex.bridge.cfg`.
+listens on your own machine (`127.0.0.1`) and only answers clients holding its token, so web pages can't reach it
+([SECURITY.md](SECURITY.md)); the port is in `BepInEx/config/studioex.bridge.cfg`.
 
 <details>
 <summary><b>Building from source</b></summary>
@@ -235,7 +236,9 @@ npm run test:unit             # the pure maths (no Studio needed)
 
 The viewport overlays and handles are tested with a simulated mouse (`gizmo.simulate`, suite 35).
 
-**Protocol.** JSON over WebSocket: request `{"id":1,"cmd":"timeline.seek","args":{"t":1.5}}` →
+**Protocol.** JSON over WebSocket at `ws://127.0.0.1:47615/?token=<token>`, where the token is the contents of
+`%APPDATA%\studio-ex\bridge-token` (written by the bridge; connections without it are refused — see
+[SECURITY.md](SECURITY.md)). Request `{"id":1,"cmd":"timeline.seek","args":{"t":1.5}}` →
 `{"id":1,"ok":true,"result":…}`; the bridge pushes `{"event":"timeline.tick"|"scene.changed"|"selection"|"gizmo.target"|…,"data":…}`.
 Commands live in `plugin/StudioBridge/src/Api/*.cs`, wire types in `app/src/bridge/types.ts`.
 

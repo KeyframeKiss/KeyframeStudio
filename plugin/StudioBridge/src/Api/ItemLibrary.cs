@@ -73,6 +73,12 @@ namespace StudioEX.Bridge.Api
         public static void Register(CommandRouter r)
         {
             r.Add("items.catalog", a => Catalog());
+            // diagnostics: build the item lists again and say where the time went
+            r.Add("items.catalogTimes", a =>
+            {
+                if (a.GetBool("rebuild")) { _catalog = null; Load(); }
+                return LastLoadTimes;
+            });
             // {keys: [...]} — make these pictures next (the ones on screen)
             r.Add("items.thumbs", a =>
             {
@@ -135,12 +141,18 @@ namespace StudioEX.Bridge.Api
 
         private static object Status() => new Dictionary<string, object> { { "queued", Queue.Count }, { "made", _made }, { "failed", _failed } };
 
+        /// <summary>How long the last item-list build took, by part (diagnostics).</summary>
+        internal static string LastLoadTimes = "";
+
         private static void Load()
         {
             if (_catalog != null) return;
             var info = Singleton<Info>.Instance;
             var list = new List<Entry>();
             if (info == null) throw new BridgeException("Studio hasn't read its item lists yet");
+            var total = System.Diagnostics.Stopwatch.StartNew();
+            var read = new System.Diagnostics.Stopwatch();
+            var hash = new System.Diagnostics.Stopwatch();
             using (var md5 = MD5.Create())
                 foreach (var g in info.dicItemLoadInfo)
                 {
@@ -152,13 +164,20 @@ namespace StudioEX.Bridge.Api
                         {
                             var v = it.Value;
                             if (v == null) continue;
-                            var h = md5.ComputeHash(Encoding.UTF8.GetBytes((v.bundlePath + "|" + v.fileName + "|" + v.manifest + "|" + g.Key + "/" + c.Key + "/" + it.Key).ToLowerInvariant()));
+                            read.Start();
+                            string bundle = v.bundlePath, file = v.fileName, manifest = v.manifest, name = v.name;
+                            read.Stop();
+                            hash.Start();
+                            var h = md5.ComputeHash(Encoding.UTF8.GetBytes((bundle + "|" + file + "|" + manifest + "|" + g.Key + "/" + c.Key + "/" + it.Key).ToLowerInvariant()));
                             var sb = new StringBuilder(32);
                             foreach (var b in h) sb.Append(b.ToString("x2"));
-                            list.Add(new Entry { G = g.Key, C = c.Key, N = it.Key, Name = v.name ?? "", Group = gi?.name ?? "", Category = cat, Bundle = v.bundlePath, File = v.fileName, Manifest = v.manifest, Key = sb.ToString() });
+                            hash.Stop();
+                            list.Add(new Entry { G = g.Key, C = c.Key, N = it.Key, Name = name ?? "", Group = gi?.name ?? "", Category = cat, Bundle = bundle, File = file, Manifest = manifest, Key = sb.ToString() });
                         }
                     }
                 }
+            LastLoadTimes = $"{list.Count} items in {total.ElapsedMilliseconds} ms: reading item fields {read.ElapsedMilliseconds} ms, keys {hash.ElapsedMilliseconds} ms, the rest {total.ElapsedMilliseconds - read.ElapsedMilliseconds - hash.ElapsedMilliseconds} ms";
+            if (total.ElapsedMilliseconds > 1000) StudioBridgePlugin.Logger.LogInfo("Objects catalog lists: " + LastLoadTimes);
             if (list.Count == 0) throw new BridgeException("Studio hasn't read its item lists yet");
             _catalog = list;
             _byKey = list.GroupBy(e => e.Key).ToDictionary(x => x.Key, x => x.First());
@@ -166,9 +185,12 @@ namespace StudioEX.Bridge.Api
 
         private static object Catalog()
         {
+            var sw = System.Diagnostics.Stopwatch.StartNew();
             Load();
+            long tLoad = sw.ElapsedMilliseconds;
             // one directory listing, not a file check per item
             var have = new HashSet<string>(Directory.GetFiles(Folder).Select(Path.GetFileName), StringComparer.OrdinalIgnoreCase);
+            long tFiles = sw.ElapsedMilliseconds;
             // item names: only translations already known (looking up 40,000 names would freeze Studio for seconds);
             // the ones on screen are looked up with items.names. Group and category names are few: looked up now.
             var trCache = new Dictionary<string, string>();
@@ -179,7 +201,7 @@ namespace StudioEX.Bridge.Api
                 return t;
             }
             string Known(string s) => Translation.Peek(s);
-            return new Dictionary<string, object>
+            var result = new Dictionary<string, object>
             {
                 { "folder", Folder },
                 {
@@ -193,6 +215,9 @@ namespace StudioEX.Bridge.Api
                     }).ToList()
                 },
             };
+            if (sw.ElapsedMilliseconds > 1000)
+                StudioBridgePlugin.Logger.LogInfo($"Objects catalog took {sw.ElapsedMilliseconds} ms (lists {tLoad}, pictures folder {tFiles - tLoad}, names {sw.ElapsedMilliseconds - tFiles}) for {_catalog.Count} items");
+            return result;
         }
 
         // ---------------- making pictures ----------------

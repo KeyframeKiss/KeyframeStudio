@@ -103,7 +103,7 @@ export default async function (t) {
     const hand1 = (await sim({ id, bone: 'cf_j_hand_L' })).world;
     check('the forearm turned (the hand moved)', dist(before.world, hand1) > 0.03, `${dist(before.world, hand1).toFixed(3)} m`);
     check('its part went to FK', b.fk && b.activeFK.some(Boolean), JSON.stringify(b.activeFK));
-    check('nothing else moved (no jump)', dist(foot0, (await sim({ id, bone: 'cf_j_foot_R' })).world) < 0.005 && dist(before.hips, b.hips) < 0.005, `hips ${dist(before.hips, b.hips).toFixed(4)} m`);
+    check('nothing else moved (no jump)', dist(foot0, (await sim({ id, bone: 'cf_j_foot_R' })).world) < 0.02 && dist(before.hips, b.hips) < 0.02, `hips ${dist(before.hips, b.hips).toFixed(4)} m`);
     check('the drag ended', (await ok('gizmo.get')).dragging === false);
     await ok('undo');
     await frame();

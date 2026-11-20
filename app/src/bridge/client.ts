@@ -20,6 +20,7 @@ export class BridgeClient {
   private reconnectTimer: number | undefined;
   private _status: ConnectionStatus = 'closed';
   private disposed = false;
+  private attempt = 0;
 
   constructor(public url: string) {}
 
@@ -31,9 +32,21 @@ export class BridgeClient {
     if (this.disposed) return;
     window.clearTimeout(this.reconnectTimer);
     this.setStatus('connecting');
+    // the bridge asks every connection for its token (only programs running as this Windows user can read it)
+    const attempt = ++this.attempt;
+    const token = window.studioEx?.bridgeToken?.() ?? Promise.resolve('');
+    token
+      .catch(() => '')
+      .then((t) => {
+        if (this.disposed || this.ws || attempt !== this.attempt) return;
+        this.open(t ? `${this.url}/?token=${encodeURIComponent(t)}` : this.url);
+      });
+  }
+
+  private open(url: string) {
     let ws: WebSocket;
     try {
-      ws = new WebSocket(this.url);
+      ws = new WebSocket(url);
     } catch {
       this.scheduleReconnect();
       return;

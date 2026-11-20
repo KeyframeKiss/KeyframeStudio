@@ -60,6 +60,8 @@ declare global {
       };
       openAudio?(): Promise<string | null>;
       pathForFile?(file: File): string;
+      /** the secret the bridge asks every connection for (%APPDATA%\studio-ex\bridge-token, written by the bridge) */
+      bridgeToken?(): Promise<string>;
       openImage?(): Promise<string | null>;
       openFolder?(path: string): Promise<string>;
       setup?: {

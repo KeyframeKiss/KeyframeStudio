@@ -66,7 +66,7 @@ namespace StudioEX.Bridge.Api
         private static object SetMeta(Dictionary<string, object> a)
         {
             string path = a.GetString("path");
-            if (string.IsNullOrEmpty(path) || !path.StartsWith(Folder, StringComparison.OrdinalIgnoreCase) || !File.Exists(path))
+            if (!Net.SafePaths.IsInside(path, Folder) || !File.Exists(path))
                 throw new BridgeException("Pose not found");
             var m = MetaFor(path, true);
             if (a.Has("favorite")) m["favorite"] = a.GetBool("favorite");
@@ -265,7 +265,7 @@ namespace StudioEX.Bridge.Api
             try { foreach (var c in targets) if (PauseCtrl.Load(c, path)) n++; }
             finally { if (n > 0) UndoStack.Push(undo); else undo.Restore(); }
             if (n == 0) throw new BridgeException("Select one or more characters first");
-            if (path.StartsWith(Folder, StringComparison.OrdinalIgnoreCase))
+            if (Net.SafePaths.IsInside(path, Folder))
             {
                 try { MetaFor(path, true)["lastUsed"] = (DateTime.UtcNow - new DateTime(1970, 1, 1)).TotalMilliseconds; SaveUserMeta(); } catch { }
             }

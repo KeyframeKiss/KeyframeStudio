@@ -25,6 +25,7 @@ contextBridge.exposeInMainWorld('studioEx', {
   openAudio: () => ipcRenderer.invoke('dialog:openAudio'),
   // the full path of a file dropped onto the window (Studio reads and copies it itself)
   pathForFile: (f) => webUtils.getPathForFile(f),
+  bridgeToken: () => ipcRenderer.invoke('bridge:token'),
   openImage: () => ipcRenderer.invoke('dialog:openImage'),
   openFolder: (p) => ipcRenderer.invoke('shell:openFolder', p),
   translate: {

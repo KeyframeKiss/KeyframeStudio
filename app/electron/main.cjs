@@ -206,6 +206,15 @@ function createWindow() {
     }
     return 'not a folder';
   });
+  // The bridge only accepts connections that present its token (it writes it to our data folder when Studio starts):
+  // read fresh each time, so it works when Studio starts after the app
+  ipcMain.handle('bridge:token', () => {
+    try {
+      return fs.readFileSync(path.join(app.getPath('userData'), 'bridge-token'), 'utf8').trim();
+    } catch {
+      return '';
+    }
+  });
   ipcMain.handle('dialog:openAudio', async () => {
     const r = await dialog.showOpenDialog(win, { title: 'Choose a WAV file', filters: [{ name: 'WAV audio', extensions: ['wav'] }], properties: ['openFile'] });
     return r.canceled ? null : r.filePaths[0] ?? null;

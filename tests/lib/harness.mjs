@@ -1,6 +1,16 @@
 // Shared test harness for the live Keyframe Studio suites: one WebSocket connection to the bridge plugin,
 // request helpers, checks, cleanups and a "fresh Studio" reset so every suite starts from the same state.
+import fs from 'node:fs';
 import path from 'node:path';
+
+/** The bridge only accepts clients that present its token (see plugin BridgeToken.cs); read fresh each try. */
+export function bridgeToken() {
+  try {
+    return fs.readFileSync(path.join(process.env.APPDATA ?? '', 'studio-ex', 'bridge-token'), 'utf8').trim();
+  } catch {
+    return '';
+  }
+}
 
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 export const near = (a, b, e = 1e-3) => Math.abs(a - b) < e;
@@ -41,7 +51,8 @@ export class Studio {
     for (;;) {
       try {
         const ws = await new Promise((res, rej) => {
-          const w = new WebSocket(url);
+          const tok = bridgeToken();
+          const w = new WebSocket(tok ? `${url}/?token=${encodeURIComponent(tok)}` : url);
           w.onopen = () => res(w);
           w.onerror = () => rej(new Error('connect failed'));
         });
