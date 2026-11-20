@@ -37,7 +37,7 @@ export function TemplatesPanel() {
     if (r) {
       setList(r);
       setName('');
-      toast(`Saved template “${n}”: ${templateSummary(data) || 'empty scene settings'}`);
+      toast(`Saved template “${n}”: ${templateSummary(data) || 'empty scene settings'}`, 'done');
     }
   };
 
@@ -46,7 +46,7 @@ export function TemplatesPanel() {
     await Promise.all([refreshTimeline(), refreshShots(), refreshAudio()]);
     window.dispatchEvent(new CustomEvent('studioex:look-changed'));
     call<Template[]>('store.update', { kind: 'templates', file: t.file, used: true }).then((r) => r && setList(r));
-    toast(`“${t.name}”: ${done.length ? done.join(', ') : 'nothing applied'}${problems.length ? ` — ${problems.join('; ')}` : ''}`, problems.length ? 'info' : undefined);
+    toast(`“${t.name}”: ${done.length ? done.join(', ') : 'nothing applied'}${problems.length ? ` — ${problems.join('; ')}` : ''}`, problems.length ? 'info' : done.length ? 'done' : undefined);
   };
 
   return (

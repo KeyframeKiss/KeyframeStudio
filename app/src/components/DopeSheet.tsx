@@ -61,6 +61,11 @@ let rowSize: RowSize = ((): RowSize => {
 let ROW_H: number = ROW_SIZES[rowSize];
 let followPlayhead = true;
 const RULER_H = 28;
+/** The system's "reduce animations" setting: no key pops then. */
+const reducedMotion = () => typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+/** How long a new key's ring takes to fade (ms). */
+const POP_MS = 380;
+
 /** One audio lane per clip, under the ruler. */
 const AUDIO_H = 36;
 /** Top of the track rows: the ruler, plus the audio lanes. */
@@ -189,6 +194,25 @@ export function DopeSheet() {
   const view = useRef<View>({ t0: 0, pps: 80 });
   const inter = useRef<Interaction>({ mode: 'none' });
   const dirty = useRef(true);
+  // the key under the pointer (row and time), drawn a little bigger
+  const hover = useRef<{ row: number; t: number } | null>(null);
+  // keys that just appeared (key id → when), drawn with a short ring
+  const pops = useRef(new Map<string, number>());
+  const seenKeys = useRef<Set<string> | null>(null);
+  useEffect(() => {
+    const now = new Set<string>();
+    for (const tr of tracks) for (const k of tr.keys) now.add(keyId(tr.id, k[0]));
+    const before = seenKeys.current;
+    seenKeys.current = now;
+    if (!before || reducedMotion()) return;
+    const born: string[] = [];
+    for (const id of now) if (!before.has(id)) born.push(id);
+    // a few keys keyed by hand pop; bulk writes (lip-sync, pasting a clip) don't flash the whole sheet
+    if (born.length === 0 || born.length > 40) return;
+    const t = performance.now();
+    for (const id of born) pops.current.set(id, t);
+    dirty.current = true;
+  }, [tracks]);
   // redraw when the audio track or its waveform changes
   const audioPeaks = useStore((s) => s.audioPeaks);
   const audioInfo = useStore((s) => s.audio);
@@ -384,7 +408,7 @@ export function DopeSheet() {
       raf = requestAnimationFrame(draw);
       const st = useStore.getState();
       const playing = !!st.tl?.playing;
-      if (!dirty.current && !playing && inter.current.mode === 'none') return;
+      if (!dirty.current && !playing && inter.current.mode === 'none' && pops.current.size === 0) return;
       dirty.current = false;
       const perfT0 = performance.now();
 
@@ -482,6 +506,26 @@ export function DopeSheet() {
       // entirely when nothing is selected — large scenes otherwise allocate per key per frame while playing.
       const anySel = selKeys.size > 0;
       const isSel = (id: number, t: number) => anySel && selKeys.has(keyId(id, t));
+      const hv = hover.current;
+      const tNow = performance.now();
+      for (const [id, at] of pops.current) if (tNow - at > POP_MS) pops.current.delete(id);
+      const anyPop = pops.current.size > 0;
+      /** a soft halo behind a selected key */
+      const halo = (x: number, y: number, r: number) => {
+        ctx.beginPath();
+        ctx.arc(x, y, r + 4, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(255,159,46,0.18)';
+        ctx.fill();
+      };
+      /** a ring that grows and fades around a key that just appeared */
+      const ring = (x: number, y: number, age: number) => {
+        const p = age / POP_MS;
+        ctx.beginPath();
+        ctx.arc(x, y, 6 + p * 9, 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(255,159,46,${(1 - p) * 0.9})`;
+        ctx.lineWidth = 2 * (1 - p) + 0.5;
+        ctx.stroke();
+      };
       const tLo = tOf(-10) - Math.abs(drag),
         tHi = tOf(w + 10) + Math.abs(drag);
       for (let i = first; i <= last; i++) {
@@ -511,7 +555,20 @@ export function DopeSheet() {
             const sel = isSel(tr.id, key[0]);
             const x = xOf(key[0] + (sel ? drag : 0));
             if (x < -10 || x > w + 10) continue;
-            drawKey(x, cy, 5.5, curveKind(key[1]), sel, dim);
+            const kind = curveKind(key[1]);
+            // while dragging, a faint ghost stays where the key was
+            if (sel && drag !== 0) {
+              ctx.globalAlpha = 0.28;
+              drawKey(xOf(key[0]), cy, 5.5, kind, false, true);
+              ctx.globalAlpha = 1;
+            }
+            const hot = !!hv && hv.row === i && Math.abs(hv.t - key[0]) < 1e-4 && drag === 0;
+            if (sel) halo(x, cy, 5.5);
+            drawKey(x, cy, hot ? 7 : 5.5, kind, sel, dim && !hot);
+            if (anyPop) {
+              const at = pops.current.get(keyId(tr.id, key[0]));
+              if (at !== undefined) ring(x, cy, tNow - at);
+            }
           }
         } else {
           // summary keys: merged once per (row, selection, drag), then reused every frame
@@ -532,7 +589,9 @@ export function DopeSheet() {
           for (let k = Math.max(0, firstAtOrAfter(ts, tLo)); k < ts.length && ts[k] <= tHi; k++) {
             const x = xOf(ts[k]);
             if (x < -10 || x > w + 10) continue;
-            drawKey(x, cy, 4.5, 'linear', sels[k], !sels[k]);
+            const hot = !!hv && hv.row === i && Math.abs(hv.t - ts[k]) < 1e-4 && drag === 0;
+            if (sels[k]) halo(x, cy, 4.5);
+            drawKey(x, cy, hot ? 6 : 4.5, 'linear', sels[k], !sels[k] && !hot);
           }
         }
       }
@@ -556,7 +615,16 @@ export function DopeSheet() {
           ctx.lineWidth = 1;
           ctx.beginPath();
           ctx.roundRect(Math.round(xa) + 0.5, y0 + 3.5, Math.max(2, xb - xa - 1), AUDIO_H - 7, 4);
-          ctx.fill();
+          if (dragging) {
+            // picked up: it lifts off the lane
+            ctx.save();
+            ctx.shadowColor = 'rgba(0,0,0,0.55)';
+            ctx.shadowBlur = 12;
+            ctx.shadowOffsetY = 3;
+            ctx.fillStyle = `rgba(${rgb},0.24)`;
+            ctx.fill();
+            ctx.restore();
+          } else ctx.fill();
           ctx.stroke();
           const wave = st.audioPeaks[au.id];
           if (wave && wave.peaks.length) {
@@ -639,6 +707,10 @@ export function DopeSheet() {
       if (px >= -10 && px <= w + 10) {
         ctx.fillStyle = colors.playhead;
         ctx.fillRect(px, RULER_H - 2, 1.5, h - RULER_H + 2);
+        // a soft glow either side, so the playhead reads at a glance
+        ctx.fillStyle = 'rgba(255,77,106,0.16)';
+        ctx.fillRect(px - 2, RULER_H - 2, 5.5, h - RULER_H + 2);
+        ctx.fillStyle = colors.playhead;
         const label = `${Math.round(now * fps)}`;
         ctx.font = '600 10px Segoe UI, system-ui, sans-serif';
         const tw = ctx.measureText(label).width + 10;
@@ -777,7 +849,21 @@ export function DopeSheet() {
 
   const onPointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
     const it = inter.current;
-    if (it.mode === 'none') return;
+    if (it.mode === 'none') {
+      // the key under the pointer grows a little, and the pointer says it can be grabbed
+      const r = canvasRef.current!.getBoundingClientRect();
+      const x = e.clientX - r.left,
+        y = e.clientY - r.top;
+      const hit = e.buttons === 0 ? keysAt(x, y) : [];
+      const next = hit.length ? { row: rowIndexAt(y), t: parseKeyId(hit[0]).t } : null;
+      const prev = hover.current;
+      if ((prev === null) !== (next === null) || (prev && next && (prev.row !== next.row || Math.abs(prev.t - next.t) > 1e-6))) {
+        hover.current = next;
+        canvasRef.current!.style.cursor = next ? 'grab' : '';
+        dirty.current = true;
+      }
+      return;
+    }
     if (e.buttons === 0) return onPointerUp(e); // button released somewhere we didn't hear about
     const r = canvasRef.current!.getBoundingClientRect();
     const x = e.clientX - r.left;
@@ -1298,6 +1384,12 @@ export function DopeSheet() {
             onPointerMove={onPointerMove}
             onPointerUp={onPointerUp}
             onPointerCancel={onPointerUp}
+            onPointerLeave={() => {
+              if (!hover.current) return;
+              hover.current = null;
+              canvasRef.current!.style.cursor = '';
+              dirty.current = true;
+            }}
             onLostPointerCapture={(e) => inter.current.mode !== 'none' && onPointerUp(e)}
             onDoubleClick={onDoubleClick}
             onContextMenu={onContextMenu}

@@ -226,7 +226,13 @@ export function App() {
         )}
         {toasts.map((t) => (
           <div key={t.id} className={`toast ${t.kind}`}>
-            {t.text}
+            {t.kind === 'done' && (
+              <svg className="toast-check" viewBox="0 0 16 16" aria-hidden="true">
+                <circle cx="8" cy="8" r="7" />
+                <path d="M4.6 8.3l2.2 2.2 4.6-4.8" />
+              </svg>
+            )}
+            <span>{t.text}</span>
           </div>
         ))}
       </div>

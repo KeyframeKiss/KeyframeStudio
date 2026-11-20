@@ -70,7 +70,7 @@ export function LipSyncCard({ charId }: { charId: number | undefined }) {
     setBusy(true);
     try {
       const r = await generateLipSync(charId, setup);
-      toast(typeof r === 'string' ? r : `${report(who, r)} — press Space to watch, Ctrl+Z to undo`, typeof r === 'string' ? 'error' : undefined);
+      toast(typeof r === 'string' ? r : `${report(who, r)} — press Space to watch, Ctrl+Z to undo`, typeof r === 'string' ? 'error' : 'done');
     } finally {
       setBusy(false);
     }
@@ -332,7 +332,7 @@ export function SpeakersCard() {
     } finally {
       setBusy('');
     }
-    toast(`${lines.join(' · ')} — Ctrl+Z undoes one step at a time`);
+    toast(`${lines.join(' · ')} — Ctrl+Z undoes one step at a time`, 'done');
   };
 
   return (

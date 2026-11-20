@@ -52,7 +52,8 @@ export interface AudioPeaks {
 
 export interface Toast {
   id: number;
-  kind: 'error' | 'info';
+  /** done: a piece of work finished (render, pictures, lip-sync, saved) — shown with a check */
+  kind: 'error' | 'info' | 'done';
   text: string;
 }
 
@@ -214,7 +215,7 @@ export function renderShots(ids: string[]) {
 
 export async function saveSceneFile() {
   const result = await call<boolean | string>('scene.save', { returnName: true });
-  if (typeof result === 'string') toast(`Saved ${result}`);
+  if (typeof result === 'string') toast(`Saved ${result}`, 'done');
   else if (result === true) toast('Save requested in CharaStudio');
   return result;
 }
@@ -437,7 +438,7 @@ export function toast(text: string, kind: Toast['kind'] = 'info') {
   const id = toastId++;
   if (kind === 'error') log('error', text, 'ui');
   set((s) => ({ toasts: [...s.toasts.slice(-3), { id, kind, text }] }));
-  window.setTimeout(() => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })), kind === 'error' ? 5000 : 2500);
+  window.setTimeout(() => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })), kind === 'error' ? 5000 : kind === 'done' ? 3200 : 2500);
 }
 
 export async function call<T>(cmd: string, args?: Record<string, unknown>): Promise<T | undefined> {

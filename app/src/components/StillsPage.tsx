@@ -64,6 +64,8 @@ export function StillsPage() {
   const [quality, setQuality] = useState(prefs().quality ?? 95);
   const [busy, setBusy] = useState(false);
   const [recent, setRecent] = useState<Shot[]>([]);
+  // the header glows once when pictures are saved
+  const [glow, setGlow] = useState(0);
   const { versions: savedVersions, setVersions } = useRenderVersions(STILL_NOTE, STILL_LAST);
 
   useEffect(() => {
@@ -88,7 +90,8 @@ export function StillsPage() {
         setSt(s);
         setBusy(false);
         setRecent((r) => [...s.batch.results, ...r].slice(0, 24));
-        toast(s.batch.error ? `Pictures taken, with a problem: ${s.batch.error}` : `${s.batch.results.length} picture${s.batch.results.length === 1 ? '' : 's'} saved`, s.batch.error ? 'error' : 'info');
+        toast(s.batch.error ? `Pictures taken, with a problem: ${s.batch.error}` : `${s.batch.results.length} picture${s.batch.results.length === 1 ? '' : 's'} saved`, s.batch.error ? 'error' : 'done');
+        if (!s.batch.error) setGlow(Date.now());
       }),
     [],
   );
@@ -130,7 +133,8 @@ export function StillsPage() {
       const got = await bridge.request<Shot | Shot[]>('still.capture', withVersions);
       const shots = Array.isArray(got) ? got : [got];
       setRecent((x) => [...shots, ...x].slice(0, 24));
-      toast(shots.length === 1 ? `Saved ${shots[0].path.replace(/^.*[\\/]/, '')} (${shots[0].width}×${shots[0].height})` : `Saved ${shots.length} pictures (${versions.map((v) => v.label).join(', ')})`);
+      toast(shots.length === 1 ? `Saved ${shots[0].path.replace(/^.*[\\/]/, '')} (${shots[0].width}×${shots[0].height})` : `Saved ${shots.length} pictures (${versions.map((v) => v.label).join(', ')})`, 'done');
+      setGlow(Date.now());
     } catch (e) {
       toast((e as Error).message, 'error');
     } finally {
@@ -149,7 +153,7 @@ export function StillsPage() {
 
   return (
     <div className="render-page">
-      <div className={`render-hero ${running ? 'running' : ''}`}>
+      <div key={glow} className={`render-hero ${running ? 'running' : ''} ${glow ? 'just-done' : ''}`}>
         <div className="render-hero-text">
           <b>{st.batch.running ? `Taking pictures… ${st.batch.done + 1} of ${st.batch.total}` : 'Still pictures'}</b>
           <span>

@@ -58,6 +58,9 @@ export function RenderPanel() {
   const qpoll = useRef(0);
   const feature = hello?.features?.find((f) => f.id === 'render');
   const { versions: savedVersions, setVersions } = useRenderVersions();
+  // the header glows once when a render finishes
+  const [glow, setGlow] = useState(0);
+  const celebrate = () => setGlow(Date.now());
   // what VideoExport captures with: through Screencap, "Window" really means Screencap's own size
   const [capture, setCapture] = useState<{ plugins: string[]; selected: number; screencap: number; screencapSize: [number, number] | null; window: [number, number] } | null>(null);
 
@@ -85,7 +88,10 @@ export function RenderPanel() {
     if (!busy) return;
     poll.current = window.setInterval(async () => {
       const r = await load();
-      if (r && !r.recording && !r.encoding && !queue?.running) toast(r.message || 'Render finished');
+      if (r && !r.recording && !r.encoding && !queue?.running) {
+        toast(r.message || 'Render finished', 'done');
+        celebrate();
+      }
     }, 1000);
     return () => window.clearInterval(poll.current);
   }, [busy, load]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -132,7 +138,8 @@ export function RenderPanel() {
       load();
       if (!q.running) {
         window.clearInterval(qpoll.current);
-        toast(q.error ? `Render stopped: ${q.error}` : (q.total ?? 1) > 1 ? `Rendered ${q.done} of ${q.total} videos` : 'Render finished');
+        toast(q.error ? `Render stopped: ${q.error}` : (q.total ?? 1) > 1 ? `Rendered ${q.done} of ${q.total} videos` : 'Render finished', q.error ? 'error' : 'done');
+        if (!q.error) celebrate();
         if (q.audioError) toast(`The video is fine, but the audio couldn't be added: ${q.audioError}`, 'error');
       }
     }, 1000);
@@ -213,7 +220,7 @@ export function RenderPanel() {
   return (
     <div className="render-page">
       {/* what will come out, and the button */}
-      <div className={`render-hero ${running ? 'running' : ''}`}>
+      <div key={glow} className={`render-hero ${running ? 'running' : ''} ${glow ? 'just-done' : ''}`}>
         <div className="render-hero-text">
           <b>{running ? (queue?.running && queue.shot !== 'Timeline' ? `Rendering ${queue.shot ?? 'shots'} (${(queue.done ?? 0) + 1} of ${queue.total})` : st.encoding ? 'Encoding the video…' : 'Rendering…') : 'Ready to render'}</b>
           <span>{running ? queue?.phase || st.message || (st.recording ? `Frame ${st.frame}${st.frameLimit > 0 ? ` of ${st.frameLimit}` : ''}` : '') : summary.join(' · ')}</span>

@@ -6207,3 +6207,238 @@ html.frameless .tooltip {
 .render-versions-hint b {
   color: var(--text-1);
 }
+
+/* ================================================================== motion
+   One quiet system: two curves, three speeds. Motion answers what you do (press, open, finish); nothing
+   moves on its own except progress. Everything stops under the system's "reduce animations" setting. */
+:root {
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --t-fast: 120ms;
+  --t-med: 200ms;
+  --t-slow: 280ms;
+}
+
+/* ---- everyday controls: smooth colour changes, a small press ---- */
+.btn,
+.seg button,
+.ws-tab,
+.ws-subtab,
+.menu-item,
+.render-size,
+.render-also,
+.items-tile,
+.items-node,
+.lib-nav-item,
+.sheet-audio-btn,
+.sheet-add-audio {
+  transition:
+    background-color var(--t-fast) var(--ease-out),
+    color var(--t-fast) var(--ease-out),
+    border-color var(--t-fast) var(--ease-out),
+    box-shadow var(--t-med) var(--ease-out),
+    transform var(--t-fast) var(--ease-out),
+    filter var(--t-fast) var(--ease-out);
+}
+.btn:active:not(:disabled),
+.seg button:active,
+.render-size:active,
+.items-tile:active,
+.sheet-audio-btn:active,
+.ws-tab:active {
+  transform: scale(0.97);
+  transition-duration: 60ms;
+}
+.btn.primary {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22);
+}
+.btn.primary:hover {
+  filter: brightness(1.06);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.22),
+    0 0 0 1px rgba(255, 159, 46, 0.35),
+    0 6px 18px -6px rgba(255, 159, 46, 0.6);
+}
+/* the active tab's marker slides in rather than snapping */
+.ws-subtab.active,
+.ws-tab.active {
+  transition-duration: var(--t-med);
+}
+.switch {
+  transition: background-color var(--t-med) var(--ease-out);
+}
+.switch span {
+  transition:
+    left var(--t-med) var(--ease-out),
+    width var(--t-fast) var(--ease-out),
+    background-color var(--t-med) var(--ease-out);
+}
+/* held: the knob squashes toward where it's going */
+.switch:active span {
+  width: 15px;
+}
+.switch.on:active span {
+  left: 13px;
+}
+input[type='range'] {
+  transition: filter var(--t-fast) var(--ease-out);
+}
+input[type='range']:hover {
+  filter: brightness(1.12);
+}
+:focus-visible {
+  transition: outline-offset var(--t-fast) var(--ease-out);
+}
+
+/* ---- pages & panels: what you open grows from where it came from ---- */
+@keyframes kf-page-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+@keyframes kf-pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(3px) scale(0.985);
+  }
+}
+@keyframes kf-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes kf-side-in {
+  from {
+    opacity: 0;
+    transform: translateX(14px);
+  }
+}
+/* a new page (workspace or tab) eases in */
+.ws-center > .pg,
+.ws-center > .render-page,
+.ws-center > .subpage,
+.ws-center > .look-page,
+.ws-center > .items-lib,
+.ws-center > .face-anim,
+.ws-center > .me,
+.ws-lib > .ws-center > * {
+  animation: kf-page-in var(--t-slow) var(--ease-out) both;
+}
+.menu,
+.menu.popover,
+.dialog {
+  animation: kf-pop-in 160ms var(--ease-out) both;
+  transform-origin: top center;
+}
+.overlay {
+  animation: kf-fade-in 160ms var(--ease-out) both;
+}
+.items-side-detail {
+  animation: kf-side-in var(--t-med) var(--ease-out) both;
+}
+.lip-more[open] > :not(summary) {
+  animation: kf-page-in var(--t-med) var(--ease-out) both;
+}
+.toast {
+  animation: kf-pop-in var(--t-med) var(--ease-out) both;
+}
+
+/* ---- big moments: work that finished says so ---- */
+.toast.done {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  border-color: color-mix(in srgb, var(--ok) 35%, var(--line));
+  box-shadow:
+    0 8px 30px rgba(0, 0, 0, 0.45),
+    inset 3px 0 0 var(--ok);
+}
+.toast-check {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: var(--ok);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.toast-check circle {
+  stroke-dasharray: 44;
+  stroke-dashoffset: 44;
+  animation: kf-draw 420ms var(--ease-out) 60ms forwards;
+}
+.toast-check path {
+  stroke-width: 1.9;
+  stroke-dasharray: 12;
+  stroke-dashoffset: 12;
+  animation: kf-draw 260ms var(--ease-out) 300ms forwards;
+}
+@keyframes kf-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+/* progress: a slow sheen travels along the bar while it works */
+.render-progress span {
+  position: relative;
+  overflow: hidden;
+  transition: width 0.4s var(--ease-out);
+}
+.render-progress span::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.35), transparent);
+  transform: translateX(-100%);
+  animation: kf-sheen 1.6s var(--ease-in-out) infinite;
+}
+@keyframes kf-sheen {
+  to {
+    transform: translateX(100%);
+  }
+}
+.render-hero.running {
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--line));
+}
+/* finished: the header glows once */
+.render-hero.just-done {
+  animation: kf-done-glow 1.1s var(--ease-out) both;
+}
+@keyframes kf-done-glow {
+  0% {
+    box-shadow: 0 0 0 0 rgba(79, 209, 139, 0);
+    border-color: var(--ok);
+  }
+  30% {
+    box-shadow: 0 0 0 4px rgba(79, 209, 139, 0.22), 0 0 28px rgba(79, 209, 139, 0.18);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(79, 209, 139, 0);
+  }
+}
+/* the star you just pressed */
+.items-star.on svg,
+.render-also.on {
+  animation: kf-tick 240ms var(--ease-out);
+}
+@keyframes kf-tick {
+  from {
+    transform: scale(0.7);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    animation-delay: 0ms !important;
+    transition-duration: 0.01ms !important;
+  }
+  .render-progress span::after {
+    display: none;
+  }
+}
