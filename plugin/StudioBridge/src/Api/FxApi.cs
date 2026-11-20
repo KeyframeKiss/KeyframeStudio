@@ -259,6 +259,11 @@ namespace StudioEX.Bridge.Api
         }
 
         private static float F(string e, string k) => (float)_fx[e][k];
+
+        // for the viewport's focus marker
+        internal static bool DofOn => B("dof", "on");
+        internal static float Dof(string k) => F("dof", k);
+        internal static void SetDof(Dictionary<string, object> values) => Set(new Dictionary<string, object> { { "effect", "dof" }, { "values", values } });
         private static bool B(string e, string k) => (bool)_fx[e][k];
         private static Vector4 V(string e, string k) { var a = (float[])_fx[e][k]; return new Vector4(a[0], a[1], a[2], a[3]); }
 

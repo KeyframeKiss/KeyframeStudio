@@ -12,7 +12,7 @@ import { Field, Panel } from './Page';
 interface Tools {
   pov: { on: boolean; id: number; fov: number; hideHead: boolean; useTheirs: boolean; provider: string; theirsInstalled: boolean };
   follow: { on: boolean; id: number; bone: string; speed: number; useTheirs: boolean; provider: string; theirsInstalled: boolean; bones: string[] };
-  guides: { thirds: boolean; center: boolean; safe: boolean; aspect: number; dim: number; color: number[] };
+  guides: { thirds: boolean; center: boolean; safe: boolean; golden: boolean; diagonals: boolean; spiral: number; aspect: number; dim: number; color: number[] };
 }
 type Patch = Partial<{ [K in keyof Tools]: Partial<Tools[K]> }>;
 
@@ -233,7 +233,11 @@ export function FrameGuidesPanel() {
     ['thirds', 'Thirds', 'Rule of thirds'],
     ['center', 'Centre', 'A cross at the centre'],
     ['safe', 'Safe areas', 'Inner frames at 90% and 80%: keep faces and text inside for screens that crop the edges'],
+    ['golden', 'Golden ratio', 'Lines at 38% and 62%: a slightly tighter, calmer alternative to thirds'],
+    ['diagonals', 'Diagonals', 'Corner-to-corner lines and their square-on partners: lead the eye along them'],
   ] as const;
+  // the golden spiral winds into one of four corners; each press turns it, the last press hides it
+  const SPIRAL = ['↗ top right', '↖ top left', '↘ bottom right', '↙ bottom left'];
   return (
     <Panel title="Frame guides" help="Drawn over Studio's window only — never in renders, snapshots or stills, and hidden while recording.">
       <Field label="Show">
@@ -243,6 +247,13 @@ export function FrameGuidesPanel() {
               {label}
             </button>
           ))}
+          <button
+            className={`btn chip ${(g.spiral ?? -1) >= 0 ? 'on' : ''}`}
+            title={`Golden spiral — press again to turn it to the next corner${(g.spiral ?? -1) >= 0 ? ` (now ${SPIRAL[g.spiral]})` : ''}`}
+            onClick={() => setCamTools({ guides: { spiral: (g.spiral ?? -1) >= 3 ? -1 : (g.spiral ?? -1) + 1 } })}
+          >
+            Spiral{(g.spiral ?? -1) >= 0 ? ` ${SPIRAL[g.spiral].slice(0, 1)}` : ''}
+          </button>
         </div>
       </Field>
       <Field label="Frame" help="The shape of the picture, with the outside dimmed. Render size = the size set in Shoot › Render.">

@@ -9,7 +9,7 @@ import { NumberField } from './TopBar';
 type V3 = [number, number, number];
 
 interface Target {
-  kind: 'bone' | 'ik' | 'object';
+  kind: 'bone' | 'ik' | 'object' | 'accessory';
   id: number;
   index: number;
   label: string;
@@ -22,9 +22,9 @@ interface Target {
 }
 
 interface GizmoState {
-  overlays: { on: boolean; skeleton: boolean; ik: boolean; highlight: boolean; lights: boolean; cameras: boolean; allCharacters: boolean; labels: boolean };
+  overlays: { on: boolean; skeleton: boolean; ik: boolean; accessories: boolean; highlight: boolean; lights: boolean; cameras: boolean; focus: boolean; allCharacters: boolean; labels: boolean };
   gizmo: { on: boolean; world: boolean; snapMove: number; snapRot: number; snapScale: number; mode: number };
-  pick: { characters: boolean; items: boolean; lights: boolean; cameras: boolean };
+  pick: { characters: boolean; accessories: boolean; items: boolean; lights: boolean; cameras: boolean };
   target: Target | null;
   dragging: boolean;
 }
@@ -48,7 +48,7 @@ function remember(st: GizmoState) {
   }
 }
 
-const KIND: Record<Target['kind'], string> = { bone: 'Bone', ik: 'IK target', object: 'Object' };
+const KIND: Record<Target['kind'], string> = { bone: 'Bone', ik: 'IK target', object: 'Object', accessory: 'Accessory' };
 
 /**
  * Overlays and handles in Studio's own view: the skeleton with clickable joints, IK targets, a selection outline,
@@ -129,7 +129,7 @@ export function ViewportOverlays() {
 
           <div className="menu-label">
             Handles
-            <Help text="Drag the coloured rings to turn a bone (the white ring turns it toward you), the arrows to move, the cubes to scale; drag the middle to move freely. A turned bone switches its part to FK (an IK limb hands over to FK) keeping the pose it has. Each drag is one undo. Ctrl snaps to the steps below; Shift moves a quarter as far." />
+            <Help text="Drag the coloured rings to turn a bone (the white ring turns it toward you), the arrows to move, the cubes to scale; drag the middle to move freely. Only the part you touch changes: a turned bone puts just its part in FK (an IK limb hands over), a moved IK target puts just its limb in IK — the rest keeps its pose. An arrow pointing at you fades out (it would be too short to move with). Each drag is one undo, FK / IK switches included. Ctrl snaps to the steps below; Shift moves a quarter as far." />
           </div>
           <div className="seg">
             {(['Move', 'Rotate', 'Scale'] as const).map((m, i) => (
@@ -156,7 +156,7 @@ export function ViewportOverlays() {
           <div className="menu-sep" />
           <div className="menu-label">
             Overlays
-            <Help text="Drawn over Studio's view, on top of its effects so they stay sharp — never in renders, stills or videos. Blue joints are posed by FK; yellow diamonds are IK targets (solid when IK drives that limb). Hover anything for its name." />
+            <Help text="Drawn over Studio's view, on top of its effects so they stay sharp — never in renders, stills or videos. Blue joints are posed by FK; yellow diamonds are IK targets (solid when IK drives that limb; a hollow diamond around a joint — click its edge). Teal squares are accessories: click one to move, turn or scale it (saved with the outfit). The green reticle is where the depth of field focuses: drag it onto what should be sharp — drop it on the eyes to keep following them. Hover anything for its name." />
           </div>
           <div className="vo-grid">
             {check('Skeleton', o.skeleton, (v) => set({ overlays: { skeleton: v, on: true } }))}
@@ -164,6 +164,8 @@ export function ViewportOverlays() {
             {check('Selection outline', o.highlight, (v) => set({ overlays: { highlight: v, on: true } }))}
             {check('Lights', o.lights, (v) => set({ overlays: { lights: v, on: true } }))}
             {check('Cameras', o.cameras, (v) => set({ overlays: { cameras: v, on: true } }))}
+            {check('Accessories', o.accessories, (v) => set({ overlays: { accessories: v, on: true } }))}
+            {check('Focus point', o.focus, (v) => set({ overlays: { focus: v, on: true } }), 'Where depth of field is focused (Look › Effects); drag it to refocus')}
             {check('Names on hover', o.labels, (v) => set({ overlays: { labels: v } }))}
           </div>
           {check('Every character, not just the selected', o.allCharacters, (v) => set({ overlays: { allCharacters: v } }))}
@@ -171,11 +173,11 @@ export function ViewportOverlays() {
           <div className="menu-sep" />
           <div className="menu-label">
             Click to select
-            <Help text="Click in Studio's view to select what's under the pointer — the nearest joint, IK target, light or camera, else the smallest item there. Dragging still turns the camera. Click empty space to let go of a bone." />
+            <Help text="Click in Studio's view to select what's under the pointer — the nearest joint, IK target, accessory, light or camera, else the smallest item there. Where things overlap (a wrist joint and its IK target), click the same spot again for the next one; the name tag says what's next. Dragging still turns the camera. Click empty space to let go of a bone." />
           </div>
-          <div className="seg">
-            {(['characters', 'items', 'lights', 'cameras'] as const).map((k) => (
-              <button key={k} className={st.pick[k] ? 'on' : ''} onClick={() => set({ pick: { [k]: !st.pick[k] } })}>
+          <div className="ct-chips" style={{ margin: 0 }}>
+            {(['characters', 'accessories', 'items', 'lights', 'cameras'] as const).map((k) => (
+              <button key={k} className={`btn chip ${st.pick[k] ? 'on' : ''}`} onClick={() => set({ pick: { [k]: !st.pick[k] } })}>
                 {k[0].toUpperCase() + k.slice(1)}
               </button>
             ))}
@@ -232,7 +234,7 @@ function TargetCard({ t, onChange }: { t: Target; onChange: (t: Target) => void 
         <i className="y">Y</i>
         <i className="z">Z</i>
       </div>
-      {t.canMove && row('Move', 'pos', 3)}
+      {t.canMove && row('Move', 'pos', t.kind === 'accessory' ? 1 : 3)}
       {t.canRotate && row('Turn', 'rot', 1)}
       {t.canScale && row('Scale', 'scale', 2)}
     </div>

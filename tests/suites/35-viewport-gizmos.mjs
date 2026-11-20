@@ -1,4 +1,4 @@
-export const name = 'Viewport overlays & handles: click a joint, turn it on the rings, move objects and IK targets, undo';
+export const name = 'Viewport overlays & handles: joints, rings, IK without jumps, accessories, focus point, guides, undo';
 
 export default async function (t) {
   const { ok, check, sleep } = t;
@@ -10,6 +10,11 @@ export default async function (t) {
   // the mouse, fed to the plugin (Unity screen pixels, origin bottom-left); a frame or two between steps
   const sim = (a) => ok('gizmo.simulate', a);
   const frame = () => sleep(160);
+  const hoverAt = async (p) => {
+    await sim({ at: p });
+    await frame();
+    return sim({ at: p });
+  };
   async function drag(points) {
     await sim({ at: points[0] });
     await frame();
@@ -26,24 +31,25 @@ export default async function (t) {
     return mid;
   }
   async function click(p) {
-    await sim({ at: p });
-    await frame();
-    const hover = await sim({ at: p });
+    const hover = await hoverAt(p);
     await sim({ press: true });
     await frame();
     await sim({ release: true });
     await frame();
     return hover;
   }
+  const fx0 = (await ok('fx.get')).effects.dof;
   t.defer(async () => {
     await sim({ end: true });
-    await ok('gizmo.set', { overlays: { on: false }, gizmo: { on: false, world: false }, pick: { characters: true, items: true, lights: true, cameras: true } });
+    await ok('gizmo.set', { overlays: { on: false }, gizmo: { on: false, world: false }, pick: { characters: true, accessories: true, items: true, lights: true, cameras: true } });
     await ok('gizmo.target', { kind: 'none' });
+    await ok('fx.set', { effect: 'dof', values: { on: fx0.on, autoFocus: fx0.autoFocus, focus: fx0.focus } });
+    await ok('camtools.set', { guides: { golden: false, diagonals: false, spiral: -1 } });
   });
 
   await t.step('switches', async () => {
-    const st = await ok('gizmo.set', { overlays: { on: true, skeleton: true, ik: true }, gizmo: { on: true, world: false, mode: 1 }, pick: { characters: true } });
-    check('overlays and handles on', st.overlays.on && st.overlays.skeleton && st.gizmo.on);
+    const st = await ok('gizmo.set', { overlays: { on: true, skeleton: true, ik: true, accessories: true, focus: true }, gizmo: { on: true, world: false, mode: 1 }, pick: { characters: true, accessories: true } });
+    check('overlays and handles on', st.overlays.on && st.overlays.skeleton && st.overlays.accessories && st.gizmo.on);
     check("Studio's rotate mode followed", st.gizmo.mode === 1);
   });
 
@@ -61,29 +67,32 @@ export default async function (t) {
     check('named like a person would', /forearm/i.test(after.target?.label ?? ''), after.target?.label);
   });
 
-  await t.step('turn it on the view ring: FK takes over, one undo puts it back', async () => {
-    const hand0 = (await sim({ id, bone: 'cf_j_hand_L' })).world;
+  await t.step('turn it on the view ring: only its part goes to FK, steady, one undo', async () => {
+    const before = await sim({ id, bone: 'cf_j_hand_L' });
+    const foot0 = (await sim({ id, bone: 'cf_j_foot_R' })).world;
     const st = await sim({ at: [0, 0] });
     const [cx, cy] = st.anchor.center;
     const R = 78 * 1.18;
-    // a quarter turn, anticlockwise on screen
-    const pts = [];
-    for (let k = 0; k <= 9; k++) pts.push([cx + R * Math.cos((k * Math.PI) / 18), cy + R * Math.sin((k * Math.PI) / 18)]);
-    await sim({ at: pts[0] });
-    await frame();
-    const over = await sim({ at: pts[0] });
+    const p0 = [cx + R, cy];
+    const over = await hoverAt(p0);
     check('the view ring is under the pointer', over.hover === 'RingView', over.hover);
+    check("Studio's camera holds still while the pointer is on a handle", over.cameraBlocked === true);
+    // along the ring's tangent there (straight up at its right-hand side): a quarter of the ring's length ≈ a steady angle
+    const pts = [p0];
+    for (let k = 1; k <= 6; k++) pts.push([cx + R, cy + (k * R) / 6]);
     const mid = await drag(pts);
     check('dragging', mid.dragging === true);
     const b = await sim({ id, bone: 'cf_j_forearm01_L' });
     const hand1 = (await sim({ id, bone: 'cf_j_hand_L' })).world;
-    check('the forearm turned (the hand moved)', dist(hand0, hand1) > 0.03, `${dist(hand0, hand1).toFixed(3)} m`);
-    check('the body part went to FK', b.fk && b.activeFK.some(Boolean), JSON.stringify(b.activeFK));
+    check('the forearm turned (the hand moved)', dist(before.world, hand1) > 0.03, `${dist(before.world, hand1).toFixed(3)} m`);
+    check('its part went to FK', b.fk && b.activeFK.some(Boolean), JSON.stringify(b.activeFK));
+    check('nothing else moved (no jump)', dist(foot0, (await sim({ id, bone: 'cf_j_foot_R' })).world) < 0.005 && dist(before.hips, b.hips) < 0.005, `hips ${dist(before.hips, b.hips).toFixed(4)} m`);
     check('the drag ended', (await ok('gizmo.get')).dragging === false);
     await ok('undo');
     await frame();
-    const hand2 = (await sim({ id, bone: 'cf_j_hand_L' })).world;
-    check('undo puts the pose back', dist(hand0, hand2) < 0.01, `${dist(hand0, hand2).toFixed(4)} m off`);
+    const back = await sim({ id, bone: 'cf_j_hand_L' });
+    check('undo puts the pose back', dist(before.world, back.world) < 0.01, `${dist(before.world, back.world).toFixed(4)} m off`);
+    check('…and the FK / IK state', back.fk === before.fk && back.ik === before.ik && JSON.stringify(back.activeFK) === JSON.stringify(before.activeFK), JSON.stringify([before.fk, back.fk, before.activeFK, back.activeFK]));
   });
 
   await t.step('type an angle', async () => {
@@ -96,38 +105,68 @@ export default async function (t) {
     check('and undone', Math.abs(((back[2] - before[2] + 540) % 360) - 180) < 0.5, JSON.stringify(back));
   });
 
-  await t.step('drag an IK target', async () => {
-    // a hand target: the one nearest the left hand
-    const hand = (await sim({ id, bone: 'cf_j_hand_L' })).world;
-    let best = null;
-    for (let i = 0; i < 13; i++) {
-      try {
-        const k = await sim({ id, ik: i });
-        if (!best || dist(k.world, hand) < dist(best.world, hand)) best = { ...k, i };
-      } catch {
-        break;
-      }
+  let handIk;
+  await t.step('IK on one limb: the rest of the body stays put', async () => {
+    const hand = await sim({ id, bone: 'cf_j_hand_L' });
+    const foot0 = (await sim({ id, bone: 'cf_j_foot_R' })).world;
+    // Studio's IK targets in order: body, then left shoulder / elbow / hand, … — the left hand is 3
+    // (an idle target can sit anywhere, so "the one nearest the hand" isn't a safe way to find it)
+    try {
+      handIk = { ...(await sim({ id, ik: 3 })), i: 3 };
+    } catch {
+      return check('IK targets found', false);
     }
-    if (!best) return check('IK targets found', false);
-    // IK live for that limb (typing its own value takes it over), so its diamond wins over the hand joint under it
-    await ok('gizmo.target', { kind: 'ik', id, index: best.i });
+    await ok('gizmo.target', { kind: 'ik', id, index: handIk.i });
     await ok('gizmo.value', { pos: (await ok('gizmo.get')).target.pos });
     await frame();
-    best = { ...(await sim({ id, ik: best.i })), i: best.i };
-    check('typing a value turned IK on for the limb', best.ik && best.activeIK.some(Boolean), JSON.stringify(best.activeIK));
+    const after = await sim({ id, ik: handIk.i });
+    check('IK on for that limb only', after.ik && after.activeIK.filter(Boolean).length === 1, JSON.stringify(after.activeIK));
+    check('FK stays on beside it', after.fk === hand.fk);
+    // (Studio's IK solver lets a reaching arm tug the body a hair — a centimetre or so — as it does in Studio itself)
+    check('the body didn’t jump', dist(after.hips, hand.hips) < 0.02 && dist(foot0, (await sim({ id, bone: 'cf_j_foot_R' })).world) < 0.02, `hips ${dist(after.hips, hand.hips).toFixed(4)} m`);
+    const hand1 = await sim({ id, bone: 'cf_j_hand_L' });
+    check('…nor the hand itself (its target starts where it is)', dist(hand1.world, hand.world) < 0.02 && dist(after.world, hand.world) < 0.02, `hand ${dist(hand1.world, hand.world).toFixed(4)} m, target ${dist(after.world, hand.world).toFixed(4)} m`);
+    handIk = { ...after, i: handIk.i };
+  });
+
+  await t.step('wrist: joint in the middle, IK target on the ring around it, click again for the next', async () => {
+    const hand = await sim({ id, bone: 'cf_j_hand_L' });
+    const ikk = await sim({ id, ik: handIk.i });
+    const [x, y] = ikk.screen;
+    const gap = Math.hypot(hand.screen[0] - x, hand.screen[1] - y);
+    if (gap > 12) return check(`(hand target ${gap.toFixed(1)} px off the wrist: not on the joint here)`, true);
+    await ok('gizmo.target', { kind: 'none' });
+    await ok('gizmo.set', { gizmo: { on: false } }); // no rings in the way for this step
+    const centre = await hoverAt([hand.screen[0], hand.screen[1]]);
+    check('the middle is the wrist joint', centre.hoverPick === `joint:${id}:${hand.index}`, centre.hoverPick);
+    check('with the IK target next in line', centre.hoverAll.includes(`ik:${id}:${handIk.i}`), JSON.stringify(centre.hoverAll));
+    const ring = await hoverAt([hand.screen[0] + 10, hand.screen[1]]); // the ring is drawn around the joint
+    check('the ring around it is the IK target', ring.hoverPick === `ik:${id}:${handIk.i}`, ring.hoverPick);
+    await click([hand.screen[0], hand.screen[1]]);
+    check('first click: the joint', (await ok('gizmo.get')).target?.kind === 'bone');
+    await click([hand.screen[0], hand.screen[1]]);
+    check('same spot again: the IK target', (await ok('gizmo.get')).target?.kind === 'ik');
+    await ok('gizmo.set', { gizmo: { on: true, mode: 1 } });
+  });
+
+  await t.step('drag an IK target', async () => {
+    const best = await sim({ id, ik: handIk.i });
+    await ok('gizmo.target', { kind: 'ik', id, index: handIk.i });
+    await frame();
     const [x, y] = best.screen;
+    const foot0 = (await sim({ id, bone: 'cf_j_foot_R' })).world;
     const mid = await drag([[x, y], [x + 10, y], [x + 25, y + 10], [x + 40, y + 20]]);
     check('grabbed straight away', mid.target?.kind === 'ik' && mid.dragging, JSON.stringify(mid.target));
-    const after = await sim({ id, ik: best.i });
+    const after = await sim({ id, ik: handIk.i });
     check('the target moved', dist(after.world, best.world) > 0.02, `${dist(after.world, best.world).toFixed(3)} m`);
-    check('IK is on for that limb', after.ik && after.activeIK.some(Boolean), JSON.stringify(after.activeIK));
+    check('the other foot stayed', dist(foot0, (await sim({ id, bone: 'cf_j_foot_R' })).world) < 0.01);
     await ok('undo');
     await frame();
-    const back = await sim({ id, ik: best.i });
+    const back = await sim({ id, ik: handIk.i });
     check('undo puts it back', dist(back.world, best.world) < 0.01);
   });
 
-  await t.step('object handles: move along an axis', async () => {
+  await t.step('object handles: the arrow follows the pointer exactly', async () => {
     const it = items[0];
     if (!it) return;
     await ok('scene.select', { ids: [it.id] });
@@ -139,31 +178,84 @@ export default async function (t) {
     if (!st.anchor) return check('handles on screen', false);
     const before = (await ok('object.get', { id: it.id })).transform.pos;
     const [cx, cy] = st.anchor.center;
-    // the axis that looks longest from here (one pointing at the camera is too short to grab)
     const lens = st.anchor.ends.map(([ex, ey]) => Math.hypot(ex - cx, ey - cy));
     const ax = lens.indexOf(Math.max(...lens));
     const [ex, ey] = st.anchor.ends[ax];
     const dx = ex - cx;
     const dy = ey - cy;
     const p0 = [cx + dx * 0.6, cy + dy * 0.6];
-    await sim({ at: p0 });
-    await frame();
-    const over = await sim({ at: p0 });
     const XYZ = 'XYZ'[ax];
+    const over = await hoverAt(p0);
     check(`the ${XYZ} arrow is under the pointer`, over.hover === `Axis${XYZ}`, over.hover);
     await drag([p0, [p0[0] + dx * 0.25, p0[1] + dy * 0.25], [p0[0] + dx * 0.5, p0[1] + dy * 0.5]]);
     const after = (await ok('object.get', { id: it.id })).transform.pos;
     check('it moved', dist(after, before) > 0.01, `${JSON.stringify(before)} → ${JSON.stringify(after)}`);
-    // along that arrow only: on screen the handles slid along its line (the item may hang off a turned parent,
-    // so its own numbers can mix axes)
     const [nx, ny] = (await sim({ at: [0, 0] })).anchor.center;
     const len = Math.hypot(dx, dy);
     const along = ((nx - cx) * dx + (ny - cy) * dy) / len;
     const across = Math.abs((nx - cx) * dy - (ny - cy) * dx) / len;
-    check(`along ${XYZ} only`, along > 5 && across < Math.max(1.5, along * 0.03), `${along.toFixed(1)} px along, ${across.toFixed(1)} px across`);
+    check(`along ${XYZ} only`, across < Math.max(1.5, along * 0.03), `${along.toFixed(1)} px along, ${across.toFixed(1)} px across`);
+    check('as far as the pointer went (no overshoot)', Math.abs(along - len * 0.5) < len * 0.12, `${along.toFixed(1)} px for a ${(len * 0.5).toFixed(1)} px drag`);
     await ok('undo');
     const back = (await ok('object.get', { id: it.id })).transform.pos;
     check('undo puts it back', dist(back, before) < 1e-3);
+  });
+
+  await t.step('accessories: click one, move it, undo', async () => {
+    await ok('scene.select', { ids: [id] });
+    await ok('gizmo.set', { gizmo: { mode: 0 } });
+    await frame();
+    const accs = await sim({ id, accessories: true });
+    const st = await sim({ at: [0, 0] });
+    const [w, h] = st.screen;
+    const a = accs.find((x) => x.screen[2] > 0 && x.screen[0] > 60 && x.screen[1] > 60 && x.screen[0] < w - 60 && x.screen[1] < h - 60);
+    if (!a) return check(`(no adjustable accessory on screen — ${accs.length} in all)`, true);
+    check('accessories have names', accs.every((x) => typeof x.name === 'string' && x.name.length > 0), accs.map((x) => x.name).join(', '));
+    await ok('gizmo.target', { kind: 'none' });
+    // the click may land on a joint first; click again until the accessory has it
+    for (let k = 0; k < 4 && (await ok('gizmo.get')).target?.kind !== 'accessory'; k++) await click([a.screen[0], a.screen[1]]);
+    const t0 = (await ok('gizmo.get')).target;
+    check('a click gives the accessory the handles', t0?.kind === 'accessory' && t0.index === a.slot, JSON.stringify(t0));
+    if (t0?.kind !== 'accessory') return;
+    const an = (await sim({ at: [0, 0] })).anchor;
+    const [cx, cy] = an.center;
+    await drag([[cx, cy], [cx + 10, cy + 5], [cx + 30, cy + 15]]);
+    const t1 = (await ok('gizmo.get')).target;
+    check('it moved (in its own adjustment)', dist(t1.pos, t0.pos) > 0.5 && dist(t1.world, t0.world) > 0.003, `${JSON.stringify(t0.pos)} → ${JSON.stringify(t1.pos)}`);
+    await ok('undo');
+    const t2 = (await ok('gizmo.get')).target;
+    check('undo puts it back', dist(t2.pos, t0.pos) < 0.01 && dist(t2.world, t0.world) < 1e-3);
+    const typed = await ok('gizmo.value', { rot: [t0.rot[0], (t0.rot[1] + 45) % 360, t0.rot[2]] });
+    check('a typed turn', Math.abs(((typed.rot[1] - t0.rot[1] - 45 + 540) % 360) - 180) < 0.5, JSON.stringify(typed.rot));
+    await ok('undo');
+  });
+
+  await t.step('focus point: drag it onto the hips, then the eyes', async () => {
+    await ok('fx.set', { effect: 'dof', values: { on: true, autoFocus: 0, focus: 30 } });
+    await frame();
+    const f = await sim({ focus: true });
+    check('the marker shows where it focuses', f.shown && f.ours && f.screen, JSON.stringify(f));
+    const hips = await sim({ id, bone: 'cf_j_hips' });
+    const head = await sim({ id, bone: 'cf_j_head' });
+    const st = await sim({ at: [0, 0] });
+    const [w, h] = st.screen;
+    const onScreen = (p) => p && p[2] > 0 && p[0] > 20 && p[1] > 20 && p[0] < w - 20 && p[1] < h - 20;
+    if (!onScreen(f.screen) || !onScreen(hips.screen) || !onScreen(head.screen)) return check('(marker, hips or head off screen)', true);
+    const over = await hoverAt([f.screen[0], f.screen[1]]);
+    check('the marker is grabbable', over.hover === 'Focus' && over.cameraBlocked, over.hover);
+    const path = (a, b) => Array.from({ length: 6 }, (_, k) => [a[0] + ((b[0] - a[0]) * k) / 5, a[1] + ((b[1] - a[1]) * k) / 5]);
+    await drag(path(f.screen, [hips.screen[0] + 3, hips.screen[1]]));
+    const g = await sim({ focus: true });
+    check('focus moved to the hips’ distance (manual)', g.focus > 0.1 && g.focus < 29 && g.mode === 0, `${g.focus?.toFixed?.(2)} m, mode ${g.mode}`);
+    check('the marker stays where it was dropped', Math.hypot(g.screen[0] - hips.screen[0], g.screen[1] - hips.screen[1]) < 12, JSON.stringify([g.screen, hips.screen]));
+    await drag(path(g.screen, [head.screen[0], head.screen[1] + 4]));
+    const e = await sim({ focus: true });
+    check('dropped on the face: it follows the eyes', e.mode === 2, `mode ${e.mode}`);
+  });
+
+  await t.step('composition guides', async () => {
+    const st = await ok('camtools.set', { guides: { golden: true, diagonals: true, spiral: 2 } });
+    check('golden ratio, diagonals and a spiral', st.guides.golden && st.guides.diagonals && st.guides.spiral === 2, JSON.stringify(st.guides));
   });
 
   await t.step('click filters', async () => {
@@ -171,9 +263,7 @@ export default async function (t) {
     await frame();
     const b = await sim({ id, bone: 'cf_j_forearm01_L' });
     await ok('gizmo.set', { pick: { characters: false } });
-    await sim({ at: b.screen });
-    await frame();
-    const off = await sim({ at: b.screen });
+    const off = await hoverAt(b.screen);
     check('joints ignored with Characters off', !String(off.hoverPick ?? '').startsWith('joint:'), off.hoverPick);
     await ok('gizmo.set', { pick: { characters: true }, overlays: { on: false } });
     await frame();

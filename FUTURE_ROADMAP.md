@@ -145,7 +145,10 @@ Direct manipulation is drawn in CharaStudio's own viewport, extending the system
 - **Handles:** rings on a bone (its own axes plus a view ring), arrows / cubes / free-move centre for objects and IK targets, following Studio's Move / Rotate / Scale mode; Local or World axes; constant size on screen; a live value tag while dragging. Turning a bone switches its part to FK keeping the pose, and an IK-driven limb hands over to FK; dragging an IK target turns IK on for its limb. Ctrl snaps (steps set in the app), Shift is fine control. Studio's camera holds still during a drag, and Studio's own handles are hidden while ours are on.
 - **Selection:** click to select joints, IK targets, lights, cameras and items (smallest under the pointer), with filters; click empty space to let go of a bone.
 - **Shared:** each drag or typed value is one step in the shared undo history; auto-key and "unkeyed changes" see the edits like any Studio edit; numeric entry for the handles' target in the app.
-- **Not done:** accessories as handle targets, composition guides in the viewport, a focus-point overlay.
+- **Second pass:** IK targets on a joint (wrists, ankles) are rings around it — middle = joint, ring = target — and clicking the same spot again steps to the next thing there (the name tag says what). Only the touched part changes FK / IK (the other mode stays on beside it, KKPE-style), every part starts from the pose on screen, and undo restores the FK / IK state too — no more body jumps. Arrows track the pointer exactly (ray–axis), arrows pointing at the camera fade and can't be grabbed, rings turn along their tangent (no flips near the middle), and Studio's camera holds still while the pointer is on a handle. Typed values apply only the numbers changed.
+- **Accessories:** teal squares on the selected character's accessories; click to move / turn / scale their own adjustment (saved to the outfit worn and the saved outfit), with undo and typed values.
+- **Focus point:** a reticle where depth of field focuses; drag it onto a joint or item to focus at that distance, or onto a face to keep following the eyes.
+- **Composition guides:** golden-ratio lines, diagonals with their reciprocals and a golden spiral (four corners) join thirds, centre, safe areas and the frame.
 
 ---
 

@@ -36,7 +36,8 @@ namespace StudioEX.Bridge.Api
         private float _followSpeed = 8f;
 
         // guides
-        private bool _thirds, _center, _safe;
+        private bool _thirds, _center, _safe, _golden, _diagonals;
+        private int _spiral = -1; // golden spiral: -1 off, 0-3 which corner it winds into
         private float _aspect; // 0 = no frame
         private float _dim = 0.6f;
         // the guide lines' colour; alpha = how strongly they show
@@ -77,7 +78,7 @@ namespace StudioEX.Bridge.Api
             // for checks: how far the camera is from the eyes (first person) / the view's centre from the followed part
             { "povDistance", _pov && _povProvider == "Keyframe Studio" && _eyes != null && Camera.main != null ? (double)Vector3.Distance(Camera.main.transform.position, _eyes.position) : -1d },
             { "followDistance", _follow && _target != null && Singleton<Studio.Studio>.Instance?.cameraCtrl != null ? (double)Vector3.Distance(Singleton<Studio.Studio>.Instance.cameraCtrl.targetPos, _target.position) : -1d },
-            { "guides", new Dictionary<string, object> { { "thirds", _thirds }, { "center", _center }, { "safe", _safe }, { "aspect", (double)_aspect }, { "dim", (double)_dim },
+            { "guides", new Dictionary<string, object> { { "thirds", _thirds }, { "center", _center }, { "safe", _safe }, { "golden", _golden }, { "diagonals", _diagonals }, { "spiral", _spiral }, { "aspect", (double)_aspect }, { "dim", (double)_dim },
                 { "color", new List<object> { (double)_lineColor.r, (double)_lineColor.g, (double)_lineColor.b, (double)_lineColor.a } } } },
         };
 
@@ -119,6 +120,9 @@ namespace StudioEX.Bridge.Api
                 if (g.Has("thirds")) _thirds = g.GetBool("thirds");
                 if (g.Has("center")) _center = g.GetBool("center");
                 if (g.Has("safe")) _safe = g.GetBool("safe");
+                if (g.Has("golden")) _golden = g.GetBool("golden");
+                if (g.Has("diagonals")) _diagonals = g.GetBool("diagonals");
+                if (g.Has("spiral")) _spiral = Mathf.Clamp(g.GetInt("spiral", -1), -1, 3);
                 if (g.Has("aspect")) _aspect = Mathf.Max(0, g.GetFloat("aspect"));
                 if (g.Has("dim")) _dim = Mathf.Clamp01(g.GetFloat("dim"));
                 if (g.ContainsKey("color") && g["color"] is List<object> c && c.Count >= 3)
@@ -304,7 +308,8 @@ namespace StudioEX.Bridge.Api
         {
             if (clients > 0) return;
             if (_pov || _follow) Clear();
-            _thirds = _center = _safe = false;
+            _thirds = _center = _safe = _golden = _diagonals = false;
+            _spiral = -1;
             _aspect = 0;
         }
 
@@ -317,7 +322,7 @@ namespace StudioEX.Bridge.Api
         private void OnGUI()
         {
             if (Event.current.type != EventType.Repaint) return;
-            if (!_thirds && !_center && !_safe && _aspect <= 0) return;
+            if (!_thirds && !_center && !_safe && !_golden && !_diagonals && _spiral < 0 && _aspect <= 0) return;
             if (RenderApi.Busy()) return;
             float sw = Screen.width, sh = Screen.height;
             var frame = new Rect(0, 0, sw, sh);
@@ -350,6 +355,105 @@ namespace StudioEX.Bridge.Api
             {
                 Outline(Inset(frame, 0.05f), Tone(0.9f)); // action safe (90%)
                 Outline(Inset(frame, 0.1f), Tone(0.55f)); // title safe (80%): fainter
+            }
+            if (_golden)
+                foreach (var k in new[] { 0.382f, 0.618f })
+                {
+                    Fill(new Rect(frame.xMin + frame.width * k, frame.yMin, 1, frame.height), Tone(0.75f));
+                    Fill(new Rect(frame.xMin, frame.yMin + frame.height * k, frame.width, 1), Tone(0.75f));
+                }
+            if (_diagonals || _spiral >= 0) DrawCurves(frame, sh);
+        }
+
+        // ---- diagonals and the golden spiral (GL lines; GUI rects can only draw straight across) ----
+        private Material _glMat;
+
+        private void DrawCurves(Rect guiFrame, float sh)
+        {
+            if (_glMat == null)
+            {
+                _glMat = new Material(Shader.Find("Hidden/Internal-Colored")) { hideFlags = HideFlags.HideAndDontSave };
+                _glMat.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
+                _glMat.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+                _glMat.SetInt("_Cull", 0);
+                _glMat.SetInt("_ZWrite", 0);
+                _glMat.SetInt("_ZTest", (int)UnityEngine.Rendering.CompareFunction.Always);
+            }
+            // GL counts y from the bottom
+            var f = new Rect(guiFrame.xMin, sh - guiFrame.yMax, guiFrame.width, guiFrame.height);
+            _glMat.SetPass(0);
+            GL.PushMatrix();
+            GL.LoadPixelMatrix(0, Screen.width, 0, sh);
+            GL.Begin(GL.LINES);
+            if (_diagonals)
+            {
+                GL.Color(Tone(0.7f));
+                Vector2 bl = new Vector2(f.xMin, f.yMin), br = new Vector2(f.xMax, f.yMin), tl = new Vector2(f.xMin, f.yMax), tr = new Vector2(f.xMax, f.yMax);
+                Seg(bl, tr);
+                Seg(tl, br);
+                // from the other corners, square onto each diagonal (the "reciprocal" lines)
+                Seg(tl, Foot(tl, bl, tr));
+                Seg(br, Foot(br, bl, tr));
+                Seg(bl, Foot(bl, tl, br));
+                Seg(tr, Foot(tr, tl, br));
+            }
+            if (_spiral >= 0)
+            {
+                GL.Color(Tone(0.9f));
+                Spiral(f);
+            }
+            GL.End();
+            GL.PopMatrix();
+        }
+
+        private static void Seg(Vector2 a, Vector2 b)
+        {
+            GL.Vertex3(a.x, a.y, 0);
+            GL.Vertex3(b.x, b.y, 0);
+        }
+
+        /// <summary>The foot of the perpendicular from p onto the line a–b.</summary>
+        private static Vector2 Foot(Vector2 p, Vector2 a, Vector2 b)
+        {
+            var ab = b - a;
+            return a + ab * (Vector2.Dot(p - a, ab) / ab.sqrMagnitude);
+        }
+
+        /// <summary>
+        /// A golden spiral fitted to the frame: quarter circles in ever smaller squares of a golden rectangle, stretched
+        /// to the frame's shape. The setting picks the corner it winds into.
+        /// </summary>
+        private void Spiral(Rect f)
+        {
+            const float phi = 1.618034f;
+            float x = 0, y = 0, w = phi, h = 1;
+            bool portrait = f.height > f.width;
+            bool flipX = (_spiral & 1) != 0, flipY = (_spiral & 2) != 0;
+            Vector2 Map(float px, float py)
+            {
+                float u = px / phi, v = py;
+                if (flipX) u = 1 - u;
+                if (flipY) v = 1 - v;
+                return portrait ? new Vector2(f.xMin + v * f.width, f.yMin + u * f.height) : new Vector2(f.xMin + u * f.width, f.yMin + v * f.height);
+            }
+            for (int i = 0; i < 12; i++)
+            {
+                float s, cx, cy, a0;
+                switch (i % 4)
+                {
+                    case 0: s = h; cx = x + s; cy = y; a0 = 180; x += s; w -= s; break; // square on the left
+                    case 1: s = w; cx = x; cy = y + h - s; a0 = 90; h -= s; break; // on top
+                    case 2: s = h; cx = x + w - s; cy = y + h; a0 = 0; w -= s; break; // on the right
+                    default: s = w; cx = x + w; cy = y + s; a0 = -90; y += s; h -= s; break; // at the bottom
+                }
+                Vector2 prev = default;
+                for (int k = 0; k <= 16; k++)
+                {
+                    float ang = (a0 - 90f * k / 16f) * Mathf.Deg2Rad;
+                    var p = Map(cx + Mathf.Cos(ang) * s, cy + Mathf.Sin(ang) * s);
+                    if (k > 0) Seg(prev, p);
+                    prev = p;
+                }
             }
         }
 
