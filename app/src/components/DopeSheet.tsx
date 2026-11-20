@@ -1828,7 +1828,7 @@ function KindFilter() {
         {TRACK_KINDS.map((k) => {
           const n = counts.get(k) ?? 0;
           return (
-            <label key={k} className={n ? '' : 'empty'}>
+            <label key={k} className={n ? '' : 'kind-none'}>
               <input type="checkbox" checked={on.has(k)} onChange={() => toggle(k)} /> {k}
               <span className="sub">{n}</span>
             </label>

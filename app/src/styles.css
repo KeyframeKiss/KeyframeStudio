@@ -6899,7 +6899,7 @@ html.frameless .header.mini-header {
   color: var(--text-3);
   font-size: 11px;
 }
-.kind-filter label.empty {
+.kind-filter label.kind-none {
   opacity: 0.5;
 }
 .kind-filter .layout-menu-h {

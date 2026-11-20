@@ -188,7 +188,7 @@ export function TransportBar() {
 
   const bar = useRef<HTMLDivElement>(null);
   const [barWidth, setBarWidth] = useState(0);
-  const compact = barWidth < 900;
+  const compact = barWidth < 1150; // below this the length chip and the View group fold into ···
   const narrow = barWidth < 660;
   useLayoutEffect(() => {
     const el = bar.current!;

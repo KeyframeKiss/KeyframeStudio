@@ -1,92 +1,131 @@
-# Keyframe Studio
+<p align="center">
+  <img src="docs/images/logo.png" alt="Keyframe Studio" width="560">
+</p>
 
-A modern, external editor for **Koikatsu CharaStudio**. Studio keeps doing what it's good at
-(rendering, characters, every mod and zipmod you have installed); Keyframe Studio gives you a fast,
-keyboard-driven editing window next to it — animation, posing, faces, looks, effects, camera, audio and
-rendering — ideal on a second monitor. Overlays and handles are drawn right in Studio's own view, so you pose
-and place things where you see them.
+<p align="center">
+  <b>A modern editing window for Koikatsu CharaStudio</b><br>
+  Animate, pose, light and render your scenes in a fast, keyboard-friendly app next to Studio —<br>
+  with handles and overlays drawn right in Studio's own view.
+</p>
 
-```
-┌───────────────────── CharaStudio (game) ─────────────────────┐        ┌──────────── Keyframe Studio (Electron) ────────────┐
-│  BepInEx + all your mods + Timeline + KKPE + …              │        │  Animate · Pose · Look · Shoot · Library     │
-│  KKStudioEX.Bridge.dll  ── ws://127.0.0.1:47615 ────────────┼───────▶│  Dope sheet · Graph · Inspector · Undo/redo  │
-│  (overlays & handles drawn in Studio's view)                │        │                                              │
-└──────────────────────────────────────────────────────────────┘        └──────────────────────────────────────────────┘
-```
+<p align="center">
+  <a href="../../releases/latest"><img alt="Download" src="https://img.shields.io/badge/download-beta-ff4fa3?style=for-the-badge"></a>
+  <a href="../../issues/new/choose"><img alt="Report a bug" src="https://img.shields.io/badge/report-a%20bug-7c5cff?style=for-the-badge"></a>
+  <img alt="Windows" src="https://img.shields.io/badge/windows-10%20%7C%2011-3a3f4b?style=for-the-badge">
+  <img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-3a3f4b?style=for-the-badge">
+</p>
 
-Nothing is replaced in-game: animations are stored by the existing **Timeline** plugin, so scenes
-stay compatible with vanilla Timeline, and you can still open Timeline's own window at any time.
+<p align="center">
+  <img src="docs/images/app-animate.png" alt="Keyframe Studio: the Animate workspace with folders of bone tracks, keys and the keyframe panel" width="900">
+</p>
 
-## Layout
+> **Beta.** Keyframe Studio works and is tested against a live CharaStudio, but it's new — expect rough edges.
+> Your scenes stay ordinary Timeline scenes, so you can always open them without it.
+> [Bug reports](../../issues/new/choose) are the most useful thing you can send.
 
-| Folder | What |
-| --- | --- |
-| `plugin/StudioBridge` | BepInEx plugin (C#, .NET 3.5 / Unity 5.6). Local WebSocket server exposing scene + Timeline, plus the in-viewport overlays and handles. |
-| `app` | Keyframe Studio desktop app (Electron + React + TypeScript + Vite). |
-| `tests` | Live test suites that drive a running CharaStudio through the bridge, and unit tests. |
-| `tools` | Packaging (`node tools/package.mjs` → portable zip with the bridge plugin inside). |
+## Why
 
-## Install / run
+CharaStudio is great at rendering and at running every mod you own, but animating in it means nested windows,
+tiny gizmos and a lot of clicking. Keyframe Studio keeps Studio doing what it's good at and gives you a proper
+editor beside it — ideal on a second monitor:
 
-**Release (portable zip):** unzip anywhere, start **Keyframe Studio.exe**, then Settings › About & diagnostics ›
-**Studio bridge** (or "Set up the bridge" on the waiting screen). It finds your Koikatsu folder, checks BepInEx,
-and installs or updates the bridge plugin in one click — even while CharaStudio runs (it loads on Studio's next
-start). Your presets live in `Koikatsu\UserData\StudioEX` and app settings in `%APPDATA%\studio-ex`, so updates keep
-them.
+- **A real timeline.** Dope sheet and graph editor, keys you drag and snap, easing curves, folders, search, undo for everything.
+- **Pose where you look.** Click a joint in Studio's view and turn it on its rings; drag IK targets, props, lights, cameras and accessories.
+- **Everything else in one place.** Faces and lip-sync, looks and effects, lighting rigs, cameras and shots, audio, rendering with several versions at once.
+- **Nothing locked in.** Animations are stored by the existing **Timeline** plugin, so scenes stay compatible with vanilla Timeline and other people's setups.
 
-**Plugin from source** (needs the .NET SDK; builds against your game's own DLLs):
+## A quick look
 
-```powershell
-cd plugin/StudioBridge
-dotnet build -c Release -p:Deploy=true                       # copies to D:\Games\Koikatsu\BepInEx\plugins\KKStudioEX
-dotnet build -c Release -p:Deploy=true -p:GameDir="E:\KK"    # other install location
-```
+### Pose right in Studio's view
 
-**App from source:**
+<table>
+  <tr>
+    <td width="58%"><img src="docs/images/viewport-rings.jpg" alt="Skeleton overlay with a bone's rotation rings in Studio's viewport"></td>
+    <td>
+      <b>Skeleton, joints and handles</b> drawn over Studio's own picture — never in your renders.
+      Click a joint and turn it on its rings; drag an IK target and only that limb goes to IK.
+      FK and IK work together per limb, and scenes reload that way.
+      <br><br>
+      <img src="docs/images/viewport-fan.jpg" alt="Overlapping markers fanned out into labelled chips">
+      <br><sub>Where markers overlap, rest the pointer and they fan out to pick from.</sub>
+      <br><br>
+      <img src="docs/images/viewport-modes.jpg" alt="Move, Rotate and Scale chips around an object's handles" width="300">
+      <br><sub>Click the handles' middle — or rest on it — to switch Move / Rotate / Scale.</sub>
+    </td>
+  </tr>
+</table>
 
-```powershell
-cd app
-npm install
-npm run dev      # hot-reloading dev mode (Vite + Electron)
-npm start        # production build + run
-node tools/package.mjs   # (repo root) portable release zip in release/
-```
+### Animate like you would in an animation app
 
-Start CharaStudio; Keyframe Studio connects automatically (status dot turns green).
-The port is configurable in `BepInEx/config/studioex.bridge.cfg`.
+<p align="center"><img src="docs/images/app-graph.png" alt="Graph editor showing a head rotation's curves in degrees" width="860"></p>
+
+Dope sheet and graph editor (`Tab`), **Key changes** to key exactly what you moved in Studio, auto-key, snapping
+to keys / the playhead / ruler ticks, easing presets and your own saved curves, values you can drag or type, motion
+paths and onion-skin ghosts, folders, search and a type filter — and one undo history for all of it.
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/images/app-face.png" alt="Animate › Face: expressions keyed at the playhead with a close-up"></td>
+    <td width="50%"><img src="docs/images/app-look-effects.png" alt="Look › Effects: fog, colour correction, depth of field, vignette, grain"></td>
+  </tr>
+  <tr>
+    <td><b>Face</b> — expressions keyed at the playhead, lip-sync from audio with vowel shapes, natural blinks.</td>
+    <td><b>Look</b> — every render setting, built-in effects (fog, colour, depth of field, grain…), materials, lighting rigs, presets.</td>
+  </tr>
+  <tr>
+    <td><img src="docs/images/app-render.png" alt="Shoot › Render: sizes, frame rate, file type and framing"></td>
+    <td><img src="docs/images/app-view-options.png" alt="The View options: overlays, handles, paths and ghosts"></td>
+  </tr>
+  <tr>
+    <td><b>Shoot</b> — shots and cameras, audio clips, video renders (several sizes and framings from one render, audio mixed in), stills.</td>
+    <td><b>View</b> — overlays, handles, motion paths and ghosts, toggled from the bottom bar.</td>
+  </tr>
+</table>
+
+## Get started
+
+**You need:** Koikatsu (or Koikatsu Party) with CharaStudio, BepInEx 5.4 and KKAPI — any HF Patch or BetterRepack
+has them — and the **Timeline** plugin for animation. Other plugins (KKPE, MaterialEditor, KKABMX, VideoExport,
+Screencap, NodesConstraints, xukmi FX, RealPOV, LockOnPlugin, LightManager, HideAllUI) are used when you have them;
+features that need a missing one say so.
+
+1. **Download** the latest zip from [Releases](../../releases/latest) and unzip it anywhere.
+2. Start **Keyframe Studio.exe** and press **Set up the bridge**. It finds your Koikatsu folder (or you choose it),
+   checks BepInEx and installs the small bridge plugin in one click.
+3. Start **CharaStudio**. Keyframe Studio connects by itself — the dot in the top bar turns green.
+4. Load a scene, click a character, open **Animate** and press `?` for the shortcuts.
+
+Windows may warn about an unknown publisher the first time (the app isn't code-signed yet): choose
+**More info → Run anyway**. Updating: replace the folder, then **Settings › About & diagnostics › Update the bridge**.
+Your presets live in `Koikatsu\UserData\StudioEX` and app settings in `%APPDATA%\studio-ex`, so updates keep them.
+
+## Testing and reporting bugs
+
+Thank you for testing! When something goes wrong:
+
+1. In Keyframe Studio open **Settings (⚙) › About & diagnostics** and press **Copy diagnostics**. It copies versions,
+   installed plugins, feature status and the recent logs, with your Windows user name hidden.
+2. [Open a bug report](../../issues/new/choose), paste it, and say what you did and what happened.
+3. Screenshots help — please keep them **safe for work** (crop or blur anything explicit).
+
+Most edits are one `Ctrl+Z` away, and nothing is saved into your scene until you save it in Studio.
 
 ## Workspaces
 
-| Workspace | Left | Center sub-tabs | Right |
-| --- | --- | --- | --- |
-| **Animate** (`Ctrl+1`) | Scene | Timeline (dope sheet / graph) · **Face** · Motion clips — transport underneath | Keyframe or track details, getting started / shortcuts, Cleanup |
-| **Pose** (`Ctrl+2`) | Scene | Pose library · Animations · Face Studio · Outfit | Selected character: animation, FK/IK + hands, body sliders; attachment; transform |
-| **Look** (`Ctrl+3`) | Scene | Presets · Settings · Effects · Materials · Lighting | — |
-| **Shoot** (`Ctrl+4`) | Scene | Shots & camera (over the dope sheet) · Audio · Render · Stills · Templates | — |
-| **Library** (`Ctrl+5`) | Scenes · Characters · Objects · Quick actions | | |
-| **Settings** (⚙ menu, `Ctrl+,`) | Mod settings · Studio window · Translations · Shortcuts · About & diagnostics | | |
+| Workspace | What's there |
+| --- | --- |
+| **Animate** (`Ctrl+1`) | Timeline (dope sheet / graph) · Face · Motion clips — the transport bar underneath; keyframe or track details, Cleanup on the right |
+| **Pose** (`Ctrl+2`) | Pose library · Animations · Face Studio · Outfit — the selected character's animation, FK/IK, hands, body sliders, attachments, transform |
+| **Look** (`Ctrl+3`) | Presets · Settings · Effects · Materials · Lighting |
+| **Shoot** (`Ctrl+4`) | Shots & camera · Audio · Render · Stills · Templates |
+| **Library** (`Ctrl+5`) | Scenes · Characters · Objects (every item with pictures) · Quick actions |
+| **Settings** (`Ctrl+,`) | Mod settings · Studio window · Translations · Shortcuts · About & diagnostics |
 
-The right panel is one column of collapsible groups that follows the selection (each remembers if it's open).
-Side panels resize by dragging their edge. The ⚙ menu (top right) has Settings, shortcuts, keep-on-top, compact
-mode, **mini mode** (`Ctrl+Shift+M`: just the timeline in a small window kept on top of Studio) and saved layouts.
+The ⚙ menu also has keep-on-top, compact mode, **mini mode** (`Ctrl+Shift+M` — just the timeline in a small
+window kept on top of Studio) and saved layouts.
 
-## Animation workflow
-
-1. Select an object or character (Scene list, or click it in Studio — with **Overlays** on, click a joint).
-2. Pose it in Studio's view: drag a joint's rings or an IK target with **Handles** on, or use Studio's own tools.
-3. Press **Key changes** (`Shift+Enter`, or `K` with nothing selected) to key exactly what you changed — or turn on
-   **Auto** (`R`) to key as you go. **+ Track** adds a property by hand, including any **bone** of a character.
-4. Move the playhead and repeat. Drag keys to retime (with **Snap**), box-select, **1–5** for easing presets,
-   shape the curve or type values in the Keyframe panel.
-5. **Ctrl+Z** undoes any edit made from Keyframe Studio — viewport drags included.
-
-**Animating a face:** Animate › Face. Pick the character, move the playhead, change the expression (brows, eyes,
-mouth shape and opening, blush, tears, neck) — with *Key as I change* on, each change is keyed there. Lip-sync
-from audio (with vowel shapes) and blinks are on the same page.
-
-Press **?** in the app for every shortcut.
-
-## Features
+<details>
+<summary><b>Every feature</b></summary>
 
 | Area | What you get |
 | --- | --- |
@@ -120,17 +159,14 @@ Press **?** in the app for every shortcut.
 | **Mod settings** (Settings) | Every BepInEx plugin setting (100+ plugins) searchable in one window, typed editors, changed-only filter, reset to default |
 | **Translations** (Settings) | Every Japanese string Keyframe Studio has shown, tagged Yours / Machine / Game. **Auto-translate** new names with Google, DeepL or a local AI; results are pushed into AutoTranslator so the in-game UI improves too |
 
-## Diagnostics and compatibility
+</details>
 
-**Settings › About & diagnostics** shows versions and which features work with the installed mods, sets up the
-bridge, and **Copy diagnostics** puts a bug-report text on the clipboard. The report has versions, installed
-plugins, feature status and the recent bridge and app logs, with the Windows user name hidden. The app log is in
-`%APPDATA%\studio-ex\logs\studioex.log`.
+## Compatibility
 
-Each mod-dependent feature checks the exact classes and members it uses when Studio starts. A feature whose
-mod is missing or changed is switched off on its own, and its commands answer with the reason. An untested
-version that still matches stays on and is marked "untested". When a popular plugin is installed it does the
-job (scenes stay compatible with other users); Keyframe Studio's own version fills in when it's missing.
+Each mod-dependent feature checks the exact classes and members it uses when Studio starts. If a mod is missing
+or has changed, only that feature switches off and tells you why; an untested version that still matches stays on
+and is marked "untested". When a popular plugin is installed it does the job (so scenes stay compatible with other
+people); Keyframe Studio's own version fills in when it's missing.
 
 | Feature | Mod | Tested with |
 | --- | --- | --- |
@@ -146,32 +182,71 @@ job (scenes stay compatible with other users); Keyframe Studio's own version fil
 | FK and IK together on load (kept compatible) | KK_FKIK | — |
 | English names | XUnity AutoTranslator | — |
 
-## Tests
+## How it works
 
-Live suites drive a running CharaStudio through the bridge (`tests/suites/*.mjs`). Each suite starts from an
-empty scene and removes the files it creates, so they run alone or in any order. **They replace the scene open
-in Studio — save first.** Needs Node 22+.
+```
+┌──────────────── CharaStudio ────────────────┐                ┌────────── Keyframe Studio ──────────┐
+│ BepInEx · Timeline · KKPE · your mods        │   WebSocket    │ Animate · Pose · Look · Shoot · Lib │
+│ KKStudioEX.Bridge.dll (overlays & handles) ──┼── 127.0.0.1 ──▶│ Electron + React + TypeScript       │
+└──────────────────────────────────────────────┘     :47615     └─────────────────────────────────────┘
+```
+
+The **bridge** is a BepInEx plugin (C#, .NET 3.5 / Unity 5.6) with a local WebSocket server: it exposes the
+scene and Timeline, draws the overlays and handles in Studio's view, and keeps one shared undo history. It only
+listens on your own machine (`127.0.0.1`); the port is in `BepInEx/config/studioex.bridge.cfg`.
+
+<details>
+<summary><b>Building from source</b></summary>
+
+| Folder | What |
+| --- | --- |
+| `plugin/StudioBridge` | The bridge plugin. Builds against your game's own DLLs. |
+| `app` | The desktop app (Electron + React + TypeScript + Vite). |
+| `shaders` | The Unity 5.6.2f1 project the effect shaders are compiled with (embedded in the bridge). |
+| `tests` | Live suites that drive a running CharaStudio through the bridge, and unit tests. |
+| `tools` | Packaging: `node tools/package.mjs` makes the portable zip with the bridge inside. |
 
 ```powershell
-npm test                      # every suite, pass/fail summary (asks before touching Studio)
+# the bridge (needs the .NET SDK)
+cd plugin/StudioBridge
+dotnet build -c Release -p:Deploy=true                       # copies to D:\Games\Koikatsu\BepInEx\plugins\KKStudioEX
+dotnet build -c Release -p:Deploy=true -p:GameDir="E:\KK"    # another install location
+
+# the app (needs Node 22+)
+cd app
+npm install
+npm run dev      # hot-reloading development mode
+npm start        # production build + run
+
+# a release zip (repo root)
+node tools/package.mjs
+```
+
+**Tests.** Live suites (`tests/suites/*.mjs`) drive a running CharaStudio through the bridge. Each starts from an
+empty scene and removes the files it creates. **They replace the scene open in Studio — save first.**
+
+```powershell
+npm test                      # every suite (asks before touching Studio)
 node tests/run.mjs face look  # suites whose name contains a word (or a number: node tests/run.mjs 35)
 node tests/run.mjs --list     # what exists · --yes skips the question · --verbose prints every check
-node tests/run.mjs stress     # large-scene stress test (200+ objects, 120 tracks, 5,400 keys; not in the default run)
+node tests/run.mjs stress     # large-scene stress test (not in the default run)
 npm run test:unit             # the pure maths (no Studio needed)
 ```
 
-The viewport overlays and handles are tested with a simulated mouse (`gizmo.simulate`, suite 35). The stress test
-prints timings. Start the app with `KF_DEBUG_PORT=9333` (development only) to include the app window's own draw and
-refresh times. Commands that take over 50 ms are noted in the bridge log (Copy diagnostics).
+The viewport overlays and handles are tested with a simulated mouse (`gizmo.simulate`, suite 35).
 
-## Protocol
+**Protocol.** JSON over WebSocket: request `{"id":1,"cmd":"timeline.seek","args":{"t":1.5}}` →
+`{"id":1,"ok":true,"result":…}`; the bridge pushes `{"event":"timeline.tick"|"scene.changed"|"selection"|"gizmo.target"|…,"data":…}`.
+Commands live in `plugin/StudioBridge/src/Api/*.cs`, wire types in `app/src/bridge/types.ts`.
 
-JSON over WebSocket. Request `{"id":1,"cmd":"timeline.seek","args":{"t":1.5}}` →
-`{"id":1,"ok":true,"result":…}`. Server pushes `{"event":"timeline.tick"|"timeline.changed"|"scene.changed"|"selection"|"scene.reset"|"gizmo.target"|…,"data":…}`.
-Commands live in `plugin/StudioBridge/src/Api/*.cs`; wire types in `app/src/bridge/types.ts`.
+</details>
 
 ## Roadmap
 
-What's done and what's next is in [FUTURE_ROADMAP.md](FUTURE_ROADMAP.md). Open items include code signing, an
-uninstall button and update checks; foot and hand locking; click-to-light; editing a camera move's path in the
-viewport; and thumbnails for animations.
+What's done and what's next is in [FUTURE_ROADMAP.md](FUTURE_ROADMAP.md). Next up: code signing, an uninstall
+button and update checks; foot and hand locking; click-to-light; editing a camera move's path in the viewport.
+
+## License
+
+[MIT](LICENSE). Keyframe Studio is an unofficial fan tool and isn't affiliated with ILLUSION or the authors of the
+plugins it works with.

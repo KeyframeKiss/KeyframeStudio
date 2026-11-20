@@ -1,0 +1,49 @@
+name: Bug report
+description: Something doesn't work, looks wrong or crashes
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for testing Keyframe Studio! Please keep screenshots safe for work — crop or blur anything explicit.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what happened instead.
+      placeholder: "I dragged a key in the dope sheet and…"
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open Animate › Timeline
+        2. …
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics
+      description: In Keyframe Studio, Settings (⚙) › About & diagnostics › **Copy diagnostics**, then paste here. It lists versions, installed plugins and recent logs, with your Windows user name hidden.
+      render: text
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Where in the app?
+      options:
+        - Animate (timeline, keys, face, motion clips)
+        - Viewport overlays / handles in Studio
+        - Pose (characters, poses, face studio, outfit)
+        - Look (presets, effects, materials, lighting)
+        - Shoot (camera, audio, render, stills)
+        - Library (scenes, characters, objects)
+        - Installing / connecting the bridge
+        - Something else
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else?
+      description: Screenshots (safe for work), how often it happens, other mods involved.
