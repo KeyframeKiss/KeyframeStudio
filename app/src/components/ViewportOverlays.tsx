@@ -72,6 +72,8 @@ export function ViewportOverlays() {
     first.then(setSt).catch(() => setSt(null));
   }, [status, revision]);
   useEffect(() => bridge.on('gizmo.target', (t) => setSt((s) => (s ? { ...s, target: (t as Target) ?? null } : s))), []);
+  // Move / Rotate / Scale switched in Studio's view (click the handles' middle, or its mode chips)
+  useEffect(() => bridge.on('gizmo.changed', (d) => setSt(d as GizmoState)), []);
 
   if (!st) return null;
   const set = (patch: Patch) => {
@@ -129,7 +131,7 @@ export function ViewportOverlays() {
 
           <div className="menu-label">
             Handles
-            <Help text="Drag the coloured rings to turn a bone (the white ring turns it toward you), the arrows to move, the cubes to scale; drag the middle to move freely. Only the part you touch changes: a turned bone puts just its part in FK (an IK limb hands over), a moved IK target puts just its limb in IK — the rest keeps its pose. An arrow pointing at you fades out (it would be too short to move with). Each drag is one undo, FK / IK switches included. Ctrl snaps to the steps below; Shift moves a quarter as far." />
+            <Help text="Drag the coloured rings to turn a bone (the white ring turns it toward you), the arrows to move, the cubes to scale; drag the middle to move freely. Only the part you touch changes: a turned bone puts just its part in FK (an IK limb hands over), a moved IK target puts just its limb in IK — the rest keeps its pose. An arrow pointing at you fades out (it would be too short to move with). Click the handles' middle to step Move → Rotate → Scale, or rest the pointer on it and pick from the three chips that come out. Each drag is one undo, FK / IK switches included. Ctrl snaps to the steps below; Shift moves a quarter as far." />
           </div>
           <div className="seg">
             {(['Move', 'Rotate', 'Scale'] as const).map((m, i) => (

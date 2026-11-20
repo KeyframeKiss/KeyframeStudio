@@ -269,6 +269,43 @@ export default async function (t) {
     check('undo puts it back', dist(back, before) < 1e-3);
   });
 
+  await t.step('switch Move / Rotate / Scale right on the handles', async () => {
+    const it = items[0];
+    if (!it) return;
+    await ok('scene.select', { ids: [it.id] });
+    await ok('gizmo.set', { gizmo: { on: true, mode: 0, world: false } });
+    await frame();
+    await frame();
+    const a = (await sim({ at: [0, 0] })).anchor;
+    if (!a) return check('handles on screen', false);
+    const C = [a.center[0], a.center[1]];
+    const pos0 = (await ok('object.get', { id: it.id })).transform.pos;
+    await click(C);
+    const g1 = await ok('gizmo.get');
+    check('a click on the middle: Move → Rotate', g1.gizmo.mode === 1, `mode ${g1.gizmo.mode}`);
+    check('…and nothing moved', dist((await ok('object.get', { id: it.id })).transform.pos, pos0) < 1e-4);
+    await sim({ at: C });
+    await sleep(700);
+    const st = await sim({ at: C });
+    check('resting on the middle brings Move / Rotate / Scale chips', st.modeRing?.length === 3 && st.modeRing.some((x) => x.ok), JSON.stringify(st.modeRing?.map((x) => [x.name, x.ok])));
+    const sc = st.modeRing?.find((x) => x.name === 'Scale' && x.ok) ?? st.modeRing?.find((x) => x.name === 'Move');
+    if (!sc) return;
+    await sim({ at: sc.at });
+    await frame();
+    const on = await sim({ at: sc.at });
+    check('the camera holds still over a chip', on.cameraBlocked === true);
+    await sim({ press: true });
+    await frame();
+    await sim({ release: true });
+    await frame();
+    const g2 = await ok('gizmo.get');
+    check(`picking ${sc.name} switches to it`, g2.gizmo.mode === sc.mode, `mode ${g2.gizmo.mode}`);
+    check('…the chips fold away', !(await sim({ at: sc.at })).modeRing);
+    check('…and still nothing moved', dist((await ok('object.get', { id: it.id })).transform.pos, pos0) < 1e-4);
+    await sim({ at: [C[0] + 200, C[1] + 200] });
+    await ok('gizmo.set', { gizmo: { mode: 0 } });
+  });
+
   await t.step('accessories: click one, move it, undo', async () => {
     await ok('scene.select', { ids: [id] });
     await ok('gizmo.set', { gizmo: { mode: 0 } });

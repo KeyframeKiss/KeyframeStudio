@@ -817,6 +817,7 @@ namespace StudioEX.Bridge.Api
 
             if (_drag != H.None)
             {
+                _mLast = m;
                 if (Held) Drag(cam, m);
                 if (Released || !Held) EndDrag(true);
                 return;
@@ -825,7 +826,13 @@ namespace StudioEX.Bridge.Api
             _hover = overUi ? H.None : FocusHit(cam, m) ? H.Focus : _gizmo ? HitHandle(cam, m) : H.None;
             _hoverList = overUi ? new List<Cand>() : PickAt(cam, m, false);
             if (_spread != null && (overUi || (m - _spreadAt).magnitude > SpreadRadius() + ChipR + 26f)) CloseSpread();
-            if (_spread != null)
+            ModeRingStep(cam, m, overUi);
+            if (_modeRing)
+            {
+                _hover = _modeHot >= 0 ? H.None : (m - _modeAt).magnitude < 12f ? _hover : H.None;
+                _hoverPick = null;
+            }
+            else if (_spread != null)
             {
                 // things fanned out: the chips are what's under the pointer now
                 _spreadHot = _spread.FindIndex(x => (x.At - m).magnitude < ChipR + 3f);
@@ -840,7 +847,7 @@ namespace StudioEX.Bridge.Api
                 _hoverPick = _hover == H.None && _hoverList.Count > 0 ? _hoverList[0].Key : null;
                 // rest the pointer where several things overlap: they fan out to pick from
                 var cluster = _hoverList.Where(x => x.Score < 1000f).GroupBy(x => x.Key).Select(g => g.First()).ToList();
-                bool canSpread = !overUi && !Held && cluster.Count >= 2 && (_hover == H.None || _hover == H.Free || _hover == H.ScaleAll);
+                bool canSpread = !overUi && !Held && cluster.Count >= 2 && _hover == H.None; // (on the handles' middle, resting brings the mode chips instead)
                 string sig = canSpread ? string.Join("|", cluster.Select(x => x.Key).OrderBy(x => x).ToArray()) : null;
                 if (sig == null) _dwellSig = null;
                 else if (sig != _dwellSig || (m - _dwellAt).magnitude > 6f) { _dwellSig = sig; _dwellAt = m; _dwellSince = Time.unscaledTime; }
@@ -852,7 +859,14 @@ namespace StudioEX.Bridge.Api
                 _down = true;
                 _moved = false;
                 _downAt = m;
-                if (_hover != H.None) BeginDrag(cam, m, _hover);
+                _clickUsed = false;
+                if (_modeRing && _modeHot >= 0)
+                {
+                    if (ModeOk(_modeHot)) SwitchMode(_modeHot);
+                    CloseModeRing();
+                    _clickUsed = true;
+                }
+                else if (_hover != H.None) BeginDrag(cam, m, _hover);
                 else if (_hoverPick != null && _gizmo && (_hoverPick.StartsWith("ik:", StringComparison.Ordinal) || _hoverPick.StartsWith("acc:", StringComparison.Ordinal) && StudioMode() == 0))
                 {
                     // grab an IK target (or, in Move, an accessory) and drag it straight away
@@ -861,7 +875,12 @@ namespace StudioEX.Bridge.Api
                 }
             }
             if (_down && Held && (m - _downAt).sqrMagnitude > 16f) _moved = true;
-            if (_down && Released)
+            if (_down && Released && _clickUsed)
+            {
+                _down = false;
+                _clickUsed = false;
+            }
+            else if (_down && Released)
             {
                 _down = false;
                 // a click on a fanned-out chip: that one (a click on the spot itself is an ordinary click there)
@@ -923,6 +942,127 @@ namespace StudioEX.Bridge.Api
         }
 
         private void Broadcast() => StudioBridgePlugin.Instance?.Broadcast("gizmo.target", TargetInfo());
+
+        // ---------------- switching Move / Rotate / Scale in the viewport ----------------
+
+        private bool _modeRing, _clickUsed;
+        private int _modeHot = -1;
+        private Vector2 _modeAt, _mLast, _modeDwellAt;
+        private float _modeDwellSince = -1f, _modeFlashUntil;
+        private string _modeFlash;
+        private const float ModeChipDist = 36f, ModeChipR = 11f, ModeDelay = 0.35f;
+        private static readonly string[] ModeNames = { "Move", "Rotate", "Scale" };
+        // Move above the middle, Rotate lower left, Scale lower right
+        private static readonly float[] ModeAngles = { 90f, 210f, 330f };
+
+        private Vector2 ModeChipAt(int i) => _modeAt + new Vector2(Mathf.Cos(ModeAngles[i] * Mathf.Deg2Rad), Mathf.Sin(ModeAngles[i] * Mathf.Deg2Rad)) * ModeChipDist;
+
+        /// <summary>Whether the handles' target can be moved / turned / scaled.</summary>
+        private bool ModeOk(int mode)
+        {
+            if (_kind == Kind.Bone) return mode == 1;
+            var t = Target();
+            if (t == null) return false;
+            return mode == 0 ? t.CanMove : mode == 1 ? t.CanRotate : t.CanScale;
+        }
+
+        private void SwitchMode(int mode)
+        {
+            SetStudioMode(mode);
+            _modeFlash = ModeNames[mode];
+            _modeFlashUntil = Time.unscaledTime + 0.9f;
+            StudioBridgePlugin.Instance?.Broadcast("gizmo.changed", State());
+        }
+
+        private void CloseModeRing()
+        {
+            _modeRing = false;
+            _modeHot = -1;
+            _modeDwellSince = -1f;
+        }
+
+        /// <summary>
+        /// Rest the pointer on the handles' middle and three chips come out round it — Move above, Rotate lower left,
+        /// Scale lower right; the current one lit, ones this target can't do dimmed. Click one to switch.
+        /// </summary>
+        private void ModeRingStep(Camera cam, Vector2 m, bool overUi)
+        {
+            if (!_gizmo || _kind == Kind.Bone || _kind == Kind.None || overUi || !Frame(out _, out var c, out _, out _) || !OnScreen(cam, c, out var sc))
+            {
+                CloseModeRing();
+                return;
+            }
+            if (_modeRing)
+            {
+                _modeAt = sc; // it follows the handles
+                _modeHot = -1;
+                for (int i = 0; i < 3; i++) if ((ModeChipAt(i) - m).magnitude < ModeChipR + 4f) _modeHot = i;
+                if ((m - _modeAt).magnitude > ModeChipDist + ModeChipR + 22f) CloseModeRing();
+                return;
+            }
+            bool onCentre = (m - sc).magnitude < 12f && !Held;
+            if (!onCentre) { _modeDwellSince = -1f; return; }
+            if (_modeDwellSince < 0f || (m - _modeDwellAt).magnitude > 4f) { _modeDwellSince = Time.unscaledTime; _modeDwellAt = m; return; }
+            if (Time.unscaledTime - _modeDwellSince > ModeDelay)
+            {
+                _modeRing = true;
+                _modeAt = sc;
+                _modeHot = -1;
+                CloseSpread();
+            }
+        }
+
+        private void DrawModeRing()
+        {
+            int cur = StudioMode();
+            for (int i = 0; i < 3; i++)
+            {
+                var at = ModeChipAt(i);
+                bool ok = ModeOk(i), hot = i == _modeHot && ok, on = i == cur;
+                float r = hot ? ModeChipR + 2f : ModeChipR;
+                Disc(at, r + 2f, new Color(0, 0, 0, ok ? 0.45f : 0.25f));
+                Disc(at, r, on ? new Color(0.95f, 0.55f, 0.15f, 0.95f) : new Color(0.09f, 0.1f, 0.12f, ok ? 0.94f : 0.6f));
+                Circle2(at, r, hot ? 2.4f : 1.4f, hot ? Color.white : on ? Accent : new Color(1, 1, 1, ok ? 0.5f : 0.2f));
+                var ic = new Color(1, 1, 1, ok ? 0.95f : 0.3f);
+                if (i == 0)
+                {
+                    // four arrows
+                    for (int k = 0; k < 4; k++)
+                    {
+                        var d = new Vector2(Mathf.Cos(k * Mathf.PI / 2), Mathf.Sin(k * Mathf.PI / 2));
+                        var n = new Vector2(-d.y, d.x);
+                        Line(at, at + d * 6.5f, 1.4f, ic);
+                        Line(at + d * 6.5f, at + d * 4f + n * 2.2f, 1.4f, ic);
+                        Line(at + d * 6.5f, at + d * 4f - n * 2.2f, 1.4f, ic);
+                    }
+                }
+                else if (i == 1)
+                {
+                    // a turning arrow
+                    Vector2 prev = at + new Vector2(5.5f, 0);
+                    for (int k = 1; k <= 12; k++)
+                    {
+                        float a = k / 12f * 1.5f * Mathf.PI;
+                        var p = at + new Vector2(Mathf.Cos(a), Mathf.Sin(a)) * 5.5f;
+                        Line(prev, p, 1.4f, ic);
+                        prev = p;
+                    }
+                    Line(prev, prev + new Vector2(-2.5f, 2.5f), 1.4f, ic);
+                    Line(prev, prev + new Vector2(2.8f, 1.2f), 1.4f, ic);
+                }
+                else
+                {
+                    // a box and an arrow out of its corner
+                    Line(at + new Vector2(-6, -6), at + new Vector2(1, -6), 1.3f, ic);
+                    Line(at + new Vector2(1, -6), at + new Vector2(1, 1), 1.3f, ic);
+                    Line(at + new Vector2(1, 1), at + new Vector2(-6, 1), 1.3f, ic);
+                    Line(at + new Vector2(-6, 1), at + new Vector2(-6, -6), 1.3f, ic);
+                    Line(at + new Vector2(-1, -1), at + new Vector2(6, 6), 1.3f, ic);
+                    Line(at + new Vector2(6, 6), at + new Vector2(2.5f, 6), 1.3f, ic);
+                    Line(at + new Vector2(6, 6), at + new Vector2(6, 2.5f), 1.3f, ic);
+                }
+            }
+        }
 
         // ---------------- fanning out what overlaps ----------------
 
@@ -1011,6 +1151,7 @@ namespace StudioEX.Bridge.Api
             if (!Any || Time.captureFramerate > 0) return false;
             if (_hover != H.None) return true;
             if (_spread != null && _spreadHot >= 0) return true; // on a fanned-out chip
+            if (_modeRing && _modeHot >= 0) return true; // on a mode chip
             // pressing an IK target (or an accessory in Move) grabs it
             return _gizmo && _hoverPick != null && (_hoverPick.StartsWith("ik:", StringComparison.Ordinal) || _hoverPick.StartsWith("acc:", StringComparison.Ordinal) && StudioMode() == 0);
         }
@@ -1282,7 +1423,7 @@ namespace StudioEX.Bridge.Api
             _undo = undo;
             _drag = h;
             _dragTgt = t;
-            _m0 = m;
+            _m0 = _mLast = m;
             _angle = 0f;
             _startWorldPos = t.T.position;
             _startWorldRot = t.T.rotation;
@@ -1397,10 +1538,22 @@ namespace StudioEX.Bridge.Api
             var was = _drag;
             _drag = H.None;
             if (was == H.Focus) { EndFocus(keep); _down = false; return; }
+            bool click = keep && (was == H.Free || was == H.ScaleAll) && (_mLast - _m0).magnitude < 3f && _kind != Kind.Bone;
             if (_undo != null)
             {
-                if (keep) UndoStack.Push(_undo);
-                else _undo.Restore();
+                if (keep && !click) UndoStack.Push(_undo);
+                else _undo.Restore(); // (also puts back an FK / IK switch the press made)
+            }
+            if (click)
+            {
+                // clicking the handles' middle steps Move → Rotate → Scale (what this target can do)
+                int cur = StudioMode();
+                for (int k = 1; k <= 3; k++)
+                {
+                    int next = (cur + k) % 3;
+                    if (ModeOk(next)) { SwitchMode(next); break; }
+                }
+                CloseModeRing();
             }
             _undo = null;
             _dragTgt = null;
@@ -1569,6 +1722,7 @@ namespace StudioEX.Bridge.Api
                 if (_gizmo) DrawGizmo(cam);
                 if (FocusShown) DrawFocus(cam);
                 if (_spread != null) DrawSpread();
+                if (_modeRing) DrawModeRing();
                 GL.PopMatrix();
             }
             catch (Exception e) { StudioBridgePlugin.Logger.LogDebug("overlay: " + e.Message); }
@@ -1964,6 +2118,32 @@ namespace StudioEX.Bridge.Api
                 _tagStyle = new GUIStyle(GUI.skin.label) { fontSize = 12, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleLeft };
                 _tagStyle.normal.textColor = Color.white;
             }
+            if (_modeRing && _drag == H.None)
+            {
+                if (_modeHot >= 0)
+                {
+                    var name = ModeNames[_modeHot] + (ModeOk(_modeHot) ? "" : " (not for this)");
+                    var sz = _tagStyle.CalcSize(new GUIContent(name));
+                    var chipAt = ModeChipAt(_modeHot);
+                    var lr = new Rect(chipAt.x - sz.x / 2 - 5, Screen.height - chipAt.y + ModeChipR + 4, sz.x + 10, sz.y + 2);
+                    var was = GUI.color;
+                    GUI.color = new Color(0.06f, 0.07f, 0.09f, 0.85f);
+                    GUI.DrawTexture(lr, Texture2D.whiteTexture);
+                    GUI.color = was;
+                    GUI.Label(new Rect(lr.x + 5, lr.y + 1, sz.x, sz.y), name, _tagStyle);
+                }
+                return;
+            }
+            if (_modeFlash != null && Time.unscaledTime < _modeFlashUntil && _drag == H.None && Frame(out _, out var fc, out _, out _) && OnScreen(cam, fc, out var fs))
+            {
+                var sz = _tagStyle.CalcSize(new GUIContent(_modeFlash));
+                var lr = new Rect(fs.x - sz.x / 2 - 6, Screen.height - fs.y - 34 - sz.y, sz.x + 12, sz.y + 4);
+                var was = GUI.color;
+                GUI.color = new Color(0.95f, 0.55f, 0.15f, 0.92f);
+                GUI.DrawTexture(lr, Texture2D.whiteTexture);
+                GUI.color = was;
+                GUI.Label(new Rect(lr.x + 6, lr.y + 2, sz.x, sz.y), _modeFlash, _tagStyle);
+            }
             if (_spread != null && _drag == H.None)
             {
                 for (int k = 0; k < _spread.Count; k++)
@@ -2010,6 +2190,8 @@ namespace StudioEX.Bridge.Api
         private string HoverLabel()
         {
             if (_hover == H.Focus) return "Focus " + FxApi.Dof("focus").ToString("0.00") + " m — drag onto what should be sharp";
+            if ((_hover == H.Free || _hover == H.ScaleAll) && _kind != Kind.Bone)
+                return (_hover == H.Free ? "Drag to move" : "Drag to scale") + "  ·  click: next mode  ·  hold still: pick one";
             if (_hoverPick == null) return null;
             var top = LabelOf(_hoverPick);
             // more here: say what a second click gets
@@ -2077,6 +2259,7 @@ namespace StudioEX.Bridge.Api
             st["anchor"] = Anchor();
             st["screen"] = new List<object> { Screen.width, Screen.height };
             st["cameraBlocked"] = BlockCamera();
+            st["modeRing"] = _modeRing ? Enumerable.Range(0, 3).Select(i => (object)new Dictionary<string, object> { { "mode", i }, { "name", ModeNames[i] }, { "ok", ModeOk(i) }, { "at", new List<object> { (double)ModeChipAt(i).x, (double)ModeChipAt(i).y } } }).ToList() : null;
             st["spread"] = _spread?.Select(x => (object)new Dictionary<string, object> { { "key", x.Key }, { "label", x.Label }, { "at", new List<object> { (double)x.At.x, (double)x.At.y } } }).ToList();
             return st;
         }
