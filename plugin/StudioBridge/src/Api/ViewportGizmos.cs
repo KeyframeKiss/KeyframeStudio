@@ -983,8 +983,8 @@ namespace StudioEX.Bridge.Api
                     if (_ik && _pickChars)
                         for (int i = 0; i < c.listIKTarget.Count; i++)
                         {
-                            var t = c.listIKTarget[i]?.targetObject;
-                            if (t == null || !OnScreen(cam, t.position, out var s)) continue;
+                            var p = IkShownAt(c, i);
+                            if (!p.HasValue || !OnScreen(cam, p.Value, out var s)) continue;
                             bool onJoint = IkAnchor(joints, ref s);
                             float d = (s - m).magnitude;
                             if (onJoint)
@@ -1042,6 +1042,19 @@ namespace StudioEX.Bridge.Api
             return found;
         }
 
+        /// <summary>
+        /// Where an IK target is shown: its real place while IK drives the limb; otherwise on its bone — an idle
+        /// target keeps whatever spot it was last left at (Studio hides them), and grabbing one starts it there anyway.
+        /// </summary>
+        private static Vector3? IkShownAt(OCIChar c, int i)
+        {
+            if (c == null || i < 0 || i >= c.listIKTarget.Count) return null;
+            var k = c.listIKTarget[i];
+            if (k?.targetObject == null) return null;
+            if (IkOn(c, IkPart(k.boneGroup)) || k.boneObject == null) return k.targetObject.position;
+            return k.boneObject.position;
+        }
+
         private static bool Finger(string n) => n.Contains("thumb") || n.Contains("index") || n.Contains("middle") || n.Contains("ring") || n.Contains("little");
 
         /// <summary>The object's outline on screen (its renderers' bounds), if any of it is in front of the camera.</summary>
@@ -1087,6 +1100,7 @@ namespace StudioEX.Bridge.Api
             mode = StudioMode();
             if (t?.T == null) return false;
             c = t.T.position;
+            if (_kind == Kind.IK && SceneApi.FindOci(_ociId) is OCIChar ic && IkShownAt(ic, _index) is Vector3 shown) c = shown;
             if (_kind == Kind.Bone) { axes = t.T.rotation; mode = 1; }
             else if (_kind == Kind.IK) axes = _world || mode == 0 ? Quaternion.identity : t.T.rotation;
             else axes = _world ? Quaternion.identity : t.T.rotation;
@@ -1185,6 +1199,7 @@ namespace StudioEX.Bridge.Api
             TakeOver(t, undo);
             t = Target(); // FK / IK may have rebuilt what it points at
             if (t == null) return;
+            c = t.T.position; // (an idle IK target has just been put on its bone)
             _undo = undo;
             _drag = h;
             _dragTgt = t;
@@ -1597,8 +1612,8 @@ namespace StudioEX.Bridge.Api
             if (_ik)
                 for (int i = 0; i < c.listIKTarget.Count; i++)
                 {
-                    var t = c.listIKTarget[i]?.targetObject;
-                    if (t == null || !OnScreen(cam, t.position, out var s)) continue;
+                    var p = IkShownAt(c, i);
+                    if (!p.HasValue || !OnScreen(cam, p.Value, out var s)) continue;
                     bool on = IkOn(c, IkPart(c.listIKTarget[i].boneGroup));
                     string key = "ik:" + id + ":" + i;
                     bool sel = _kind == Kind.IK && _ociId == id && _index == i;
@@ -1919,6 +1934,8 @@ namespace StudioEX.Bridge.Api
                     { "index", index }, { "screen", V(cam.WorldToScreenPoint(t.position)) }, { "world", V(t.position) },
                     { "worldRot", V(t.rotation.eulerAngles) }, { "rot", V(g.changeAmount.rot) }, { "pos", V(g.changeAmount.pos) },
                     { "hips", V(hips) },
+                    { "shownWorld", a.Has("ik") && IkShownAt(c, index) is Vector3 sw ? V(sw) : null },
+                    { "boneWorld", a.Has("ik") && c.listIKTarget[index].boneObject != null ? V(c.listIKTarget[index].boneObject.position) : null },
                     { "fk", c.oiCharInfo.enableFK }, { "activeFK", c.oiCharInfo.activeFK.Select(x => (object)x).ToList() },
                     { "ik", c.oiCharInfo.enableIK }, { "activeIK", c.oiCharInfo.activeIK.Select(x => (object)x).ToList() },
                 };

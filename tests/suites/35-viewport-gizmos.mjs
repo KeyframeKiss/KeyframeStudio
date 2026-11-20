@@ -56,6 +56,20 @@ export default async function (t) {
     check("Studio's rotate mode followed", st.gizmo.mode === 1);
   });
 
+  await t.step('idle IK targets are shown on their joints, not wherever they were last left', async () => {
+    const all = [];
+    for (let i = 0; i < 13; i++) {
+      try {
+        all.push(await sim({ id, ik: i }));
+      } catch {
+        break;
+      }
+    }
+    const idle = all.filter((k, i) => !(k.ik && k.activeIK[[0, 4, 4, 4, 3, 3, 3, 2, 2, 2, 1, 1, 1][i]]));
+    check('13 IK targets', all.length === 13, String(all.length));
+    check('each idle one drawn on its bone', idle.length > 0 && idle.every((k) => k.boneWorld && dist(k.shownWorld, k.boneWorld) < 1e-4), `${idle.length} idle`);
+  });
+
   let bone;
   await t.step('hover and click a joint', async () => {
     bone = await sim({ id, bone: 'cf_j_forearm01_L' });
