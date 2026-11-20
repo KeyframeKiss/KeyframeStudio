@@ -38,6 +38,17 @@ export const toWire = (vs: RenderVersion[]) => vs.map((v) => ({ label: v.label, 
 export const needsVersions = (vs: RenderVersion[]) => vs.length > 1 || vs.some((v) => v.framing.mode !== 'timeline');
 
 const NOTE = 'render.versions';
+const LAST = 'kf.render.versions';
+
+/** The versions used last on this PC: where a scene without its own starts from. */
+export function lastVersions(): RenderVersion[] | null {
+  try {
+    const v = JSON.parse(localStorage.getItem(LAST) ?? 'null');
+    return Array.isArray(v) && v.length ? v : null;
+  } catch {
+    return null;
+  }
+}
 
 /** The scene's render versions (null until loaded / when the scene has none saved). */
 export function useRenderVersions() {
@@ -55,6 +66,11 @@ export function useRenderVersions() {
   const timer = useRef(0);
   const setVersions = useCallback((vs: RenderVersion[] | null) => {
     setLocal(vs);
+    try {
+      if (vs) localStorage.setItem(LAST, JSON.stringify(vs));
+    } catch {
+      /* storage unavailable */
+    }
     window.clearTimeout(timer.current);
     timer.current = window.setTimeout(() => bridge.request('notes.set', { key: NOTE, value: vs }).catch(() => undefined), 250);
   }, []);

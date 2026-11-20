@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Help } from './Help';
 import { bridge } from '../bridge/client';
 import { call, refreshShots, seekNow, toast, useStore } from '../state/store';
-import { needsVersions, sameSize, SIZES, toWire, useRenderVersions, type RenderVersion } from '../lib/renderVersions';
+import { lastVersions, needsVersions, sameSize, SIZES, toWire, useRenderVersions, type RenderVersion } from '../lib/renderVersions';
 import { FramingCard } from './RenderFraming';
 
 interface RenderStatus {
@@ -95,9 +95,14 @@ export function RenderPanel() {
     const r = await call<RenderStatus>('render.set', patch);
     if (r) setSt(r);
   };
+  /** Several versions, a framing of their own, or a size other than VideoExport's own setting (remembered versions). */
+  const sendVersions = () => {
+    const cur = st?.settings;
+    return needsVersions(versions) || (!!cur && !sameSize(versions[0], { w: cur.resize ? cur.width : 0, h: cur.resize ? cur.height : 0 }));
+  };
   const start = async () => {
     if (what === 'shots') return startQueue();
-    const r = await call<RenderStatus>('render.start', needsVersions(versions) ? { versions: toWire(versions) } : {});
+    const r = await call<RenderStatus>('render.start', sendVersions() ? { versions: toWire(versions) } : {});
     if (!r) return;
     setSt(r);
     toast('Rendering — Studio plays the animation and captures every frame. Leave it alone until it finishes.');
@@ -113,7 +118,7 @@ export function RenderPanel() {
   const startQueue = async () => {
     const ids = shots.filter((s) => isIncluded(s.id)).map((s) => s.id);
     if (!ids.length) return toast('Tick at least one shot');
-    const r = await call<QueueState>('render.queue', needsVersions(versions) ? { ids, versions: toWire(versions) } : { ids });
+    const r = await call<QueueState>('render.queue', sendVersions() ? { ids, versions: toWire(versions) } : { ids });
     if (!r) return;
     setQueue(r);
     pollQueue();
@@ -156,7 +161,8 @@ export function RenderPanel() {
   const dims = s.resize ? `${s.width}×${s.height}` : nativeLabel || 'window size';
   // the versions to make: the saved ones, else the one size picked now
   const current: RenderVersion = { label: s.resize ? size : viaScreencap ? 'Screencap' : 'Window', w: s.resize ? s.width : 0, h: s.resize ? s.height : 0, framing: { mode: 'timeline' } };
-  const versions: RenderVersion[] = savedVersions ?? [current];
+  // a scene without its own versions starts from the ones used last on this PC
+  const versions: RenderVersion[] = savedVersions ?? lastVersions() ?? [current];
   const has = (x: { w?: number; h?: number }) => versions.some((v) => sameSize(v, x));
   const labelOf = (x: { label: string; w?: number }) => (x.w ? x.label : viaScreencap ? 'Screencap' : 'Window');
   /** only this size (its framing kept if it was already a version) */
@@ -194,7 +200,7 @@ export function RenderPanel() {
   const pct = Math.round((st.frameLimit > 0 ? st.frame / st.frameLimit : st.progress) * 100);
   const summary = [
     s.format,
-    versions.length > 1 ? `${versions.length} versions (${versions.map((v) => v.label).join(', ')})` : dims,
+    versions.length > 1 ? `${versions.length} versions (${versions.map((v) => v.label).join(', ')})` : versions[0].w ? `${versions[0].w}×${versions[0].h}` : nativeLabel || dims,
     `${s.fps} fps`,
     what === 'shots' ? `${picked.length} shot${picked.length === 1 ? '' : 's'}, one video each` : s.limit === 'Timeline' ? 'the whole timeline' : `from ${from.toFixed(2)} s`,
     versions.length > 1 || what === 'shots' ? `${(what === 'shots' ? picked.length : 1) * versions.length} video${(what === 'shots' ? picked.length : 1) * versions.length === 1 ? '' : 's'}` : '',
@@ -349,6 +355,9 @@ export function RenderPanel() {
                   </small>
                 </button>
               )}
+            </div>
+            <div className="render-versions-hint">
+              {versions.length > 1 ? `${versions.length} versions — one video each. ` : ''}Click a size to use just that one; tick <b>+</b> on more sizes to get a video of each from one render.
             </div>
             <div className="cleanup-row" style={{ marginTop: 10 }}>
               <span>Frame rate</span>
