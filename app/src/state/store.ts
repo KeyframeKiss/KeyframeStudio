@@ -131,7 +131,7 @@ export interface AppState {
 
 export type Workspace = 'animate' | 'pose' | 'look' | 'shoot' | 'library' | 'settings';
 /** Library pages (content) and Settings pages (the app): both open through openLibrary(). */
-export type LibraryPage = 'scenes' | 'characters' | 'macros' | 'translate' | 'settings' | 'studio' | 'shortcuts' | 'about';
+export type LibraryPage = 'scenes' | 'characters' | 'items' | 'macros' | 'translate' | 'settings' | 'studio' | 'shortcuts' | 'about';
 const SETTINGS_PAGES: LibraryPage[] = ['settings', 'studio', 'translate', 'shortcuts', 'about'];
 export const isSettingsPage = (p: LibraryPage) => SETTINGS_PAGES.includes(p);
 const WORKSPACES: Workspace[] = ['animate', 'pose', 'look', 'shoot', 'library', 'settings'];

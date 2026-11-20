@@ -65,6 +65,16 @@ namespace StudioEX.Bridge.Api
         /// Returns translated text, or null. With <paramref name="request"/>, a cache miss queues an online
         /// translation (use only for small sets — never for whole catalogs, to avoid hammering the endpoint).
         /// </summary>
+        /// <summary>Only what's already known (your corrections, saved machine translations, this session's cache) —
+        /// no lookup, so it's instant for whole catalogs. Use <see cref="Get"/> for the few on screen.</summary>
+        public static string Peek(string text)
+        {
+            if (string.IsNullOrEmpty(text) || !NeedsTranslation(text)) return null;
+            if (Overrides().TryGetValue(text, out var o)) return o;
+            if (Machine().TryGetValue(text, out var mt)) return mt;
+            lock (Cache) return Cache.TryGetValue(text, out var cached) ? cached : null;
+        }
+
         public static string Get(string text, bool request = false, string context = null)
         {
             if (string.IsNullOrEmpty(text) || !NeedsTranslation(text)) return null;

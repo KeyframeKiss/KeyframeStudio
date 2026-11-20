@@ -23,6 +23,7 @@ import { LightRigsPanel } from './LightRigsPanel';
 import { LookPanel } from './LookPanel';
 import { MaterialEditorPage } from './MaterialEditor';
 import { EffectsPage } from './EffectsPage';
+import { ItemLibrary } from './ItemLibrary';
 import { Col, Columns, Page } from './Page';
 import { StillsPage } from './StillsPage';
 import { AimLightsPanel, ProjectorsPanel } from './ProjectorsPanel';
@@ -517,6 +518,7 @@ interface PageDef {
 const LIBRARY_PAGES: PageDef[] = [
   { id: 'scenes', label: 'Scenes', icon: 'scenes', hint: 'Load, import, save scenes' },
   { id: 'characters', label: 'Characters', icon: 'pose', hint: 'Cards: add or swap characters' },
+  { id: 'items', label: 'Objects', icon: 'grid', hint: 'Every item and mod, with pictures' },
   { id: 'macros', label: 'Quick actions', icon: 'bolt', hint: 'Record and replay steps' },
 ];
 const SETTINGS_PAGES: PageDef[] = [
@@ -552,6 +554,7 @@ export function LibraryWorkspace() {
       <main className="ws-center" style={{ position: 'relative' }}>
         {page === 'scenes' && <SceneBrowser />}
         {page === 'characters' && <CharacterLibrary />}
+        {page === 'items' && <ItemLibrary />}
         {page === 'macros' && <QuickActionsPage />}
         {page !== 'macros' && <Disconnected />}
       </main>

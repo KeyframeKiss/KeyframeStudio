@@ -53,6 +53,8 @@ namespace StudioEX.Bridge
             gameObject.AddComponent<AudioTrack>();
             AudioTrack.Register(_router);
             SceneNotes.Register(_router);
+            gameObject.AddComponent<ItemLibrary>();
+            ItemLibrary.Register(_router);
             RenderApi.Register(_router);
             gameObject.AddComponent<RenderFraming>();
             RenderFraming.Register(_router);

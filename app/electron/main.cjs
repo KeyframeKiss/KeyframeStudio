@@ -32,14 +32,16 @@ function thumbHandler(request) {
     const p = new URL(request.url).searchParams.get('p') || '';
     const norm = path.normalize(p);
     // Local drive paths only (a \\server\share path would make Windows send credentials to that server),
-    // a .png inside a UserData\studio folder, or one of Keyframe Studio's cached pose thumbnails
-    // (UserData\StudioEX\pose-thumbs\*.jpg) — checked again after resolving junctions/symlinks.
+    // a .png inside a UserData\studio folder, or one of Keyframe Studio's cached pose / item pictures
+    // (UserData\StudioEX\pose-thumbs\*.jpg, item-thumbs\*.jpg) — checked again after resolving junctions/symlinks.
     const allowed = (f) =>
       /^[a-z]:\\/i.test(f) &&
-      ((/\.png$/i.test(f) && /[\\/]userdata[\\/](studio|chara)[\\/]/i.test(f)) || (/\.jpg$/i.test(f) && /[\\/]userdata[\\/]studioex[\\/]pose-thumbs[\\/]/i.test(f)));
+      ((/\.png$/i.test(f) && /[\\/]userdata[\\/](studio|chara)[\\/]/i.test(f)) || (/\.jpg$/i.test(f) && /[\\/]userdata[\\/]studioex[\\/](pose|item)-thumbs[\\/]/i.test(f)));
     if (!path.isAbsolute(norm) || !allowed(norm)) return new Response('forbidden', { status: 403 });
     if (!allowed(fs.realpathSync(norm))) return new Response('forbidden', { status: 403 });
     const stat = fs.statSync(norm);
+    // item pictures are already small: sent as they are
+    if (/[\\/]item-thumbs[\\/]/i.test(norm)) return new Response(fs.readFileSync(norm), { headers: { 'content-type': 'image/jpeg', 'cache-control': 'no-cache' } });
     const key = `${norm}|${stat.mtimeMs}`;
     let buf = thumbCache.get(key);
     if (!buf) {
