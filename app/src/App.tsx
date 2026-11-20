@@ -4,7 +4,8 @@ import { DialogHost } from './components/Dialogs';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { PreviewPanel } from './components/PreviewPanel';
 import { RecordingBadge } from './components/QuickActions';
-import { Header } from './components/Shell';
+import { Header, MiniHeader, TransportBar } from './components/Shell';
+import { DopeSheet } from './components/DopeSheet';
 import { SHORTCUTS } from './components/shortcuts';
 import { Disconnected, AnimateWorkspace, LibraryWorkspace, LookWorkspace, PoseWorkspace, SettingsWorkspace, ShootWorkspace } from './components/Workspaces';
 import { PRESETS, toFlat } from './lib/curve';
@@ -36,6 +37,7 @@ import {
   useStore,
   useTlInfo,
   type Workspace,
+  setMiniMode,
 } from './state/store';
 import { bridge } from './bridge/client';
 
@@ -46,6 +48,7 @@ export function App() {
   const hello = useStore((s) => s.hello);
   const tl = useTlInfo();
   const toasts = useStore((s) => s.toasts);
+  const miniMode = useStore((s) => s.miniMode);
   const workspace = useStore((s) => s.workspace);
   const helpOpen = useStore((s) => s.helpOpen);
   const nodeCount = useStore((s) => Object.values(s.nodes).filter((n) => n.type !== 'node').length);
@@ -72,6 +75,12 @@ export function App() {
       if (ctrl && k === 'k') {
         e.preventDefault();
         useStore.setState({ paletteOpen: !st.paletteOpen });
+        return;
+      }
+      // mini mode on/off, from anywhere
+      if (ctrl && e.shiftKey && k === 'm') {
+        e.preventDefault();
+        setMiniMode(!st.miniMode);
         return;
       }
       if (st.paletteOpen) return;
@@ -108,7 +117,7 @@ export function App() {
       else if (ctrl && (k === 'y' || (k === 'z' && e.shiftKey))) redo();
       else if (ctrl && k === 'o') openLibrary('scenes');
       else if (ctrl && k === ',') openLibrary('settings');
-      else if (st.workspace === 'library' || st.workspace === 'settings') handled = false; // timeline keys only where there's a timeline
+      else if ((st.workspace === 'library' || st.workspace === 'settings') && !st.miniMode) handled = false; // timeline keys only where there's a timeline
       else if (k === ' ') togglePlay();
       else if (ctrl && k === 'c') copySelected();
       else if (ctrl && k === 'v') pasteAtPlayhead();
@@ -156,6 +165,58 @@ export function App() {
       window.removeEventListener('studioex:key', onKeyEvt);
     };
   }, []);
+
+  const toastStack = (
+  <div className="toasts">
+    {poseStale && pending > 0 && (
+      <div className="toast notice" role="status">
+        <div>
+          <b>Your key edits aren’t on the pose yet.</b> Studio is keeping your {pending} unkeyed change{pending > 1 ? 's' : ''} instead of overwriting {pending > 1 ? 'them' : 'it'}.
+        </div>
+        <div className="toast-actions">
+          <button className="btn primary" onClick={keyChanged} title="Key the changes at the playhead, then show the edits (Shift+Enter)">
+            Key changes
+          </button>
+          <button className="btn solid" onClick={resetPose} title="Discard the unkeyed changes: the pose goes back to what the keys say">
+            Reset pose to keys
+          </button>
+        </div>
+      </div>
+    )}
+    {toasts.map((t) => (
+      <div key={t.id} className={`toast ${t.kind}`}>
+        {t.kind === 'done' && (
+          <svg className="toast-check" viewBox="0 0 16 16" aria-hidden="true">
+            <circle cx="8" cy="8" r="7" />
+            <path d="M4.6 8.3l2.2 2.2 4.6-4.8" />
+          </svg>
+        )}
+        <span>{t.text}</span>
+      </div>
+    ))}
+  </div>
+  );
+
+  // Mini mode: just the timeline and its transport, in a small window kept on top of other windows
+  if (miniMode)
+    return (
+      <div className="shell mini">
+        <MiniHeader />
+        <main className="ws-center mini-center">
+          {status === 'open' ? (
+            <ErrorBoundary name="The timeline">
+              <DopeSheet compact />
+            </ErrorBoundary>
+          ) : (
+            <Disconnected />
+          )}
+        </main>
+        {status === 'open' && <TransportBar />}
+        {toastStack}
+        <CommandPalette />
+        <DialogHost />
+      </div>
+    );
 
   return (
     <div className="shell">
@@ -208,34 +269,7 @@ export function App() {
         </span>
       </footer>
 
-      <div className="toasts">
-        {poseStale && pending > 0 && (
-          <div className="toast notice" role="status">
-            <div>
-              <b>Your key edits aren’t on the pose yet.</b> Studio is keeping your {pending} unkeyed change{pending > 1 ? 's' : ''} instead of overwriting {pending > 1 ? 'them' : 'it'}.
-            </div>
-            <div className="toast-actions">
-              <button className="btn primary" onClick={keyChanged} title="Key the changes at the playhead, then show the edits (Shift+Enter)">
-                Key changes
-              </button>
-              <button className="btn solid" onClick={resetPose} title="Discard the unkeyed changes: the pose goes back to what the keys say">
-                Reset pose to keys
-              </button>
-            </div>
-          </div>
-        )}
-        {toasts.map((t) => (
-          <div key={t.id} className={`toast ${t.kind}`}>
-            {t.kind === 'done' && (
-              <svg className="toast-check" viewBox="0 0 16 16" aria-hidden="true">
-                <circle cx="8" cy="8" r="7" />
-                <path d="M4.6 8.3l2.2 2.2 4.6-4.8" />
-              </svg>
-            )}
-            <span>{t.text}</span>
-          </div>
-        ))}
-      </div>
+      {toastStack}
 
       <CommandPalette />
       <DialogHost />

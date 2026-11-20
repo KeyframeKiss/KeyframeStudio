@@ -1,34 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { bridge } from '../bridge/client';
-import {
-  call,
-  saveSceneFile,
-  copySelected,
-  deleteSelectedKeys,
-  displayName,
-  duplicateSelectedToPlayhead,
-  keyAllOfSelectedObjects,
-  keyChanged,
-  keySelected,
-  lsSet,
-  openLibrary,
-  pasteAtPlayhead,
-  redo,
-  seek,
-  selectAllKeys,
-  selectedCharacters,
-  setAutoKey,
-  setTimelineUiVisible,
-  setWorkspace,
-  showPanel,
-  showTab,
-  stop,
-  studioSelect,
-  toast,
-  togglePlay,
-  undo,
-  useStore,
-} from '../state/store';
+import { call, saveSceneFile, copySelected, deleteSelectedKeys, displayName, duplicateSelectedToPlayhead, keyAllOfSelectedObjects, keyChanged, keySelected, lsSet, openLibrary, pasteAtPlayhead, redo, seek, selectAllKeys, selectedCharacters, setAutoKey, setTimelineUiVisible, setWorkspace, showPanel, showTab, stop, studioSelect, toast, togglePlay, undo, useStore, setMiniMode } from '../state/store';
 import { applyCurveToSelected } from '../state/store';
 import { PRESETS, toFlat } from '../lib/curve';
 import { Icon } from './Icon';
@@ -116,6 +88,7 @@ function PaletteInner() {
       { id: 'pose.outfit', group: 'Pose', title: 'Outfit (clothes, saved outfits, accessories)', keywords: 'clothes coordinate accessories outfit', run: () => showTab('pose', 'outfit') },
       { id: 'look.settings', group: 'Look', title: 'Look settings', keywords: 'bloom lut toon fog vignette dof', run: () => showTab('look', 'settings') },
       { id: 'look.lighting', group: 'Look', title: 'Lighting rigs', keywords: 'lights rig three point rembrandt', run: () => showTab('look', 'lighting') },
+      { id: 'view.mini', group: 'View', title: 'Mini mode — just the timeline, kept on top', kbd: 'Ctrl Shift M', keywords: 'small window compact always on top float', run: () => setMiniMode(!useStore.getState().miniMode) },
       { id: 'view.preview', group: 'View', title: 'Live preview (experimental)', keywords: 'stream viewport camera render', run: () => useStore.setState((s) => ({ previewOpen: !s.previewOpen })) },
       { id: 'view.frame', group: 'View', title: 'Frame all keys', kbd: 'F', run: () => window.dispatchEvent(new CustomEvent('studioex:frame')) },
       { id: 'view.length', group: 'View', title: 'Show whole timeline length', kbd: 'Shift F', run: () => window.dispatchEvent(new CustomEvent('studioex:zoom', { detail: 'duration' })) },

@@ -63,9 +63,16 @@ function loadState() {
   try { return JSON.parse(fs.readFileSync(stateFile, 'utf8')); } catch { return {}; }
 }
 
+// Mini mode: the full window's layout while the window is a small always-on-top timeline strip (null otherwise).
+let miniFrom = null;
+
 function saveState(win) {
   if (win.isDestroyed()) return;
-  const s = { bounds: win.getNormalBounds(), maximized: win.isMaximized(), alwaysOnTop: win.isAlwaysOnTop() };
+  const prev = loadState();
+  // in mini mode the full layout is what's kept (the app opens full next time); the strip's own place is kept too
+  const s = miniFrom
+    ? { bounds: miniFrom.bounds, maximized: miniFrom.maximized, alwaysOnTop: miniFrom.onTop, miniBounds: win.getNormalBounds() }
+    : { bounds: win.getNormalBounds(), maximized: win.isMaximized(), alwaysOnTop: win.isAlwaysOnTop(), miniBounds: prev.miniBounds };
   try { fs.writeFileSync(stateFile, JSON.stringify(s)); } catch { /* ignore */ }
 }
 
@@ -149,6 +156,36 @@ function createWindow() {
 
   ipcMain.handle('window:setAlwaysOnTop', (_e, on) => { win.setAlwaysOnTop(!!on); saveState(win); return win.isAlwaysOnTop(); });
   ipcMain.handle('window:getAlwaysOnTop', () => win.isAlwaysOnTop());
+  // Mini mode: a small strip (just the timeline) kept on top of other windows; off puts the full window back
+  ipcMain.handle('window:mini', (_e, on) => {
+    const { screen } = require('electron');
+    if (on && !miniFrom) {
+      miniFrom = { bounds: win.getNormalBounds(), maximized: win.isMaximized(), onTop: win.isAlwaysOnTop() };
+      if (win.isMaximized()) win.unmaximize();
+      win.setMinimumSize(480, 170);
+      const saved = loadState().miniBounds;
+      const onScreen = (b) => b && [b.x, b.y, b.width, b.height].every(Number.isFinite) && screen.getAllDisplays().some(({ workArea: a }) => b.x + 80 < a.x + a.width && b.x + b.width - 80 > a.x && b.y >= a.y - 10 && b.y + 40 < a.y + a.height);
+      const a = screen.getDisplayMatching(miniFrom.bounds).workArea;
+      const h = 280;
+      const w = Math.min(miniFrom.bounds.width, a.width);
+      const b = onScreen(saved) ? saved : { width: w, height: h, x: Math.max(a.x, Math.min(miniFrom.bounds.x, a.x + a.width - w)), y: a.y + a.height - h };
+      win.setBounds({ x: Math.round(b.x), y: Math.round(b.y), width: Math.round(b.width), height: Math.round(b.height) });
+      win.setAlwaysOnTop(true);
+      try { win.setTitleBarOverlay({ height: 32 }); } catch { /* older Electron */ }
+    } else if (!on && miniFrom) {
+      const st = loadState();
+      st.miniBounds = win.getNormalBounds();
+      try { fs.writeFileSync(stateFile, JSON.stringify(st)); } catch { /* ignore */ }
+      const from = miniFrom;
+      miniFrom = null;
+      win.setMinimumSize(900, 500);
+      try { win.setTitleBarOverlay({ height: 47 }); } catch { /* older Electron */ }
+      win.setBounds(from.bounds);
+      if (from.maximized) win.maximize();
+      win.setAlwaysOnTop(from.onTop);
+    }
+    return !!miniFrom;
+  });
   ipcMain.handle('window:getBounds', () => win.getNormalBounds());
   ipcMain.handle('window:setBounds', (_e, b) => {
     // only onto a connected screen (a saved layout from another monitor setup falls back to the current size)

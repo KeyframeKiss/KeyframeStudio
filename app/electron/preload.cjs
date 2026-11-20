@@ -5,6 +5,8 @@ contextBridge.exposeInMainWorld('studioEx', {
   // the window has no system title bar: the header must leave room for the window buttons
   frameless: true,
   setAlwaysOnTop: (on) => ipcRenderer.invoke('window:setAlwaysOnTop', on),
+  // mini mode: a small always-on-top timeline strip; false puts the full window back
+  setMini: (on) => ipcRenderer.invoke('window:mini', on),
   getAlwaysOnTop: () => ipcRenderer.invoke('window:getAlwaysOnTop'),
   getBounds: () => ipcRenderer.invoke('window:getBounds'),
   setBounds: (b) => ipcRenderer.invoke('window:setBounds', b),

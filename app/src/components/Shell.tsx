@@ -3,25 +3,7 @@ import { Help } from './Help';
 import { Icon } from './Icon';
 import { NumberField, TimeField } from './TopBar';
 import { ViewportControls } from './ViewportControls';
-import {
-  saveSceneFile,
-  jumpKey,
-  keyChanged,
-  lsSet,
-  openLibrary,
-  redo,
-  seek,
-  setAutoKey,
-  setSettings,
-  setTimelineUiVisible,
-  setWorkspace,
-  stepFrames,
-  togglePlay,
-  undo,
-  useStore,
-  useTlInfo,
-  type Workspace,
-} from '../state/store';
+import { saveSceneFile, jumpKey, keyChanged, lsSet, openLibrary, redo, seek, setAutoKey, setSettings, setTimelineUiVisible, setWorkspace, stepFrames, togglePlay, undo, useStore, useTlInfo, type Workspace, setMiniMode } from '../state/store';
 import { parseTime } from '../lib/time';
 
 import { applyLayout, deleteLayout, resetLayout, saveLayout, savedLayouts, setCompact, setPanelSizes, useCompact, usePanelSizes } from '../lib/layout';
@@ -89,6 +71,9 @@ export function Header() {
           <Icon name="pin" />
         </button>
       )}
+      <button className="btn icon" title="Mini mode: just the timeline, in a small window kept on top (Ctrl+Shift+M)" onClick={() => setMiniMode(true)}>
+        <Icon name="tracks" />
+      </button>
       <AppMenu pinned={pinned} setPinned={setPinned} />
     </header>
   );
@@ -401,6 +386,9 @@ function AppMenu({ pinned, setPinned }: { pinned: boolean; setPinned: (v: boolea
           </button>
           <div className="menu-sep" />
           <div className="layout-menu-h">Window</div>
+          <button className="menu-item" onClick={() => (close(), setMiniMode(true))}>
+            <Icon name="tracks" size={13} /> Mini mode — just the timeline, on top <span className="kbd">Ctrl Shift M</span>
+          </button>
           {window.studioEx?.isElectron && (
             <label title="Keep this window on top of CharaStudio">
               <input type="checkbox" checked={pinned} onChange={(e) => window.studioEx!.setAlwaysOnTop(e.target.checked).then(setPinned)} /> Keep on top of Studio
@@ -460,5 +448,24 @@ function AppMenu({ pinned, setPinned }: { pinned: boolean; setPinned: (v: boolea
         </div>
       )}
     </Popover>
+  );
+}
+
+/** Mini mode's title bar: what's open, whether Studio is there, and the way back. Drag it to move the window. */
+export function MiniHeader() {
+  const status = useStore((s) => s.status);
+  const sceneName = useStore((s) => s.sceneName);
+  return (
+    <header className="header mini-header">
+      <b className="mini-title">Keyframe Studio</b>
+      <span className="mini-scene" title={sceneName ?? ''}>
+        {sceneName ? sceneName.replace(/\.png$/i, '') : 'Untitled scene'}
+      </span>
+      <span className={`status-dot ${status}`} title={status === 'open' ? 'Connected to CharaStudio' : 'Waiting for CharaStudio'} />
+      <span style={{ flex: 1 }} />
+      <button className="btn small solid" onClick={() => setMiniMode(false)} title="Back to the full window (Ctrl+Shift+M)">
+        <Icon name="fit" size={13} /> Full window
+      </button>
+    </header>
   );
 }

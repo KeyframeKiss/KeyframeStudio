@@ -38,6 +38,7 @@ declare global {
       /** no system title bar: the header is the title bar (window buttons drawn over its right end) */
       frameless?: boolean;
       setAlwaysOnTop(on: boolean): Promise<boolean>;
+      setMini?(on: boolean): Promise<boolean>;
       getAlwaysOnTop(): Promise<boolean>;
       getBounds?(): Promise<{ x: number; y: number; width: number; height: number }>;
       setBounds?(b: { x: number; y: number; width: number; height: number }): Promise<boolean>;

@@ -165,7 +165,7 @@ function cssVar(name: string) {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 }
 
-export function DopeSheet() {
+export function DopeSheet({ compact = false }: { compact?: boolean } = {}) {
   const shot = useStore(workingShot);
   const full = useStore((s) => s.frameFullTimeline);
   const tracks = useStore((s) => s.tracks);
@@ -1204,7 +1204,7 @@ export function DopeSheet() {
           </>
         }
       />
-      <SelectionBar />
+      {!compact && <SelectionBar />}
       {centerView === 'graph' && <GraphEditor />}
       <div
         className={`sheet ${dropping ? 'dropping' : ''}`}

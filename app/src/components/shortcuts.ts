@@ -1,6 +1,7 @@
 export const SHORTCUTS: [string, string][] = [
   ['Ctrl K', 'Search every action (command palette)'],
   ['Ctrl 1 – 5', 'Animate · Pose · Look · Shoot · Library'],
+  ['Ctrl Shift M', 'Mini mode: just the timeline, in a small window kept on top'],
   ['Space', 'Play / pause'],
   ['← / →', 'Previous / next frame'],
   ['Shift ← / →', 'Previous / next key'],

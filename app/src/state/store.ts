@@ -110,6 +110,8 @@ export interface AppState {
   audioListen: { id: number; at: number } | null;
   /** This PC's audio output delay (ms) and Unity's own mixer delay (ms). */
   audioDelay: { output: number; mixer: number };
+  /** Mini mode: the window is a small always-on-top strip with just the timeline. */
+  miniMode: boolean;
   /** Key edits were made but Studio held them back to protect the unkeyed changes (the pose doesn't show them yet). */
   poseStale: boolean;
   groupMode: 'objects' | 'folders';
@@ -188,6 +190,7 @@ export const useStore = create<AppState>(() => ({
   audioPeaks: {},
   audioListen: null,
   audioDelay: { output: 0, mixer: 0 },
+  miniMode: false,
   shots: [], workingShotId: null, frameFullTimeline: false, loopShot: false, renderShotIds: null, sceneName: null, sceneFilter: 'all',
   groupMode: (lsGet('studioex.groupMode') as 'objects' | 'folders') || 'objects',
   settingsOpen: false,
@@ -272,6 +275,12 @@ export async function setAudio(id: number, patch: AudioPatch) {
   await call('audio.set', { id, ...patch });
   await refreshAudio();
 }
+/** Mini mode on/off: the window becomes a small timeline strip kept on top of other windows, or goes back. */
+export async function setMiniMode(on: boolean) {
+  const r = await window.studioEx?.setMini?.(on).catch(() => on);
+  set({ miniMode: r ?? on });
+}
+
 /** Play the audio this much early while the timeline plays (headphones heard late); this PC only, not in renders. */
 export async function setAudioDelay(ms: number) {
   set({ audioDelay: { ...get().audioDelay, output: ms } });
