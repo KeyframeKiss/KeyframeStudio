@@ -98,11 +98,11 @@ export function AddTrackPanel() {
               <div className="model-group-title">
                 {owner} · {list.length}
               </div>
-              {list.map((m) => {
+              {list.map((m, mi) => {
                 const has = existing.has(`${m.owner}/${m.id}`);
                 return (
                   <div {...pressable}
-                    key={`${m.owner}/${m.id}`}
+                    key={`${m.owner}/${m.id}/${mi}`}
                     className="model-row"
                     title={`${m.name}${m.nameEn ? `\n${m.nameEn}` : ''}\n${m.owner} / ${m.id}\nClick: add track + key at playhead`}
                     onClick={() => addTrack(m, target)}

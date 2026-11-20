@@ -247,7 +247,7 @@ export function TransportBar() {
   );
   const viewOptions = <ViewCluster />;
   const snapButton = (
-    <button className={`btn icon ${snap ? 'on' : ''}`} title="Snap keys to frames (Alt while dragging bypasses)" aria-pressed={snap} onClick={() => useStore.setState({ snap: !snap })}>
+    <button className={`btn icon ${snap ? 'on' : ''}`} title="Snap: dragging keys, scrubbing or moving audio lands on nearby keys, the playhead, ruler ticks and clip edges (an orange tag shows what), otherwise on whole frames. Hold Alt while dragging to place freely." aria-pressed={snap} onClick={() => useStore.setState({ snap: !snap })}>
       <Icon name="magnet" />
     </button>
   );

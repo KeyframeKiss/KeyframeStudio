@@ -702,6 +702,30 @@ export function DopeSheet({ compact = false }: { compact?: boolean } = {}) {
         ctx.fillRect(Math.round(xEnd), 0, 2, h);
       }
 
+      // what a drag / scrub snapped to
+      const sh = snapHint.current;
+      const mode = inter.current.mode;
+      if (sh && (mode === 'drag' || mode === 'scrub' || mode === 'audio')) {
+        const sx = Math.round(xOf(sh.t)) + 0.5;
+        ctx.save();
+        ctx.strokeStyle = 'rgba(255,170,60,0.85)';
+        ctx.setLineDash([3, 3]);
+        ctx.beginPath();
+        ctx.moveTo(sx, RULER_H);
+        ctx.lineTo(sx, h);
+        ctx.stroke();
+        ctx.restore();
+        ctx.font = '600 10px Segoe UI, system-ui, sans-serif';
+        const tw = ctx.measureText(sh.label).width + 10;
+        ctx.fillStyle = 'rgba(255,170,60,0.95)';
+        ctx.beginPath();
+        ctx.roundRect(sx + 4, RULER_H + 3, tw, 15, 4);
+        ctx.fill();
+        ctx.fillStyle = '#1a1206';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(sh.label, sx + 9, RULER_H + 11);
+      }
+
       // playhead
       const px = Math.round(xOf(now));
       if (px >= -10 && px <= w + 10) {
@@ -785,10 +809,54 @@ export function DopeSheet({ compact = false }: { compact?: boolean } = {}) {
     return ids;
   };
 
-  const snapT = (t: number, e: { altKey: boolean }) => {
+  /** What the last snap caught (drawn as a line while dragging / scrubbing). */
+  const snapHint = useRef<{ t: number; label: string } | null>(null);
+
+  /**
+   * Snap: within a few pixels of something worth landing on — a key, the playhead, a ruler tick, the start or end,
+   * an audio clip's edges — it lands exactly there; otherwise on a whole frame. Alt while dragging: no snapping.
+   */
+  const snapT = (t: number, e: { altKey: boolean }, o?: { skipKeys?: Set<string>; noPlayhead?: boolean; skipClip?: number }) => {
     const st = useStore.getState();
-    return st.snap && !e.altKey && st.tl ? snapToFrame(t, st.tl.fps) : t;
+    snapHint.current = null;
+    if (!st.snap || e.altKey || !st.tl) return t;
+    const pps = view.current.pps;
+    const tol = 8 / pps;
+    let best = tol;
+    let at = NaN;
+    let label = '';
+    const near = (c: number, l: string) => {
+      const d = Math.abs(c - t);
+      if (d < best) {
+        best = d;
+        at = c;
+        label = l;
+      }
+    };
+    for (const tr of st.tracks) {
+      if (!tr.keys) continue;
+      for (const k of tr.keys) if (!o?.skipKeys?.has(keyId(tr.id, k[0]))) near(k[0], 'key');
+    }
+    if (!o?.noPlayhead) near(liveTime(), 'playhead');
+    near(0, 'start');
+    near(st.tl.duration, 'end');
+    for (const c of st.audio) {
+      if (c.id === o?.skipClip) continue;
+      near(c.offset, 'audio start');
+      if (c.duration > 0) near(c.offset + c.duration, 'audio end');
+    }
+    // the ruler's ticks (whole seconds, halves… as zoomed)
+    const major = niceStep(pps, 72, st.tl.fps);
+    const tick = Math.round(t / major) * major;
+    near(tick, fmtTick(tick));
+    if (!Number.isNaN(at)) {
+      // a key slightly off a frame still lands on that key exactly; anything else, on the frame grid
+      snapHint.current = { t: at, label };
+      return at;
+    }
+    return snapToFrame(t, st.tl.fps);
   };
+  const fmtTick = (t: number) => (Math.abs(t - Math.round(t)) < 1e-6 ? `${Math.round(t)}s` : `${+t.toFixed(2)}s`);
 
   // ---------------- pointer handling ----------------
   const onPointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
@@ -813,7 +881,7 @@ export function DopeSheet({ compact = false }: { compact?: boolean } = {}) {
 
     if (y < RULER_H) {
       inter.current = { mode: 'scrub' };
-      seek(snapT(tOf(x), e));
+      seek(snapT(tOf(x), e, { noPlayhead: true }));
       return;
     }
     const lane = laneAt(y);
@@ -823,7 +891,7 @@ export function DopeSheet({ compact = false }: { compact?: boolean } = {}) {
       if (x >= xOf(au.offset) && x <= xOf(au.offset + clipSpan(au))) inter.current = { mode: 'audio', id: au.id, startX: x, startOffset: au.offset, offset: au.offset, active: false };
       else {
         inter.current = { mode: 'scrub' };
-        seek(snapT(tOf(x), e));
+        seek(snapT(tOf(x), e, { noPlayhead: true }));
       }
       dirty.current = true;
       return;
@@ -868,10 +936,10 @@ export function DopeSheet({ compact = false }: { compact?: boolean } = {}) {
     const r = canvasRef.current!.getBoundingClientRect();
     const x = e.clientX - r.left;
     const y = e.clientY - r.top;
-    if (it.mode === 'scrub') seek(snapT(tOf(x), e));
+    if (it.mode === 'scrub') seek(snapT(tOf(x), e, { noPlayhead: true }));
     else if (it.mode === 'audio') {
       if (!it.active && Math.abs(x - it.startX) > 3) it.active = true;
-      if (it.active) it.offset = Math.round(snapT(it.startOffset + (x - it.startX) / view.current.pps, e) * 1000) / 1000;
+      if (it.active) it.offset = Math.round(snapT(it.startOffset + (x - it.startX) / view.current.pps, e, { skipClip: it.id }) * 1000) / 1000;
     } else if (it.mode === 'pan') view.current.t0 = it.startT0 - (x - it.startX) / view.current.pps;
     else if (it.mode === 'box') {
       it.x1 = x;
@@ -880,8 +948,8 @@ export function DopeSheet({ compact = false }: { compact?: boolean } = {}) {
       if (!it.active && Math.abs(x - it.startX) > 3) it.active = true;
       if (it.active) {
         let dt = (x - it.startX) / view.current.pps;
-        dt = snapT(it.grabT + dt, e) - it.grabT;
         const sel = useStore.getState().selKeys;
+        dt = snapT(it.grabT + dt, e, { skipKeys: sel }) - it.grabT;
         let minT = Infinity;
         sel.forEach((id) => (minT = Math.min(minT, parseKeyId(id).t)));
         if (minT + dt < 0) dt = -minT;
@@ -894,6 +962,7 @@ export function DopeSheet({ compact = false }: { compact?: boolean } = {}) {
   const onPointerUp = (e: React.PointerEvent<HTMLCanvasElement>) => {
     const it = inter.current;
     inter.current = { mode: 'none' };
+    snapHint.current = null;
     try {
       canvasRef.current!.releasePointerCapture(e.pointerId);
     } catch {
