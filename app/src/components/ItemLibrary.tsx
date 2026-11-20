@@ -207,7 +207,7 @@ export function ItemLibrary() {
   const url = (i: Item) => `sximg://thumb/?p=${encodeURIComponent(`${cat.folder}\\${i.key}.jpg`)}${bust[i.key] ? `&v=${bust[i.key]}` : ''}`;
 
   return (
-    <div className="items-lib">
+    <div className={`items-lib ${sel ? 'with-side' : ''}`}>
       <aside className="items-side">
         <input className="input" placeholder={`Search ${items.length.toLocaleString()} objects…`} value={q} onChange={(e) => setQ(e.target.value)} />
         <div className="seg items-show">
@@ -339,24 +339,89 @@ export function ItemLibrary() {
           </div>
         </div>
 
-        {sel && (
-          <div className="items-detail">
-            <div className="items-pic big">{thumbOf(sel) === 1 ? <img src={url(sel)} alt="" /> : <span className="items-nopic">{thumbOf(sel) === -1 ? 'no picture' : '…'}</span>}</div>
-            <div className="items-detail-text">
-              <b>{nameOf(sel)}</b>
-              <small>
-                {groupOf(sel)} › {catOf(sel)}
-              </small>
-              {sel.nameEn && sel.name !== sel.nameEn && <small className="pn-note">{sel.name}</small>}
-            </div>
-            <span style={{ flex: 1 }} />
-            <button className="btn primary" onClick={() => add(sel)}>
-              Add to the scene
-            </button>
-          </div>
-        )}
       </section>
+      {sel && (
+        <ItemSidebar
+          item={sel}
+          small={thumbOf(sel) === 1 ? url(sel) : null}
+          noPicture={thumbOf(sel) === -1}
+          fav={!!lib.get(sel.key).favorite}
+          onFav={() => lib.toggleFavorite(sel.key)}
+          onAdd={() => add(sel)}
+          onCategory={() => (setGroup(sel.g), setCategory(sel.c), setOpen((o) => new Set(o).add(sel.g)), setQ(''))}
+          onClose={() => setPicked(null)}
+        />
+      )}
       {menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />}
     </div>
+  );
+}
+
+const VIEWS: { id: string; label: string }[] = [
+  { id: 'front', label: 'Front' },
+  { id: 'side', label: 'Side' },
+  { id: 'back', label: 'Back' },
+  { id: 'top', label: 'Above' },
+];
+
+/** The selected object, big: a sharp picture from the side you pick, its names, star, add. */
+function ItemSidebar({ item, small, noPicture, fav, onFav, onAdd, onCategory, onClose }: { item: Item; small: string | null; noPicture: boolean; fav: boolean; onFav: () => void; onAdd: () => void; onCategory: () => void; onClose: () => void }) {
+  const [view, setView] = useState('front');
+  const [big, setBig] = useState<Record<string, string | null>>({});
+  const [busy, setBusy] = useState(false);
+  const id = `${item.key}-${view}`;
+  useEffect(() => setView('front'), [item.key]);
+  useEffect(() => {
+    if (noPicture || id in big) return;
+    let live = true;
+    setBusy(true);
+    bridge
+      .request<string | null>('items.preview', { key: item.key, view })
+      .then((p) => live && setBig((m) => ({ ...m, [id]: p })))
+      .catch(() => live && setBig((m) => ({ ...m, [id]: null })))
+      .finally(() => live && setBusy(false));
+    return () => {
+      live = false;
+    };
+  }, [id, noPicture]); // eslint-disable-line react-hooks/exhaustive-deps
+  const path = big[id];
+  const src = path ? `sximg://thumb/?p=${encodeURIComponent(path)}` : view === 'front' ? small : null;
+  return (
+    <aside className="items-side-detail">
+      <div className="items-side-head">
+        <b title={nameOf(item)}>{nameOf(item)}</b>
+        <button className="btn small solid" onClick={onClose} title="Close">
+          ✕
+        </button>
+      </div>
+      <div className="items-big">
+        {noPicture ? <span className="items-nopic">Nothing to picture (a light, effect or helper)</span> : src ? <img src={src} alt="" draggable={false} /> : <span className="items-wait" />}
+        {busy && src && <span className="items-wait corner" />}
+      </div>
+      {!noPicture && (
+        <div className="seg items-views">
+          {VIEWS.map((v) => (
+            <button key={v.id} className={view === v.id ? 'on' : ''} onClick={() => setView(v.id)}>
+              {v.label}
+            </button>
+          ))}
+        </div>
+      )}
+      <div className="items-side-text">
+        {item.nameEn && item.name !== item.nameEn && <small title="Original name">{item.name}</small>}
+        <button className="link-btn" onClick={onCategory} title="Show everything in this category">
+          {groupOf(item)} › {catOf(item)}
+        </button>
+      </div>
+      <div className="items-side-actions">
+        <button className="btn primary" onClick={onAdd}>
+          Add to the scene
+        </button>
+        <button className={`btn solid ${fav ? 'on' : ''}`} onClick={onFav} title={fav ? 'Remove from starred' : 'Star it'}>
+          <StarIcon filled={fav} /> {fav ? 'Starred' : 'Star'}
+        </button>
+      </div>
+      <small className="pn-note">Double-clicking a tile adds it too.</small>
+    </aside>
   );
 }

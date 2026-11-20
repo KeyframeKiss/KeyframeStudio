@@ -36,12 +36,10 @@ namespace StudioEX.Bridge.Api
 
         private Camera _cam;
         private Light _light;
-        private RenderTexture _rt;
-        private Texture2D _tex;
         private const int Size = 192;
 
         /// <summary>Bump when pictures are made differently: the old ones are cleared once and made again.</summary>
-        private const string PictureVersion = "2"; // 2: from the front (1 showed the back)
+        private const string PictureVersion = "3"; // 2: from the front (1 showed the back); 3: fitted to the item's box
         private static bool _checked;
 
         private static string Folder
@@ -57,7 +55,7 @@ namespace StudioEX.Bridge.Api
                     if (!File.Exists(mark) || File.ReadAllText(mark).Trim() != PictureVersion)
                     {
                         // only this cache's own files: pictures and "nothing to picture" marks
-                        foreach (var f in Directory.GetFiles(dir, "*.jpg").Concat(Directory.GetFiles(dir, "*.none")))
+                        foreach (var f in Directory.GetFiles(dir, "*.jpg", SearchOption.AllDirectories).Concat(Directory.GetFiles(dir, "*.none")))
                             try { File.Delete(f); } catch { /* in use: made again later anyway */ }
                         File.WriteAllText(mark, PictureVersion);
                     }
@@ -122,6 +120,8 @@ namespace StudioEX.Bridge.Api
                 return Status();
             });
             r.Add("items.thumbsStatus", a => Status());
+            // {key, view: front|side|back|top} → path of a 512 px picture (made now if needed)
+            r.Add("items.preview", a => _i.Preview(a));
             // add an item to the scene (Studio's own add), selected
             r.Add("items.add", a =>
             {
@@ -254,8 +254,15 @@ namespace StudioEX.Bridge.Api
             _light.cullingMask = 1 << Layer();
             _light.shadows = LightShadows.None;
             _light.enabled = false;
-            _rt = new RenderTexture(Size, Size, 24, RenderTextureFormat.ARGB32) { antiAliasing = 4 };
-            _tex = new Texture2D(Size, Size, TextureFormat.RGB24, false);
+        }
+
+        /// <summary>A render target and readback texture for a picture size (kept for reuse).</summary>
+        private readonly Dictionary<int, KeyValuePair<RenderTexture, Texture2D>> _targets = new Dictionary<int, KeyValuePair<RenderTexture, Texture2D>>();
+        private KeyValuePair<RenderTexture, Texture2D> Target(int size)
+        {
+            if (!_targets.TryGetValue(size, out var t))
+                _targets[size] = t = new KeyValuePair<RenderTexture, Texture2D>(new RenderTexture(size, size, 24, RenderTextureFormat.ARGB32) { antiAliasing = 4 }, new Texture2D(size, size, TextureFormat.RGB24, false));
+            return t;
         }
 
         private static void SetLayer(Transform t, int layer)
@@ -264,7 +271,28 @@ namespace StudioEX.Bridge.Api
             for (int i = 0; i < t.childCount; i++) SetLayer(t.GetChild(i), layer);
         }
 
-        private bool MakeThumb(Entry e)
+        /// <summary>Views for the big picture: name → (pitch, yaw) of the camera around the item (models face +Z).</summary>
+        private static readonly Dictionary<string, Vector2> Views = new Dictionary<string, Vector2>
+        {
+            { "front", new Vector2(-18f, 32f) }, { "side", new Vector2(-12f, 90f) }, { "back", new Vector2(-18f, 180f + 32f) }, { "top", new Vector2(-75f, 20f) },
+        };
+
+        private bool MakeThumb(Entry e) => MakePicture(e, Size, Views["front"], ThumbPath(e));
+
+        /// <summary>A big picture of one item from one side: UserData/StudioEX/item-thumbs/big/&lt;key&gt;-&lt;view&gt;.jpg.</summary>
+        private object Preview(Dictionary<string, object> a)
+        {
+            Load();
+            if (!_byKey.TryGetValue(a.GetString("key") ?? "", out var e)) throw new BridgeException("That item isn't in Studio's lists");
+            string view = Views.ContainsKey(a.GetString("view") ?? "") ? a.GetString("view") : "front";
+            var dir = Path.Combine(Folder, "big");
+            Directory.CreateDirectory(dir);
+            var file = Path.Combine(dir, e.Key + "-" + view + ".jpg");
+            if (!File.Exists(file) && !MakePicture(e, 512, Views[view], file)) return null;
+            return file;
+        }
+
+        private bool MakePicture(Entry e, int size, Vector2 view, string file)
         {
             Ensure();
             bool wasLoaded = AssetBundleManager.GetLoadedAssetBundle(e.Bundle, out string _, e.Manifest) != null;
@@ -288,26 +316,39 @@ namespace StudioEX.Bridge.Api
                 var b = rends[0].bounds;
                 foreach (var r in rends.Skip(1)) b.Encapsulate(r.bounds);
                 float radius = Mathf.Max(0.02f, b.extents.magnitude);
-                const float fov = 30f;
+                const float fov = 26f;
                 // models face +Z: look at the front, a little from the right and above
-                var dir = (Quaternion.Euler(-18f, 32f, 0f) * Vector3.forward).normalized;
-                float dist = radius / Mathf.Sin(fov * 0.5f * Mathf.Deg2Rad) * 1.02f;
+                var dir = (Quaternion.Euler(view.x, view.y, 0f) * Vector3.forward).normalized;
+                // fit the item's box as seen from this side (a sphere around it leaves the item small): every corner
+                // must be inside the view — dist ≥ |x or y| / tan(fov/2) + its depth towards the camera
+                var up0 = Mathf.Abs(view.x) > 60f ? Vector3.forward : Vector3.up;
+                var right = Vector3.Cross(up0, -dir).normalized;
+                var upv = Vector3.Cross(-dir, right).normalized;
+                float tan = Mathf.Tan(fov * 0.5f * Mathf.Deg2Rad), dist = 0.05f;
+                for (int k = 0; k < 8; k++)
+                {
+                    var p = new Vector3((k & 1) == 0 ? -b.extents.x : b.extents.x, (k & 2) == 0 ? -b.extents.y : b.extents.y, (k & 4) == 0 ? -b.extents.z : b.extents.z);
+                    float x = Mathf.Abs(Vector3.Dot(p, right)), y = Mathf.Abs(Vector3.Dot(p, upv)), z = Vector3.Dot(p, dir);
+                    dist = Mathf.Max(dist, Mathf.Max(x, y) / tan + z);
+                }
+                dist *= 1.06f; // a little room around it
                 _cam.transform.position = b.center + dir * dist;
-                _cam.transform.rotation = Quaternion.LookRotation(b.center - _cam.transform.position, Vector3.up);
+                _cam.transform.rotation = Quaternion.LookRotation(b.center - _cam.transform.position, up0);
                 _cam.fieldOfView = fov;
                 _cam.nearClipPlane = Mathf.Max(0.005f, dist - radius * 1.5f);
                 _cam.farClipPlane = dist + radius * 2f;
                 _light.transform.rotation = Quaternion.LookRotation(Quaternion.Euler(-25f, 35f, 0f) * (b.center - _cam.transform.position).normalized);
                 _light.enabled = true;
                 var prev = RenderTexture.active;
+                var target = Target(size);
                 try
                 {
-                    _cam.targetTexture = _rt;
+                    _cam.targetTexture = target.Key;
                     _cam.Render();
-                    RenderTexture.active = _rt;
-                    _tex.ReadPixels(new Rect(0, 0, Size, Size), 0, 0, false);
-                    _tex.Apply(false);
-                    File.WriteAllBytes(ThumbPath(e), _tex.EncodeToJPG(85));
+                    RenderTexture.active = target.Key;
+                    target.Value.ReadPixels(new Rect(0, 0, size, size), 0, 0, false);
+                    target.Value.Apply(false);
+                    File.WriteAllBytes(file, target.Value.EncodeToJPG(size > 256 ? 90 : 85));
                 }
                 finally
                 {
