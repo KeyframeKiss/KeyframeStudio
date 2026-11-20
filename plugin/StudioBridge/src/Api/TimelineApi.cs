@@ -223,6 +223,8 @@ namespace StudioEX.Bridge.Api
             r.Add("timeline.setUiVisible", a => { TL.InterfaceVisible = a.GetBool("visible"); return State(); });
 
             r.Add("timeline.models", ListModels);
+            // a character's bones and IK targets, to animate one directly: {oci} → [{kind, index, label, group, animated}]
+            r.Add("timeline.bones", ListBones);
             r.Add("timeline.addTrack", AddTrack);
             r.Add("timeline.removeTracks", RemoveTracks);
             r.Add("timeline.setTrack", SetTrack);
@@ -662,6 +664,64 @@ namespace StudioEX.Bridge.Api
             return list;
         }
 
+        /// <summary>A character's FK bones and IK targets, grouped the way people think of a body.</summary>
+        private static object ListBones(Dictionary<string, object> a)
+        {
+            if (!(SceneApi.FindOci(a.GetInt("oci", -1)) is OCIChar c)) return new List<object>();
+            // what's animated already: guide objects with GO tracks
+            var animated = new Dictionary<GuideObject, List<object>>();
+            foreach (var ip in Interpolables.Values)
+                if (ip.owner == "Timeline" && ip.oci == c && ip.parameter is GuideObject g && ip.id.StartsWith("guideObject"))
+                {
+                    if (!animated.TryGetValue(g, out var l)) animated[g] = l = new List<object>();
+                    l.Add(ip.id == "guideObjectRot" ? "rot" : ip.id == "guideObjectPos" ? "pos" : "scale");
+                }
+            var list = new List<object>();
+            for (int i = 0; i < c.listBones.Count; i++)
+            {
+                var b = c.listBones[i];
+                var g = b?.guideObject;
+                var name = g?.transformTarget?.name;
+                if (name == null) continue;
+                list.Add(new Dictionary<string, object>
+                {
+                    { "kind", "bone" }, { "index", i }, { "name", name }, { "label", ViewportGizmos.Pretty(name) },
+                    { "group", BoneGroupLabel(b.boneGroup, name) },
+                    { "animated", animated.TryGetValue(g, out var l) ? l : new List<object>() },
+                });
+            }
+            for (int i = 0; i < c.listIKTarget.Count; i++)
+            {
+                var k = c.listIKTarget[i];
+                var g = k?.guideObject;
+                if (g == null) continue;
+                list.Add(new Dictionary<string, object>
+                {
+                    { "kind", "ik" }, { "index", i }, { "name", k.targetObject?.name ?? "" }, { "label", "IK " + ViewportGizmos.Pretty(k.targetObject?.name) },
+                    { "group", "IK targets" }, { "canRotate", g.enableRot },
+                    { "animated", animated.TryGetValue(g, out var l) ? l : new List<object>() },
+                });
+            }
+            return list;
+        }
+
+        private static string BoneGroupLabel(OIBoneInfo.BoneGroup g, string n)
+        {
+            if ((g & OIBoneInfo.BoneGroup.Hair) != 0) return "Hair";
+            if ((g & OIBoneInfo.BoneGroup.Skirt) != 0) return "Skirt";
+            if ((g & OIBoneInfo.BoneGroup.Breast) != 0) return "Chest";
+            if ((g & OIBoneInfo.BoneGroup.Neck) != 0) return "Head & neck";
+            if ((g & OIBoneInfo.BoneGroup.LeftHand) != 0) return "Left fingers";
+            if ((g & OIBoneInfo.BoneGroup.RightHand) != 0) return "Right fingers";
+            bool left = n.EndsWith("_L"), right = n.EndsWith("_R");
+            if ((left || right) && (n.Contains("shoulder") || n.Contains("arm") || n.Contains("hand") || n.Contains("elbo") || n.Contains("wrist")))
+                return left ? "Left arm" : "Right arm";
+            if ((left || right) && (n.Contains("thigh") || n.Contains("leg") || n.Contains("foot") || n.Contains("toe") || n.Contains("knee") || n.Contains("ankle")))
+                return left ? "Left leg" : "Right leg";
+            if (n.Contains("neck") || n.Contains("head")) return "Head & neck";
+            return "Body";
+        }
+
         public static object AddModelTrack(string modelId, string ownerContains, ObjectCtrlInfo oci, float keyAt)
         {
             var model = Models.FirstOrDefault(m => m.id == modelId && m.owner != null && m.owner.IndexOf(ownerContains, StringComparison.OrdinalIgnoreCase) >= 0)
@@ -683,8 +743,24 @@ namespace StudioEX.Bridge.Api
             {
                 // Timeline's GuideObject Pos/Rot/Scale models take their target from Studio's *selected gizmo*,
                 // not from the OCI. Bind explicitly to this object's own guide object.
-                if (oci.guideObject == null) throw new BridgeException("That object has no transform to animate");
-                ip = new Interpolable(oci, oci.guideObject, model);
+                var guide = oci.guideObject;
+                if (oci is OCIChar oc && a.Has("bone"))
+                {
+                    // one of the character's bones: it needs FK on its part for the track to show (from the pose on screen)
+                    int bi = a.GetInt("bone", -1);
+                    if (bi < 0 || bi >= oc.listBones.Count) throw new BridgeException("No such bone");
+                    ViewportGizmos.EnsureFk(oc, bi);
+                    guide = oc.listBones[bi].guideObject;
+                }
+                else if (oci is OCIChar oc2 && a.Has("ik"))
+                {
+                    int ii = a.GetInt("ik", -1);
+                    if (ii < 0 || ii >= oc2.listIKTarget.Count) throw new BridgeException("No such IK target");
+                    ViewportGizmos.EnsureIk(oc2, ii);
+                    guide = oc2.listIKTarget[ii].guideObject;
+                }
+                if (guide == null) throw new BridgeException("That object has no transform to animate");
+                ip = new Interpolable(oci, guide, model);
                 if (Interpolables.TryGetValue(ip.GetHashCode(), out var already)) ip = already;
                 else
                 {

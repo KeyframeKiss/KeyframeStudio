@@ -927,6 +927,34 @@ export async function addTrack(model: TrackModel, oci: number | null, keyNow = t
   return id;
 }
 
+/** A character's bones and IK targets (for animating one directly). */
+export interface BoneEntry {
+  kind: 'bone' | 'ik';
+  index: number;
+  name: string;
+  label: string;
+  group: string;
+  canRotate?: boolean;
+  animated: ('rot' | 'pos' | 'scale')[];
+}
+
+export async function listBones(oci: number): Promise<BoneEntry[]> {
+  return (await call<BoneEntry[]>('timeline.bones', { oci })) ?? [];
+}
+
+/** Add a bone's (or IK target's) own track — its part switches to FK (or its limb to IK) — keyed at the playhead. */
+export async function addBoneTrack(oci: number, b: BoneEntry, what: 'rot' | 'pos') {
+  const tl = get().tl;
+  const args: Record<string, unknown> = { owner: 'Timeline', model: what === 'rot' ? 'guideObjectRot' : 'guideObjectPos', oci, [b.kind]: b.index };
+  if (tl) args.keyAt = get().snap ? snapToFrame(liveTime(), tl.fps) : liveTime();
+  const id = await edit<number>('timeline.addTrack', args);
+  if (id !== undefined) {
+    selectTracks([id]);
+    toast(`Added track “${b.label} ${what === 'rot' ? 'rotation' : 'position'}”`);
+  }
+  return id;
+}
+
 export function getKeyInfo(ref: KeyRef) {
   return bridge.request<import('../bridge/types').KeyInfo>('timeline.keyInfo', { track: ref.track, t: ref.t });
 }

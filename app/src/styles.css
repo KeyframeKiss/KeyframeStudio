@@ -6617,3 +6617,51 @@ html.frameless .header.mini-header {
 .vo-axes .z {
   color: #5599ff;
 }
+
+/* ---- bones in Add track ---- */
+.bone-tracks .bone-group-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 5px 10px;
+  background: none;
+  border: 0;
+  color: var(--text-1);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+.bone-tracks .bone-group-head:hover {
+  color: var(--text-0);
+  background: var(--bg-2);
+}
+.bone-tracks .bone-group-head .sub {
+  color: var(--text-3);
+  font-weight: 400;
+}
+.bone-row {
+  padding-left: 26px;
+}
+.bone-row .bone-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 4px;
+}
+.bone-row .btn.small {
+  padding: 2px 8px;
+  font-size: 11px;
+}
+.bone-picked-title {
+  padding: 4px 10px 0;
+  font-size: 11px;
+  color: var(--accent);
+}
+.bone-row.bone-picked {
+  background: var(--accent-soft);
+  border-radius: 6px;
+  margin: 2px 6px 6px;
+  padding-left: 12px;
+}

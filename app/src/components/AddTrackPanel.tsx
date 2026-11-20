@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { TrackModel } from '../bridge/types';
 import { addTrack, displayName, listModels, useStore } from '../state/store';
+import { BoneTracks } from './BoneTracks';
 import { Icon, TypeIcon } from './Icon';
 
 import { pressable } from '../lib/pressable';
@@ -83,12 +84,15 @@ export function AddTrackPanel() {
           </div>
         ) : loading && !models.length ? (
           <div className="empty">Loading…</div>
-        ) : groups.length === 0 ? (
+        ) : (
+          <>
+          {!global && target != null && node?.type === 'Char' && <BoneTracks oci={target} query={query} />}
+          {groups.length === 0 && !(node?.type === 'Char' && !global) ? (
           <div className="empty">
             <strong>Nothing found</strong>
             {query ? 'Try another search.' : 'No animatable properties for this object.'}
           </div>
-        ) : (
+          ) : (
           groups.map(([owner, list]) => (
             <div className="model-group" key={owner}>
               <div className="model-group-title">
@@ -113,6 +117,8 @@ export function AddTrackPanel() {
               })}
             </div>
           ))
+          )}
+          </>
         )}
       </div>
     </>

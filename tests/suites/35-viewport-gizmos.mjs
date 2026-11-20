@@ -363,6 +363,26 @@ export default async function (t) {
     check('golden ratio, diagonals and a spiral', st.guides.golden && st.guides.diagonals && st.guides.spiral === 2, JSON.stringify(st.guides));
   });
 
+  await t.step('animate a bone directly: the head’s rotation from the track list', async () => {
+    const bones = await ok('timeline.bones', { oci: id });
+    const head = bones.find((b) => b.kind === 'bone' && b.name === 'cf_j_head');
+    check('bones listed, grouped', bones.length > 50 && head && head.group === 'Head & neck' && bones.some((b) => b.kind === 'ik' && b.group === 'IK targets'), `${bones.length} · head in ${head?.group}`);
+    check('named like a person would', head?.label === 'Head', head?.label);
+    const before = (await ok('timeline.get')).tracks?.length ?? 0;
+    const trackId = await ok('timeline.addTrack', { owner: 'Timeline', model: 'guideObjectRot', oci: id, bone: head.index, keyAt: 0 });
+    check('a track is made', typeof trackId === 'number');
+    const tl = await ok('timeline.get');
+    const tr = tl.tracks.find((x) => x.id === trackId);
+    check('…on the head, with a key', tr && /cf_j_head/.test(tr.name ?? '') && (tr.keys?.length ?? tr.keyCount ?? 1) >= 1, JSON.stringify(tr && { name: tr.name, keys: tr.keys?.length }));
+    const h = await sim({ id, bone: 'cf_j_head' });
+    check('the head’s part is in FK (so the track drives it)', h.fk && h.activeFK.some(Boolean), JSON.stringify(h.activeFK));
+    const again = await ok('timeline.bones', { oci: id });
+    check('the list shows it animated', again.find((b) => b.kind === 'bone' && b.index === head.index)?.animated.includes('rot'));
+    await ok('undo');
+    const after = (await ok('timeline.get')).tracks?.length ?? 0;
+    check('undo removes the track', after === before, `${before} → ${after}`);
+  });
+
   await t.step('click filters', async () => {
     await ok('scene.select', { ids: [id] });
     await frame();

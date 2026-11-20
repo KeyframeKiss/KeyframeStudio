@@ -335,7 +335,7 @@ namespace StudioEX.Bridge.Api
         }
 
         /// <summary>"cf_j_forearm01_L" → "Forearm L"; "f_t_hand_R(work)" (an IK target) → "Hand R".</summary>
-        private static string Pretty(string n)
+        internal static string Pretty(string n)
         {
             if (string.IsNullOrEmpty(n)) return n;
             var s = n.Replace("(work)", "");
@@ -640,7 +640,7 @@ namespace StudioEX.Bridge.Api
         }
 
         /// <summary>Before a bone is turned by hand: its part goes to FK from the pose it has now; an IK limb hands over.</summary>
-        private static void EnsureFk(OCIChar c, int boneIndex)
+        internal static void EnsureFk(OCIChar c, int boneIndex)
         {
             var b = c.listBones[boneIndex];
             int part = FkPart(b.boneGroup);
@@ -670,7 +670,7 @@ namespace StudioEX.Bridge.Api
         }
 
         /// <summary>Before an IK target is moved by hand: IK for its limb only, every idle target where its bone is now.</summary>
-        private static void EnsureIk(OCIChar c, int index)
+        internal static void EnsureIk(OCIChar c, int index)
         {
             var ik = c.listIKTarget[index];
             int part = IkPart(ik.boneGroup);
