@@ -180,7 +180,12 @@ namespace StudioEX.Bridge.Api
             if (total.ElapsedMilliseconds > 1000) StudioBridgePlugin.Logger.LogInfo("Objects catalog lists: " + LastLoadTimes);
             if (list.Count == 0) throw new BridgeException("Studio hasn't read its item lists yet");
             _catalog = list;
-            _byKey = list.GroupBy(e => e.Key).ToDictionary(x => x.Key, x => x.First());
+            // a plain loop: LINQ's GroupBy over 40,000 keys took ~12 s on Studio's old Mono (freezing Studio)
+            var byKey = new Dictionary<string, Entry>(list.Count);
+            foreach (var e in list)
+                if (!byKey.ContainsKey(e.Key)) byKey[e.Key] = e;
+            _byKey = byKey;
+            LastLoadTimes += $", index {total.ElapsedMilliseconds} ms in all";
         }
 
         private static object Catalog()
