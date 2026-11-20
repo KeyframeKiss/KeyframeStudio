@@ -168,6 +168,7 @@ namespace StudioEX.Bridge.Api
             QueueState["phase"] = null;
             QueueState["audioError"] = null;
             AudioTrack.Silenced = true;
+            var size = RenderApi.PrepareSize(); // render at the picture size, never stretched
             var limit = RenderApi.SaveLimit(); // each shot is recorded in Seconds mode; the user's own mode comes back after
             try
             {
@@ -201,17 +202,19 @@ namespace StudioEX.Bridge.Api
                     yield return null;
                     while (RenderApi.Busy()) yield return null;
                     TimelineApi.PauseAt(start);
-                    // the scene's audio, mixed into the finished video (ffmpeg on a worker thread)
+                    // the finished video: cut to shape if it couldn't be rendered at the size, and the scene's audio mixed in
+                    // (ffmpeg on a worker thread)
                     var clips = RenderApi.WithAudio ? AudioTrack.ForRender(start, end) : null;
-                    var video = clips != null && clips.Count > 0 && !(bool)QueueState["cancel"] ? RenderApi.NewestVideo(startedAt) : null;
+                    bool crop = size != null && size.CropW > 0;
+                    var video = ((clips != null && clips.Count > 0) || crop) && !(bool)QueueState["cancel"] ? RenderApi.NewestVideo(startedAt) : null;
                     if (video != null)
                     {
-                        QueueState["phase"] = "Adding the audio";
+                        QueueState["phase"] = crop ? "Cutting to size" + (clips != null && clips.Count > 0 ? " and adding the audio" : "") : "Adding the audio";
                         string audioErr = null;
                         bool mixed = false;
                         var worker = new System.Threading.Thread(() =>
                         {
-                            try { audioErr = RenderApi.MixAudio(video, clips, start, end - start); }
+                            try { audioErr = RenderApi.MixAudio(video, clips, start, end - start, crop ? size.CropW : 0, crop ? size.CropH : 0); }
                             catch (Exception e) { audioErr = e.Message; }
                             mixed = true;
                         }) { IsBackground = true };
@@ -230,6 +233,7 @@ namespace StudioEX.Bridge.Api
             finally
             {
                 AudioTrack.Silenced = false;
+                RenderApi.RestoreSize(size);
                 RenderApi.RestoreLimit(limit);
                 QueueState["running"] = false;
                 _queue = null;

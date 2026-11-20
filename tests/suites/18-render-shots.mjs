@@ -154,6 +154,27 @@ export default async function (t) {
       check('the video has the audio in it', videos.length === 1 && /Audio: aac/.test(info) && /Video: h264/.test(info) && !q4.audioError, `${videos.join()} ${q4.audioError ?? ''} ${info.split('\n').filter((l) => /Stream|Duration/.test(l)).join(' | ')}`);
       const dur = /Duration: (\d+):(\d+):([\d.]+)/.exec(info);
       check('…as long as the render', !!dur && Math.abs(Number(dur[3]) - 1) < 0.15, dur?.[0]);
+
+      // another shape (vertical): rendered at that size, not the window stretched into it
+      const cap0 = await ok('render.capture');
+      await ok('audio.clear');
+      await ok('render.set', { limit: 'Seconds', limitNumber: 0.5, prewarm: 0, autoEncode: true, deleteFrames: true, format: 'MP4', resize: true, width: 180, height: 320 });
+      const outBefore2 = new Set(fs.readdirSync(outDir));
+      await ok('timeline.seek', { t: 0 });
+      await sleep(300);
+      await framesMadeBy(() => ok('render.start', {}));
+      const videos2 = fs.readdirSync(outDir).filter((f) => !outBefore2.has(f) && /\.mp4$/.test(f));
+      t.defer(() => videos2.forEach((f) => fs.rmSync(path.join(outDir, f), { force: true })));
+      let info2 = '';
+      if (videos2.length) {
+        const ffmpeg = path.join(path.dirname(t.paths.userData), 'BepInEx', 'plugins', 'VideoExport', 'ffmpeg', 'ffmpeg-64.exe');
+        info2 = spawnSync(ffmpeg, ['-hide_banner', '-i', path.join(outDir, videos2[0])], { encoding: 'utf8' }).stderr ?? '';
+      }
+      const stream = info2.split('\n').find((l) => /Video:/.test(l)) ?? '';
+      check('vertical 180×320 comes out 180×320', /\b180x320\b/.test(stream), `${videos2.join()} ${stream.trim()} — capture ${JSON.stringify(cap0)}`);
+      check('…with square pixels (cut to shape, not squished)', !/SAR (?!1:1)\d+:\d+/.test(stream), stream.trim());
+      const cap1 = await ok('render.capture');
+      check('VideoExport\'s capture and Screencap size are put back after', cap1.selected === cap0.selected && JSON.stringify(cap1.screencapSize) === JSON.stringify(cap0.screencapSize) && (await ok('render.status')).settings.resize === true, `${JSON.stringify(cap0)} → ${JSON.stringify(cap1)}`);
       const bad = await req('render.set', { format: 'MOV' });
       check('unknown format refused', !bad.ok);
     });

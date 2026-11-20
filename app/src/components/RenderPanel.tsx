@@ -62,11 +62,14 @@ export function RenderPanel() {
   const poll = useRef(0);
   const qpoll = useRef(0);
   const feature = hello?.features?.find((f) => f.id === 'render');
+  // what VideoExport captures with: through Screencap, "Window" really means Screencap's own size
+  const [capture, setCapture] = useState<{ plugins: string[]; selected: number; screencap: number; screencapSize: [number, number] | null; window: [number, number] } | null>(null);
 
   const load = useCallback(async () => {
     try {
       const r = await bridge.request<RenderStatus>('render.status');
       setSt(r);
+      bridge.request<typeof capture>('render.capture').then(setCapture).catch(() => undefined);
       setError(null);
       return r;
     } catch (e) {
@@ -150,7 +153,11 @@ export function RenderPanel() {
 
   const s = st.settings;
   const size = s.resize ? SIZES.find((x) => x.w === s.width && x.h === s.height)?.label ?? 'Custom' : 'Window';
-  const dims = s.resize ? `${s.width}×${s.height}` : 'window size';
+  const viaScreencap = !!capture && capture.selected === capture.screencap && !!capture.screencapSize;
+  // with no size picked: Screencap's own size when VideoExport captures through it, else the window
+  const native = viaScreencap ? capture!.screencapSize! : capture?.window ?? null;
+  const nativeLabel = native ? `${native[0]}×${native[1]}` : '';
+  const dims = s.resize ? `${s.width}×${s.height}` : nativeLabel || 'window size';
   const picked = shots.filter((x) => isIncluded(x.id));
   // VideoExport's number means loops in Timeline mode, seconds in Seconds mode, frames in Frames mode
   // timed renders start at the playhead (at the very end: from the start)
@@ -297,10 +304,10 @@ export function RenderPanel() {
           <div className="look-card-body">
             <div className="render-sizes">
               {SIZES.map((x) => (
-                <button key={x.label} className={`render-size ${size === x.label ? 'on' : ''}`} disabled={running} onClick={() => set(x.w ? { resize: true, width: x.w, height: x.h } : { resize: false })} title={x.w ? `${x.w}×${x.h}` : "Studio's window size"}>
-                  <i style={x.w ? { aspectRatio: `${x.w} / ${x.h}` } : { aspectRatio: '16 / 10', borderStyle: 'dashed' }} />
-                  <b>{x.label}</b>
-                  <small>{x.hint}</small>
+                <button key={x.label} className={`render-size ${size === x.label ? 'on' : ''}`} disabled={running} onClick={() => set(x.w ? { resize: true, width: x.w, height: x.h } : { resize: false })} title={x.w ? `${x.w}×${x.h} — rendered at this size (another shape is framed, never stretched)` : viaScreencap ? `Screencap's size (${nativeLabel}), set in its own settings` : "Studio's window size"}>
+                  <i style={x.w ? { aspectRatio: `${x.w} / ${x.h}` } : { aspectRatio: native ? `${native[0]} / ${native[1]}` : '16 / 10', borderStyle: 'dashed' }} />
+                  <b>{x.w ? x.label : viaScreencap ? 'Screencap' : x.label}</b>
+                  <small>{x.w ? x.hint : nativeLabel || x.hint}</small>
                 </button>
               ))}
               {size === 'Custom' && (

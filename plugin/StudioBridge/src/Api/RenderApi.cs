@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -82,6 +83,8 @@ namespace StudioEX.Bridge.Api
                 AccessTools.Method(T, "RecordVideo").Invoke(Plugin, null);
                 return Status();
             });
+            // what VideoExport captures with (for diagnostics and tests)
+            r.Add("render.capture", a => CaptureInfo());
             r.Add("render.stop", a => { AccessTools.Method(T, "StopRecording").Invoke(Plugin, null); return Status(); });
         }
 
@@ -101,6 +104,103 @@ namespace StudioEX.Bridge.Api
             Apply(new Dictionary<string, object> { { "limit", "Seconds" }, { "limitNumber", (double)seconds } });
             AccessTools.Method(T, "RecordVideo").Invoke(Plugin, null);
             return null;
+        }
+
+        // ---------------- picture size: render at the size, never stretch ----------------
+
+        /// <summary>What PrepareSize changed, to put back; Crop set when the video still needs cutting to shape.</summary>
+        public sealed class SizeState
+        {
+            public object Selected, Resize, OldX, OldY, Shot;
+            public int CropW, CropH;
+        }
+
+        private static object Screencap(out int index)
+        {
+            index = -1;
+            if (!(Get("_screenshotPlugins") is IList list)) return null;
+            for (int i = 0; i < list.Count; i++)
+                if (list[i] != null && list[i].GetType().Name.IndexOf("Screencap", StringComparison.OrdinalIgnoreCase) >= 0) { index = i; return list[i]; }
+            return null;
+        }
+
+        /// <summary>A size setting on VideoExport's Screencap capture: a plain int or a ConfigEntry&lt;int&gt;.</summary>
+        private static object SizeValue(object owner, string field, object set = null)
+        {
+            var fi = AccessTools.Field(owner.GetType(), field);
+            if (fi == null) return null;
+            var v = fi.GetValue(fi.IsStatic ? null : owner);
+            var prop = v?.GetType().GetProperty("Value");
+            if (prop != null)
+            {
+                var old = prop.GetValue(v, null);
+                if (set != null) prop.SetValue(v, Convert.ChangeType(set, prop.PropertyType), null);
+                return old;
+            }
+            if (set != null) fi.SetValue(fi.IsStatic ? null : owner, Convert.ChangeType(set, fi.FieldType));
+            return v;
+        }
+
+        private static void SetLoose(string f, object v)
+        {
+            var fi = AccessTools.Field(T, f);
+            fi.SetValue(fi.IsStatic ? null : Plugin, Convert.ChangeType(v, fi.FieldType));
+        }
+
+        /// <summary>
+        /// VideoExport's "resize" stretches the window's frames to the size, so another shape (vertical, square) comes
+        /// out squished. With a size set, record through Screencap at exactly that size instead (the camera frames the
+        /// shape itself, at full sharpness), with VideoExport's stretch off. Without Screencap: record the window and
+        /// cut the middle to shape afterwards (Crop). Null when nothing needed changing.
+        /// </summary>
+        public static SizeState PrepareSize()
+        {
+            if (Plugin == null || !(bool)Get("_resize")) return null;
+            int w = (int)Get("_resizeX"), h = (int)Get("_resizeY");
+            var st = new SizeState { Resize = Get("_resize"), Selected = Get("_selectedPlugin") };
+            var shot = Screencap(out int index);
+            if (shot != null && AccessTools.Field(shot.GetType(), "_resolutionX") != null)
+            {
+                st.Shot = shot;
+                st.OldX = SizeValue(shot, "_resolutionX", w);
+                st.OldY = SizeValue(shot, "_resolutionY", h);
+                SetLoose("_selectedPlugin", index);
+                Set("_resize", false);
+                return st;
+            }
+            float window = (float)Screen.width / Math.Max(1, Screen.height), target = (float)w / Math.Max(1, h);
+            if (Math.Abs(window - target) < 0.01f) return null; // same shape: VideoExport's own scaling is right
+            Set("_resize", false);
+            st.CropW = w;
+            st.CropH = h;
+            return st;
+        }
+
+        public static void RestoreSize(SizeState st)
+        {
+            if (st == null || Plugin == null) return;
+            if (st.Shot != null)
+            {
+                SizeValue(st.Shot, "_resolutionX", st.OldX);
+                SizeValue(st.Shot, "_resolutionY", st.OldY);
+            }
+            SetLoose("_selectedPlugin", st.Selected);
+            Set("_resize", st.Resize);
+        }
+
+        private static object CaptureInfo()
+        {
+            if (Plugin == null) throw new BridgeException("VideoExport is not installed");
+            var list = Get("_screenshotPlugins") as IList;
+            var shot = Screencap(out int index);
+            return new Dictionary<string, object>
+            {
+                { "plugins", list == null ? new List<object>() : list.Cast<object>().Select(p => (object)(p?.GetType().Name ?? "?")).ToList() },
+                { "selected", Convert.ToInt32(Get("_selectedPlugin")) },
+                { "screencap", index },
+                { "screencapSize", shot == null ? null : (object)new List<object> { SizeValue(shot, "_resolutionX"), SizeValue(shot, "_resolutionY") } },
+                { "window", new List<object> { Screen.width, Screen.height } },
+            };
         }
 
         /// <summary>The video VideoExport wrote since `since` (null when it only kept the frames).</summary>
@@ -135,12 +235,20 @@ namespace StudioEX.Bridge.Api
         /// start, at its volume, cut to the video's length. Runs ffmpeg (call it off the main thread). Null when done,
         /// else why not.
         /// </summary>
-        public static string MixAudio(string video, List<AudioTrack.RenderClip> clips, float start, float seconds)
+        public static string MixAudio(string video, List<AudioTrack.RenderClip> clips, float start, float seconds, int cropW = 0, int cropH = 0)
         {
             var ffmpeg = Ffmpeg();
             if (ffmpeg == null) return "VideoExport's ffmpeg wasn't found";
             string ext = Path.GetExtension(video).ToLowerInvariant();
             string codec = ext == ".webm" ? "libopus -b:a 160k" : ext == ".avi" ? "libmp3lame -b:a 192k" : "aac -b:a 192k";
+            clips = clips ?? new List<AudioTrack.RenderClip>();
+            // cut the middle to the size's shape, then scale (only when it couldn't be rendered at the size)
+            string vf = null, vcodec = "copy";
+            if (cropW > 0 && cropH > 0)
+            {
+                vf = "crop='min(iw,ih*" + cropW + "/" + cropH + ")':'min(ih,iw*" + cropH + "/" + cropW + ")',scale=" + cropW + ":" + cropH + ":flags=lanczos,setsar=1";
+                vcodec = ext == ".webm" ? "libvpx-vp9 -crf 30 -b:v 0" : ext == ".avi" ? "mpeg4 -q:v 2" : "libx264 -crf 18 -preset slow -pix_fmt yuv420p";
+            }
             var inv = System.Globalization.CultureInfo.InvariantCulture;
             var args = new System.Text.StringBuilder("-y -hide_banner -loglevel error -i \"" + video + "\"");
             var filter = new System.Text.StringBuilder();
@@ -162,10 +270,14 @@ namespace StudioEX.Bridge.Api
                 filter.Append("volume=" + c.Volume.ToString("0.###", inv) + "[a" + i + "];");
             }
             for (int i = 0; i < clips.Count; i++) filter.Append("[a" + i + "]");
-            filter.Append(clips.Count > 1 ? "amix=inputs=" + clips.Count + ":normalize=0:dropout_transition=0," : "anull,");
-            filter.Append("atrim=end=" + seconds.ToString("0.###", inv) + "[aout]");
-            var tmp = Path.Combine(Path.GetDirectoryName(video), Path.GetFileNameWithoutExtension(video) + ".with-audio" + ext);
-            args.Append(" -filter_complex \"" + filter + "\" -map 0:v -map \"[aout]\" -c:v copy -c:a " + codec + " \"" + tmp + "\"");
+            if (clips.Count > 0)
+            {
+                filter.Append(clips.Count > 1 ? "amix=inputs=" + clips.Count + ":normalize=0:dropout_transition=0," : "anull,");
+                filter.Append("atrim=end=" + seconds.ToString("0.###", inv) + "[aout]");
+            }
+            if (vf != null) filter.Append((clips.Count > 0 ? ";" : "") + "[0:v]" + vf + "[vout]");
+            var tmp = Path.Combine(Path.GetDirectoryName(video), Path.GetFileNameWithoutExtension(video) + ".finished" + ext);
+            args.Append(" -filter_complex \"" + filter + "\" -map " + (vf != null ? "\"[vout]\"" : "0:v") + (clips.Count > 0 ? " -map \"[aout]\" -c:a " + codec : "") + " -c:v " + vcodec + " \"" + tmp + "\"");
             var psi = new ProcessStartInfo(ffmpeg, args.ToString()) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardError = true, RedirectStandardOutput = true };
             using (var p = Process.Start(psi))
             {
