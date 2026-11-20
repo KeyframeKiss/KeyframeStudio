@@ -149,6 +149,12 @@ Direct manipulation is drawn in CharaStudio's own viewport, extending the system
 - **Accessories:** teal squares on the selected character's accessories; click to move / turn / scale their own adjustment (saved to the outfit worn and the saved outfit), with undo and typed values.
 - **Focus point:** a reticle where depth of field focuses; drag it onto a joint or item to focus at that distance, or onto a face to keep following the eyes.
 - **Composition guides:** golden-ratio lines, diagonals with their reciprocals and a golden spiral (four corners) join thirds, centre, safe areas and the frame.
+- **Third pass (2026-11-20):**
+  - **FK and IK together:** an IK limb follows its target while FK poses the rest. Studio files every limb bone under FK "Body" and applies FK after IK, so FK now stands down bone by bone on the limbs IK drives, and IK solves again right after FK. Scenes saved this way reload the same: Studio's loader drops IK when FK is on, and KK_FKIK turns body FK off on load, so the saved FK parts are put back afterwards.
+  - **Idle IK targets** are drawn and picked on their own joint (Studio leaves them wherever they were last used); grabbing one starts it there.
+  - **Overlapping markers fan out:** rest the pointer where several things overlap (a wrist joint and its IK target, knuckles, an accessory) and they spread into labelled chips to hover, click or press-drag. Quick repeated clicks still step through them.
+  - **Mode switching on the handles:** click the handles' middle to step Move → Rotate → Scale (only what the target can do), or rest on it for three mode chips. Studio's toolbar and the app follow.
+  - **In the app:** the transport bar's "View" group holds Paths, Ghosts, Overlays and Handles as icon toggles with one shared options menu.
 
 ---
 
@@ -220,6 +226,12 @@ Built on the Phase 2 overlays in Studio's viewport; the Phase 3 preview is used 
 - ABMX controls on the selected bone.
 - Optional bone influence visualization.
 
+**Status (2026-11-20): mostly done.**
+- **Viewport posing** (Phase 2): click a joint and turn it on its rings, drag IK targets, FK and IK together per limb, numeric entry in the app.
+- **Mirroring:** pose mirror (`M`) and copy pose between characters (Pose library).
+- **ABMX:** bone sliders in Pose › Character.
+- **Not done:** foot and hand locking, ABMX controls tied to the bone picked in the viewport, bone influence display.
+
 ### 4.2 Clothing and Accessory Editor
 - Select accessories in the viewport and edit them with gizmos.
 - Material and color controls for the selected item.
@@ -230,7 +242,7 @@ Built on the Phase 2 overlays in Studio's viewport; the Phase 3 preview is used 
 - **Saved outfits:** the outfit set, clothing states, shoes and accessory visibility, with favorites. Applying one is a single undo step and can dress several characters. Accessory on/off carries over only to the character it was saved from.
 - **Accessories:** grouped by body area, each area with an on/off switch, plus search and **Solo** (see one accessory alone, then restore).
 - **Clipping checks:** hold to hide all accessories or all clothes. These peeks stay out of undo.
-- **Not done:** editing accessories with handles in the viewport (Phase 2).
+- **Accessories in the viewport (2026-11-20):** teal markers on the selected character's accessories; click one to move, turn or scale its own adjustment with the handles or typed values. Saved to the outfit worn and the saved outfit, with undo.
 - **Material Editor (2026-11-18):** Look › Materials edits any material of the selected character or item through KK_MaterialEditor. It covers values, colours, textures (replace, export, tiling), shader, render queue and renderer switches, plus copy and paste. Any value can be a Timeline track. Koikatsu's internal part names are shown in plain English (`cf_O_mayuge` → Eyebrows).
 
 ### 4.3 Visual Camera Director
@@ -243,7 +255,8 @@ Extends the existing ten camera slots and camera keying.
 **Status (2026-11-17): camera moves done** (Animate › Camera › Camera moves).
 - **Moves:** orbit, dolly, zoom, pan, crane and truck. Each has a direction and an amount, a length, and smooth or linear easing.
 - **Keying:** keys are written from the camera as framed at the playhead. Orbits and pans get a key every 45°, because Timeline turns the camera along the shortest path. Moves chain (the next starts where the last ended). Camera keys inside the range are replaced. One undo step per move.
-- **Not done:** direct camera handles, paths and composition guides in the viewport. They need the Phase 2 overlays, which were skipped.
+- **In the viewport (2026-11-20, Phase 2):** scene cameras are drawn as view frames, click to select, and move or turn with the handles. Composition guides: thirds, golden ratio, diagonals, golden spiral, centre, safe areas and aspect frames. The depth of field's focus point is a reticle you drag onto what should be sharp. Motion paths include the camera target.
+- **Not done:** editing a camera move's path directly in the viewport.
 
 ### 4.4 Interactive Lighting
 Extends the existing Look workspace.
@@ -261,7 +274,8 @@ Extends the existing Look workspace.
 - **Your own rigs:** save your own light arrangement, relative to the character, as a reusable rig.
 - **Light limit:** vanilla Studio's 2-light limit is respected unless IllusionFixes' Unlimited Map Lights is installed.
 - **Caveat:** Koikatsu's toon shading reacts to extra lights mostly as colour and rim tints. The main character light shapes the shadows, so rigs read as subtle.
-- **Not done:** click-to-light and moving lights in the viewport (Phase 2).
+- **In the viewport (2026-11-20, Phase 2):** lights are drawn (bulb, direction, spot cone, point reach), click to select, and move or aim with the handles.
+- **Not done:** click-to-light (placing a light by clicking the spot it should light).
 
 **Deliverable:** Direct character, camera, and lighting editing with fewer menus.
 
@@ -295,7 +309,7 @@ Face Studio fine-tunes the face of a character already in the scene: eyes, brows
 - **Done:** KKPE bridge (`face.get / set / reset`, mirrored left/right, undo/redo), on-demand close-up (`face.view`: front, ¾ and side angles, zoom, body and other characters hidden, optional plain background, objects between camera and face clipped), and the Face Studio tab in the Pose workspace with 9 features and 40 face parts. Verified live: 9/9 API checks, edits visible in the close-up, Ctrl+Z restores both sides.
 - **Saved faces (5.3) done:** save the current face with a thumbnail (UserData/StudioEX/faces), switch with one click, "Original" to go back, apply to several selected characters, choose parts and strength, replace or blend; one undo step per apply. Verified live: 9/9 checks. Library tools for large collections: search (names, tags, source character), sort (recently used / newest / name), favorites pinned first, user tags with tag filters, rename, a "Browse all" gallery with multi-select delete, and a collapsible strip. Verified live with 30 test faces (6/6 checks, tag filter, gallery, collapse).
 - **Expressions, Shapes, Before/after, click-to-edit done (2026-11-17):** Expression tab (eyebrows, eyes, mouth, blush, tears, look direction) with saved expressions (same library tools as saved faces); Shapes tab for KKPE blendshapes of the head meshes with readable names; hold "Before" to see the face without adjustments; click a part in the close-up to open its controls. Pose thumbnails for the whole library (Phase 1.1) also done.
-- **Next:** saved faces could also store blendshape edits; highlight the selected part in Studio's viewport (Phase 2).
+- **Next:** saved faces could also store blendshape edits; highlight the selected face part in Studio's viewport with the Phase 2 overlays.
 
 ---
 
@@ -324,14 +338,16 @@ Lip-sync needs audio that plays in sync with Timeline inside Studio. Treat that 
 - Mouth shapes, expressions, gaze, and blink tracks over time.
 - Reusable facial performance clips.
 
-**Status (2026-11-18): done** (Shoot › Audio & lip-sync). Reusable facial clips are motion clips (6.1).
+**Status (2026-11-20): done** (Shoot › Audio; lip-sync and blinks in Animate › Face). Reusable facial clips are motion clips (6.1).
 - **Audio track:** a WAV plays in sync with Timeline (play, pause, seek, loop, drift corrected), with a start offset, volume and mute. It's saved with the scene through KKAPI scene data. The installed audio mods (KKVMDPlay with Timeline VMD Sync) handle only VMD audio, and Studio's outside sound can't seek, so the plugin plays the clip itself through Studio's WAV loader.
 - **Waveform:** shown in the dope sheet's time ruler.
 - **Lip-sync:** Mouth Open keys from the loudness, with sensitivity, noise threshold, smoothing, widest opening and keys per second. It replaces earlier lip-sync where the audio plays. Not phoneme-accurate.
 - **Face:** "Key face at playhead" (eyes, eyelids, brows, mouth, neck) and natural blinks over the whole timeline.
 - **Tests:** the math is unit-tested; suite 17 covers the plugin side.
 - **Vowels (2026-11-18):** the plugin computes an LPC spectral envelope of the voice per window (resampled to ~11 kHz); the app finds the first two formants, picks the nearest of A/I/U/E/O (shifted to the speaker's range), smooths the sequence, and keys the character's matching Mouth pattern (found by shape name, e.g. `f00_a_l_op`) along with Mouth Open. Unit tests use synthetic envelopes; suite 21 synthesizes a sung "a i u e o" WAV and checks the recognition end to end.
-- **Not done:** reusable facial performance clips, and vowel mouth shapes.
+- **Several clips (2026-11-19):** any number of audio clips, each with volume, left/right balance, speed, fade in/out and trims, drawn as lanes in the dope sheet (drag to move, double-click to listen). A headphone delay setting plays audio early to make up for Bluetooth lag.
+- **Lip-sync choices (2026-11-19):** pick which clip (and which part of it) drives which character, all speakers at once, style presets and a vowel map.
+- **In renders:** the clips are mixed into the rendered video (trims, speed, balance and fades included); audio stays silent while frames are captured.
 
 ### 6.3 Motion Cleanup Tools
 Reuses the bone sampling already used for motion paths.
@@ -347,6 +363,12 @@ Reuses the bone sampling already used for motion paths.
 - **Find sudden moves:** finds the stray key behind each spike. **Fix** puts it back on the line between its neighbours, which stay untouched.
 - **Check foot sliding:** samples the feet over the timeline and lists the ranges where a planted foot slides. There's no automatic fix; you key the foot in place.
 - The math is unit-tested (`npm run test:unit`). The plugin side is in suite 13.
+
+### 6.4 Timeline Editing (2026-11-20)
+- **Bones in Add track:** a character's bones and IK targets, grouped by body part, each with Rotation (and Position for IK targets). Adding one switches its part to FK (its limb to IK) from the pose on screen. The joint picked in the viewport is offered first.
+- **Snap you can feel:** dragging keys, scrubbing and moving audio land on a nearby key, the playhead, a ruler tick or a clip edge (within 8 px), with a line and a tag saying what; otherwise on whole frames. Keys can be snapped to on the same track only (default), on all tracks, or not at all. Alt places freely.
+- **Key values you can edit:** rotations as degrees around X / Y / Z, positions and scales per axis, any other number on its own. Drag sideways or click to type; Studio follows live and one drag is one undo.
+- **My easings:** save the curve you've shaped, apply it to any key, rename or delete it (UserData/StudioEX/easings).
 
 **Deliverable:** Faster animation authoring with less manual keyframe work.
 
@@ -376,7 +398,9 @@ Extends the Library workspace and the Phase 1 organization features.
 **Status (2026-11-17): character cards done** (Library › Characters).
 - **Browsing:** cards from UserData/chara with their card art, names read in the background (cached), search, female/male, folders, favorites, recent and tags.
 - **Using:** **Add** to the scene (undoable), or **Swap** the selected character for another card (pose kept).
-- **Not done:** thumbnails for items and animations (the game has none to show) and production templates.
+- **Objects (2026-11-19):** Library › Objects lists every item Studio can add, mods included, with pictures rendered out of sight (from the front, framed to fit), a big view from any side in the sidebar, search, groups and categories; add with one click. Pictures are cached in UserData/StudioEX/item-thumbs.
+- **Production templates:** Shoot › Templates (7.1).
+- **Not done:** thumbnails for animations (the game has none to show).
 
 ### 7.3 Workspace Layouts
 Saved layouts give most of the benefit of dockable panels at a fraction of the cost.
@@ -390,6 +414,7 @@ Saved layouts give most of the benefit of dockable panels at a fraction of the c
 - **Panels:** drag a side panel's edge to resize it, double-click to hide it; remembered per workspace.
 - **Compact mode** for small screens.
 - **Saved layouts** remember panel sizes, hidden panels, every panel's tab, compact mode, and the window's size and position. They're restored only onto a connected monitor.
+- **Mini mode (2026-11-20):** just the timeline in a small window kept on top of Studio (`Ctrl+Shift+M`), with its own size and place remembered.
 
 ### 7.4 Workflow Automation
 - Batch editing commands and repeatable macros.
@@ -410,17 +435,22 @@ First check what installed screenshot and recording mods already do; drive them 
 - Frame-sequence export, render queue, and progress tracking.
 - Optional video encoding.
 
-**Status (2026-11-17): done** (Animate › Render), driving the installed VideoExport plugin.
+**Status (2026-11-20): done** (Shoot › Render), driving the installed VideoExport plugin.
 - **Settings:** size presets (720p to 4K, square, vertical), 24/30/60 fps, MP4/WEBM/GIF/AVI.
 - **Length:** whole timeline, seconds, or until stopped. Physics warm-up loops.
 - **Encoding:** auto-encode, and delete the frames afterwards.
 - **Recording:** Start and Stop with progress, and an output-folder button.
 - **Render queue:** renders the ticked shots one after another, each as its own video.
 - **Compatibility:** probes VideoExport's members and switches Render off with the reason if it changes. Settings changed here last for the session; VideoExport keeps its own saved defaults.
+- **Timeline playback (2026-11-19):** every length mode plays the timeline from its start while recording, after optional warm-up loops (VideoExport alone never plays it).
+- **Audio in the video:** the audio clips are mixed and added with VideoExport's own ffmpeg.
+- **Other shapes are framed, not squished:** a vertical or square render is captured at that size, with an adjustable crop of the view.
+- **Versions:** several sizes and framings from one render (for example 16:9, 9:16 and 1:1), each named and saved as its own file; remembered across scenes.
 
 **Stills (2026-11-18):** Shoot › Stills.
 - Pictures can be 1–4× supersampled, PNG or JPG, with an optional transparent background.
 - Take one picture now, or one per saved view or per shot. Batches put the camera and playhead back afterwards.
+- Several versions (sizes and framings) with one press, like render versions.
 - Screencap (BepisPlugins) takes the pictures when installed; transparency needs it. Otherwise Keyframe Studio renders the camera itself.
 
 **Deliverable:** A customizable production environment for multi-shot scenes and videos.
@@ -450,12 +480,12 @@ Built-in post effects run on Studio's camera after its own effects:
 
 They're saved with the scene and undoable, and every value is a Timeline track. When xukmi FX Shaders is installed, its effect items in the scene are listed first: switch them, edit their values (Look › Materials) or add new ones. The page warns when two effects of the same kind are on.
 
-**Done.** Depth of field is built but not yet verified live.
+**Done.** Depth of field is verified live (suite 31); its focus point can be dragged in the viewport (Phase 2).
 
 ### 8.3 Camera Tools (Shoot › Shots & camera)
 - **First person:** from a character's eyes. RealPOV does it when installed.
 - **Follow:** keeps a body part centred. LockOnPlugin does it when installed.
-- **Frame guides:** thirds, centre, safe areas, and aspect frames with the outside dimmed. They're drawn over Studio's window only, never in renders.
+- **Frame guides:** thirds, golden ratio, diagonals, golden spiral, centre, safe areas, and aspect frames with the outside dimmed. They're drawn over Studio's window only, never in renders.
 
 **Done.**
 
