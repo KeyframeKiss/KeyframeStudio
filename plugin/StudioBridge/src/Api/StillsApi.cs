@@ -32,10 +32,14 @@ namespace StudioEX.Bridge.Api
         public static void Register(CommandRouter r)
         {
             r.Add("still.status", a => Status());
+            // with "versions": one picture per version (its size and framing), returned as a list
             r.Add("still.capture", a =>
             {
                 if (_running) throw new BridgeException("A batch of pictures is being taken");
-                return Capture(Options(a), a.GetString("name"));
+                var o = Options(a);
+                var versions = ShotApi.Versions(a);
+                if (versions == null || versions.Count == 0) return Capture(o, a.GetString("name"));
+                return versions.Select(v => (object)CaptureVersion(o, v, a.GetString("name"), versions.Count > 1)).ToList();
             });
             r.Add("still.batch", StartBatch);
             r.Add("still.set", a => { if (a.Has("useScreencap")) _useScreencap = a.GetBool("useScreencap", true); return Status(); });
@@ -77,6 +81,23 @@ namespace StudioEX.Bridge.Api
         }
 
         // ------------------------------------------------------------------ one picture
+
+        /// <summary>One picture as a version: its size (0 = the window) and camera framing; named after it when there are several.</summary>
+        private static object CaptureVersion(Opts baseOpts, Dictionary<string, object> v, string name, bool nameIt)
+        {
+            int w = v.GetInt("width", 0), h = v.GetInt("height", 0);
+            var o = new Opts { Width = w >= 16 ? w : Screen.width, Height = h >= 16 ? h : Screen.height, Supersample = baseOpts.Supersample, Quality = baseOpts.Quality, Transparent = baseOpts.Transparent, Jpg = baseOpts.Jpg };
+            if ((long)o.Width * o.Supersample * o.Height * o.Supersample > 8192L * 8192L) o.Supersample = Math.Max(1, (int)Math.Floor(Math.Sqrt(8192.0 * 8192.0 / ((long)o.Width * o.Height))));
+            var before = RenderFraming.Active;
+            RenderFraming.Active = RenderFraming.From(v.ContainsKey("framing") ? v["framing"] as Dictionary<string, object> : null);
+            try
+            {
+                string label = v.GetString("label") ?? "";
+                string full = string.Join(" ", new[] { name, nameIt ? label : null }.Where(x => !string.IsNullOrEmpty(x)).ToArray());
+                return Capture(o, full);
+            }
+            finally { RenderFraming.Active = before; }
+        }
 
         private static object Capture(Opts o, string name)
         {
@@ -195,6 +216,7 @@ namespace StudioEX.Bridge.Api
         {
             if (_running) throw new BridgeException("Already taking pictures");
             var o = Options(a);
+            var versions = ShotApi.Versions(a);
             string kind = a.GetString("kind");
             var s = Singleton<Studio.Studio>.Instance;
             var jobs = new List<KeyValuePair<string, Action>>();
@@ -227,14 +249,14 @@ namespace StudioEX.Bridge.Api
             else throw new BridgeException("Pick saved views or shots");
             _running = true;
             _done = 0;
-            _total = jobs.Count;
+            _total = jobs.Count * Math.Max(1, versions?.Count ?? 0);
             _error = null;
             _results.Clear();
-            StudioBridgePlugin.Instance.StartCoroutine(RunBatch(jobs, o));
+            StudioBridgePlugin.Instance.StartCoroutine(RunBatch(jobs, o, versions));
             return Status();
         }
 
-        private static IEnumerator RunBatch(List<KeyValuePair<string, Action>> jobs, Opts o)
+        private static IEnumerator RunBatch(List<KeyValuePair<string, Action>> jobs, Opts o, List<Dictionary<string, object>> versions)
         {
             var s = Singleton<Studio.Studio>.Instance;
             var camBack = s.cameraCtrl.Export();
@@ -251,9 +273,19 @@ namespace StudioEX.Bridge.Api
                     yield return null;
                     yield return null;
                     yield return new WaitForEndOfFrame();
-                    try { _results.Add(Capture(o, job.Key)); }
-                    catch (Exception e) { _error = job.Key + ": " + e.Message; }
-                    _done++;
+                    if (versions == null || versions.Count == 0)
+                    {
+                        try { _results.Add(Capture(o, job.Key)); }
+                        catch (Exception e) { _error = job.Key + ": " + e.Message; }
+                        _done++;
+                    }
+                    else
+                        foreach (var v in versions)
+                        {
+                            try { _results.Add(CaptureVersion(o, v, job.Key, versions.Count > 1)); }
+                            catch (Exception e) { _error = job.Key + " " + v.GetString("label") + ": " + e.Message; }
+                            _done++;
+                        }
                 }
             }
             finally

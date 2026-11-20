@@ -41,9 +41,9 @@ const NOTE = 'render.versions';
 const LAST = 'kf.render.versions';
 
 /** The versions used last on this PC: where a scene without its own starts from. */
-export function lastVersions(): RenderVersion[] | null {
+export function lastVersions(last = LAST): RenderVersion[] | null {
   try {
-    const v = JSON.parse(localStorage.getItem(LAST) ?? 'null');
+    const v = JSON.parse(localStorage.getItem(last) ?? 'null');
     return Array.isArray(v) && v.length ? v : null;
   } catch {
     return null;
@@ -51,14 +51,14 @@ export function lastVersions(): RenderVersion[] | null {
 }
 
 /** The scene's render versions (null until loaded / when the scene has none saved). */
-export function useRenderVersions() {
+export function useRenderVersions(note = NOTE, last = LAST) {
   const [versions, setLocal] = useState<RenderVersion[] | null>(null);
   const load = useCallback(() => {
     bridge
-      .request<{ value: RenderVersion[] | null }>('notes.get', { key: NOTE })
+      .request<{ value: RenderVersion[] | null }>('notes.get', { key: note })
       .then((r) => setLocal(Array.isArray(r.value) && r.value.length ? r.value : null))
       .catch(() => undefined);
-  }, []);
+  }, [note]);
   useEffect(() => {
     load();
     return bridge.on('notes.changed', load);
@@ -67,12 +67,12 @@ export function useRenderVersions() {
   const setVersions = useCallback((vs: RenderVersion[] | null) => {
     setLocal(vs);
     try {
-      if (vs) localStorage.setItem(LAST, JSON.stringify(vs));
+      if (vs) localStorage.setItem(last, JSON.stringify(vs));
     } catch {
       /* storage unavailable */
     }
     window.clearTimeout(timer.current);
-    timer.current = window.setTimeout(() => bridge.request('notes.set', { key: NOTE, value: vs }).catch(() => undefined), 250);
-  }, []);
+    timer.current = window.setTimeout(() => bridge.request('notes.set', { key: note, value: vs }).catch(() => undefined), 250);
+  }, [note, last]);
   return { versions, setVersions };
 }

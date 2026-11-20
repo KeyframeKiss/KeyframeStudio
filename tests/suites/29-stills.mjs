@@ -41,6 +41,24 @@ export default async function (t) {
       check('transparent PNG has an alpha channel', a.provider === 'Screencap' && pngType(a.path) === 6, String(pngType(a.path)));
     });
 
+  await t.step('several versions with one press', async () => {
+    const list = await ok('still.capture', {
+      width: 640,
+      height: 360,
+      supersample: 1,
+      format: 'jpg',
+      versions: [
+        { label: 'Wide', width: 320, height: 180, framing: { mode: 'timeline' } },
+        { label: 'Tall', width: 180, height: 320, framing: { mode: 'adjust', x: 0.2, y: 0, zoom: 1.3 } },
+      ],
+    });
+    for (const r of list ?? []) made.push(r.path);
+    check('one picture per version', Array.isArray(list) && list.length === 2, JSON.stringify(list?.map?.((r) => r.path)));
+    check('…each at its own size', list[0].width === 320 && list[0].height === 180 && list[1].width === 180 && list[1].height === 320);
+    check('…named after it', /Wide\.jpg$/.test(list[0].path) && /Tall\.jpg$/.test(list[1].path), list.map((r) => r.path.replace(/^.*[\\/]/, '')).join(', '));
+    check('the framing is only used for that picture', (await ok('render.framingPreview', { framing: null })) === false);
+  });
+
   const wait = async () => {
     let s;
     for (let i = 0; i < 60; i++) {

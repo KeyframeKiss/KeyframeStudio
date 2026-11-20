@@ -5585,7 +5585,7 @@ html.frameless .tooltip {
 .render-grid.stills-layout {
   grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
 }
-.stills-layout > :nth-child(3) { grid-column: 1 / -1; }
+.stills-layout > :nth-child(n + 3) { grid-column: 1 / -1; }
 @container center (max-width: 820px) {
   .render-grid.render-layout,
   .render-grid.stills-layout {
