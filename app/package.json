@@ -1,7 +1,7 @@
 {
   "name": "studio-ex",
   "private": true,
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Keyframe Studio — modern animation and posing companion for Koikatsu CharaStudio",
   "main": "electron/main.cjs",
   "scripts": {
