@@ -9,6 +9,7 @@ import { lookChanged } from './LookPresets';
 import { isRecording, macros } from '../lib/macros';
 import { runMacro } from './QuickActions';
 import { toggleCleanStudio } from '../state/studioUi';
+import { checkForUpdates } from '../lib/updates';
 interface Cmd {
   id: string;
   title: string;
@@ -68,6 +69,9 @@ function PaletteInner() {
       { id: 'studio.clean', group: 'Studio', title: "Clean Studio window (hide / show Studio's menus)", keywords: 'hide ui hideallui menus viewport', run: toggleCleanStudio },
       { id: 'lib.studio', group: 'Settings', title: 'Studio window settings', run: () => openLibrary('studio') },
       { id: 'lib.shortcuts', group: 'Settings', title: 'Keyboard shortcuts', kbd: '?', run: () => openLibrary('shortcuts') },
+      { id: 'lib.help', group: 'Settings', title: 'Help & guide', kbd: 'F1', keywords: 'help guide how getting started tips troubleshoot bug report', run: () => openLibrary('help') },
+      { id: 'lib.about', group: 'Settings', title: 'About & diagnostics', keywords: 'version bridge diagnostics bug report', run: () => openLibrary('about') },
+      { id: 'app.update', group: 'Settings', title: 'Check for updates', keywords: 'update new version release download', run: () => { openLibrary('about'); void checkForUpdates(); } },
       { id: 'play', group: 'Playback', title: 'Play / pause', kbd: 'Space', run: togglePlay },
       { id: 'stop', group: 'Playback', title: 'Stop (back to start)', run: stop },
       { id: 'start', group: 'Playback', title: 'Go to start', kbd: 'Home', run: () => seek(0) },

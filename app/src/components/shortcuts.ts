@@ -25,6 +25,7 @@ export const SHORTCUTS: [string, string][] = [
   ['F2', 'Rename object (outliner)'],
   ['Ctrl O', 'Scenes'],
   ['Ctrl ,', 'Settings'],
+  ['F1', 'Help & guide'],
   ['Drag key', 'Retime (snaps to frames; Alt = free)'],
   ['Graph: drag key ↕', 'Change value (Shift = 0.1 steps)'],
   ['Double-click row/curve', 'Insert key there'],

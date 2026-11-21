@@ -11,6 +11,7 @@ import { parseTime } from '../lib/time';
 
 import { applyLayout, deleteLayout, resetLayout, saveLayout, savedLayouts, setCompact, setPanelSizes, useCompact, usePanelSizes } from '../lib/layout';
 import { toggleCleanStudio, useStudioUi } from '../state/studioUi';
+import { UpdateNotices } from './Updates';
 const WORKSPACES: { id: Workspace; label: string; icon: string; hint: string }[] = [
   { id: 'animate', label: 'Animate', icon: 'animate', hint: 'Timeline, keys and curves (Ctrl+1)' },
   { id: 'pose', label: 'Pose', icon: 'pose', hint: 'Characters, poses and animations (Ctrl+2)' },
@@ -65,6 +66,7 @@ export function Header() {
         </button>
       </div>
       <CleanStudioButton />
+      <UpdateNotices />
       <span className={`conn ${status}`} title={status === 'open' ? 'Connected to CharaStudio' : status === 'connecting' ? 'Connecting…' : 'Waiting for CharaStudio'}>
         <span className={`status-dot ${status}`} />
         {status === 'open' ? 'Studio' : status === 'connecting' ? 'Connecting' : 'Offline'}
@@ -412,6 +414,9 @@ function AppMenu({ pinned, setPinned }: { pinned: boolean; setPinned: (v: boolea
         <div className="layout-menu">
           <button className="menu-item" onClick={() => (close(), openLibrary('settings'))}>
             <Icon name="settings" size={13} /> Settings <span className="kbd">Ctrl ,</span>
+          </button>
+          <button className="menu-item" onClick={() => (close(), openLibrary('help'))}>
+            <Icon name="book" size={13} /> Help &amp; guide <span className="kbd">F1</span>
           </button>
           <button className="menu-item" onClick={() => (close(), useStore.setState({ helpOpen: true }))}>
             <Icon name="keyboard" size={13} /> Keyboard shortcuts <span className="kbd">?</span>

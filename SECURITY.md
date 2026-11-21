@@ -18,9 +18,10 @@ attacker could do with it. You'll get an answer as soon as possible, and credit 
   exposes (open a file dialog, read a game picture, install the bridge into a Koikatsu folder).
 - **Files stay where they belong:** presets, poses and thumbnails are read and written only inside their own
   folders under `UserData`, and names are cleaned of path tricks.
-- **Nothing is sent anywhere** except what you ask for: the optional auto-translate sends Japanese names to the
-  translation service you choose (Google, DeepL with your key, or a local AI). Diagnostics are only copied to your
-  clipboard, with your Windows user name hidden.
+- **Nothing about you is sent anywhere.** The update check asks GitHub for this project's newest release (no ids,
+  no settings, a generic User-Agent; it can be turned off in **About & diagnostics**). The optional auto-translate
+  sends Japanese names to the translation service you choose (Google, DeepL with your key, or a local AI).
+  Diagnostics are only copied to your clipboard, with your Windows user name hidden.
 
 The release isn't code-signed yet, so Windows asks before the first run. Only download it from this repository's
 [Releases](../../releases).

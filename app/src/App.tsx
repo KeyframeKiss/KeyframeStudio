@@ -11,6 +11,7 @@ import { Disconnected, AnimateWorkspace, LibraryWorkspace, LookWorkspace, PoseWo
 import { PRESETS, toFlat } from './lib/curve';
 import { isInteractive } from './lib/pressable';
 import { startAutoTranslate } from './lib/translate';
+import { startUpdateChecks } from './lib/updates';
 import {
   applyCurveToSelected,
   copySelected,
@@ -67,6 +68,7 @@ export function App() {
   useEffect(() => {
     initBridge();
     startAutoTranslate();
+    startUpdateChecks();
   }, []);
 
   useEffect(() => {
@@ -90,6 +92,12 @@ export function App() {
       if (ctrl && WS_KEYS[k]) {
         e.preventDefault();
         setWorkspace(WS_KEYS[k]);
+        return;
+      }
+      if (k === 'f1' && !ctrl) {
+        e.preventDefault();
+        useStore.setState({ helpOpen: false });
+        openLibrary('help');
         return;
       }
       const el = e.target as HTMLElement;

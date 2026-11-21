@@ -4,6 +4,7 @@ import type { Feature } from '../bridge/types';
 import { buildReport, type DiagInfo } from '../lib/diagnostics';
 import { toast, useStore } from '../state/store';
 import { BridgeSetupCard } from './BridgeSetup';
+import { UpdatesCard } from './Updates';
 
 const STATUS: Record<Feature['status'], { label: string; cls: string }> = {
   ok: { label: 'Works', cls: 'ok' },
@@ -56,6 +57,7 @@ export function DiagnosticsPage() {
         <h2 className="page-title">About &amp; diagnostics</h2>
 
         <BridgeSetupCard />
+        <UpdatesCard />
 
         <section className="diag-card">
           <div className="diag-row">

@@ -96,7 +96,10 @@ features that need a missing one say so.
 4. Load a scene, click a character, open **Animate** and press `?` for the shortcuts.
 
 Windows may warn about an unknown publisher the first time (the app isn't code-signed yet): choose
-**More info → Run anyway**. Updating: replace the folder, then **Settings › About & diagnostics › Update the bridge**.
+**More info → Run anyway**. The app tells you when a new version is out (a notice in the top bar; it only asks
+GitHub for the newest release, and you can turn it off). Updating: replace the folder, then **Settings › About &
+diagnostics › Update the bridge**, and restart CharaStudio. **Settings › Help & guide** (`F1`) covers getting
+started, good habits and common fixes.
 Your presets live in `Koikatsu\UserData\StudioEX` and app settings in `%APPDATA%\studio-ex`, so updates keep them.
 
 ## Testing and reporting bugs
@@ -119,7 +122,7 @@ Most edits are one `Ctrl+Z` away, and nothing is saved into your scene until you
 | **Look** (`Ctrl+3`) | Presets · Settings · Effects · Materials · Lighting |
 | **Shoot** (`Ctrl+4`) | Shots & camera · Audio · Render · Stills · Templates |
 | **Library** (`Ctrl+5`) | Scenes · Characters · Objects (every item with pictures) · Quick actions |
-| **Settings** (`Ctrl+,`) | Mod settings · Studio window · Translations · Shortcuts · About & diagnostics |
+| **Settings** (`Ctrl+,`) | Help & guide (`F1`) · Mod settings · Studio window · Translations · Shortcuts · About & diagnostics (updates, bug reports) |
 
 The ⚙ menu also has keep-on-top, compact mode, **mini mode** (`Ctrl+Shift+M` — just the timeline in a small
 window kept on top of Studio) and saved layouts.

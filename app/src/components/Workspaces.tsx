@@ -41,6 +41,7 @@ import { FaceStudio } from './FaceStudio';
 import { ErrorBoundary } from './ErrorBoundary';
 import { SHORTCUTS } from './shortcuts';
 import { DiagnosticsPage } from './DiagnosticsPage';
+import { HelpGuide } from './HelpGuide';
 
 export function Disconnected() {
   const status = useStore((s) => s.status);
@@ -529,6 +530,7 @@ const LIBRARY_PAGES: PageDef[] = [
   { id: 'macros', label: 'Quick actions', icon: 'bolt', hint: 'Record and replay steps' },
 ];
 const SETTINGS_PAGES: PageDef[] = [
+  { id: 'help', label: 'Help & guide', icon: 'book', hint: 'Getting started, good habits, fixes' },
   { id: 'settings', label: 'Mod settings', icon: 'settings', hint: 'Every plugin option' },
   { id: 'studio', label: 'Studio window', icon: 'eyeOff', hint: "Hide Studio's menus: just the picture" },
   { id: 'translate', label: 'Translations', icon: 'translate', hint: 'Fix Japanese → English names' },
@@ -585,6 +587,7 @@ export function SettingsWorkspace() {
         )}
         {page === 'settings' && <ModSettings />}
         {page === 'about' && <DiagnosticsPage />}
+        {page === 'help' && <HelpGuide />}
         {page === 'studio' && <StudioWindowPage />}
         {page === 'shortcuts' && (
           <div className="page">

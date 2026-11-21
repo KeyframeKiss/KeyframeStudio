@@ -230,6 +230,7 @@ app.whenReady().then(() => {
   require('./log.cjs').register(ipcMain);
   require('./translate.cjs').register(ipcMain);
   require('./setup.cjs').register(ipcMain);
+  require('./updates.cjs').register(ipcMain);
   createWindow();
 });
 app.on('window-all-closed', () => app.quit());

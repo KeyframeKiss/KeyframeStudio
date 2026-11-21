@@ -41,6 +41,19 @@ export interface BridgeSetup {
   bundled: boolean;
 }
 
+/** The newest release on the project's GitHub page compared with this app (electron/updates.cjs). */
+export interface UpdateInfo {
+  current: string;
+  latest: string | null;
+  newer: boolean;
+  name: string | null;
+  publishedAt: string | null;
+  summary: string;
+  security: boolean;
+  url: string;
+  releasesUrl: string;
+}
+
 declare global {
   interface Window {
     studioEx?: {
@@ -70,6 +83,7 @@ declare global {
         pick(): Promise<BridgeSetup | null>;
       };
       appInfo?(): Promise<{ version: string; electron: string; chrome: string; node: string; os: string; logFile: string; home: string }>;
+      checkUpdate?(): Promise<UpdateInfo>;
     };
   }
 }
