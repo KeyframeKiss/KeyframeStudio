@@ -79,6 +79,10 @@ const SECTIONS: Section[] = [
           limb can use either one, and scenes reload the same way.
         </li>
         <li>
+          <b>Feet sliding?</b> Animate › Cleanup › <b>Lock a foot or hand</b> keeps it on its spot over a time range while the body
+          moves. <b>Check foot sliding</b> finds the slides, and each one has a <b>Lock</b> button.
+        </li>
+        <li>
           <b>Auto-key</b> (<K>R</K>) keys whatever you change as soon as you let go of the mouse. It's quick while you rough out
           poses. Turn it off when you only want to look around.
         </li>

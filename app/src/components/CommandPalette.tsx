@@ -62,6 +62,7 @@ function PaletteInner() {
       { id: 'anim.clips', group: 'Keys', title: 'Motion clips (save / apply)', keywords: 'clip reuse segment wave nod walk cycle library', run: () => showTab('animate', 'clips') },
       { id: 'shoot.templates', group: 'Shoot', title: 'Production templates', keywords: 'template staging setup reuse scene', run: () => showTab('shoot', 'templates') },
       { id: 'anim.cleanup', group: 'Keys', title: 'Clean up keys (smooth, retime, loop)', keywords: 'smooth retime loop pops sliding', run: () => showPanel('animate', 'cleanup') },
+      { id: 'anim.lock', group: 'Keys', title: 'Lock a foot or hand in place', keywords: 'lock pin plant foot hand sliding contact ik stick', run: () => showPanel('animate', 'cleanup') },
       { id: 'lib.scenes', group: 'Scenes', title: 'Open scene browser', kbd: 'Ctrl O', keywords: 'load import', run: () => openLibrary('scenes') },
       { id: 'scene.save', group: 'Scenes', title: 'Save scene (new file)', run: () => { void saveSceneFile(); } },
       { id: 'lib.translate', group: 'Settings', title: 'Fix translations', keywords: 'english japanese names', run: () => openLibrary('translate') },

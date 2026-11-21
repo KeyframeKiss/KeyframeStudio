@@ -7121,3 +7121,29 @@ a.btn {
 .help-faq dd {
   margin: 2px 0 0;
 }
+
+/* Animate › Cleanup › Lock a foot or hand */
+.limb-lock .limb-pick {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  margin-bottom: 8px;
+}
+.limb-lock .limb-pick > button {
+  justify-content: center;
+}
+.limb-lock .cleanup-row .input {
+  width: auto;
+}
+.limb-lock .limb-range {
+  width: 100%;
+  justify-content: center;
+  margin-bottom: 8px;
+}
+.limb-lock .limb-rot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-2);
+  font-size: 11px;
+  margin-bottom: 8px;
+}

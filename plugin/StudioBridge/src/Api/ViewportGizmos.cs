@@ -465,18 +465,18 @@ namespace StudioEX.Bridge.Api
 
         // ================================================================== FK / IK, without jumps
 
-        private static int FkPart(OIBoneInfo.BoneGroup g)
+        internal static int FkPart(OIBoneInfo.BoneGroup g)
         {
             for (int i = 0; i < FKCtrl.parts.Length; i++) if ((FKCtrl.parts[i] & g) != 0) return i;
             return -1;
         }
-        private static bool FkOn(OCIChar c, int part) => c.oiCharInfo.enableFK && part >= 0 && part < c.oiCharInfo.activeFK.Length && c.oiCharInfo.activeFK[part];
-        private static int IkPart(OIBoneInfo.BoneGroup g)
+        internal static bool FkOn(OCIChar c, int part) => c.oiCharInfo.enableFK && part >= 0 && part < c.oiCharInfo.activeFK.Length && c.oiCharInfo.activeFK[part];
+        internal static int IkPart(OIBoneInfo.BoneGroup g)
         {
             for (int i = 0; i < 5; i++) if (((OIBoneInfo.BoneGroup)(1 << i) & g) != 0) return i;
             return -1;
         }
-        private static bool IkOn(OCIChar c, int part) => c.oiCharInfo.enableIK && part >= 0 && part < c.oiCharInfo.activeIK.Length && c.oiCharInfo.activeIK[part];
+        internal static bool IkOn(OCIChar c, int part) => c.oiCharInfo.enableIK && part >= 0 && part < c.oiCharInfo.activeIK.Length && c.oiCharInfo.activeIK[part];
 
         /// <summary>
         /// Studio's own switch makes FK and IK exclusive: turning one on turns the other off for the whole body, and
@@ -689,7 +689,7 @@ namespace StudioEX.Bridge.Api
         }
 
         /// <summary>FK / IK switches, so undo puts the character's mode back with the pose.</summary>
-        private static Action KinematicsRestorer(OCIChar c)
+        internal static Action KinematicsRestorer(OCIChar c)
         {
             bool fk = c.oiCharInfo.enableFK, ik = c.oiCharInfo.enableIK;
             var afk = (bool[])c.oiCharInfo.activeFK.Clone();

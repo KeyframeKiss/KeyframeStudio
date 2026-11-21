@@ -5,6 +5,7 @@ import type { WireTrack } from '../bridge/types';
 import { findPops, footSlides, popCulprits, smoothKeys, type Attrs, type KeyVal, type SlideRange } from '../lib/motion';
 import { call, displayName, editTimeline, keyId, liveTime, parseKeyId, seek, selectedCharacters, selectKeys, toast, useStore } from '../state/store';
 import { Slider } from './CharacterPanel';
+import { LimbLockSection, LockSlideButton } from './LimbLock';
 
 type Values = Record<string, [number, Attrs][]>;
 
@@ -51,6 +52,7 @@ export function CleanupPanel() {
   const [pops, setPops] = useState<{ track: WireTrack; t: number; ratio: number }[] | null>(null);
   const [slides, setSlides] = useState<SlideRange[] | null>(null);
   const [sampling, setSampling] = useState(false);
+  const [sampledFor, setSampledFor] = useState<number | null>(null);
   const busy = status !== 'open' || !tl;
 
   // ---------------- smooth ----------------
@@ -141,6 +143,7 @@ export function CleanupPanel() {
   const checkFeet = async () => {
     if (!chars.length) return toast('Select the character to check');
     setSlides(null);
+    setSampledFor(chars[0]);
     const n = await call<number>('motion.sample', { id: chars[0], bones: ['cf_j_foot_L', 'cf_j_foot_R', 'cf_j_toes_L', 'cf_j_toes_R'], rate: 20 });
     if (n) setSampling(true);
   };
@@ -153,6 +156,8 @@ export function CleanupPanel() {
 
   return (
     <div className="panel-body cleanup">
+      <LimbLockSection />
+
       <div className="section">
         <h3>Works on</h3>
         <div className="hint" style={{ margin: 0 }}>
@@ -237,7 +242,7 @@ export function CleanupPanel() {
       <div className="section">
         <h3>
           Find problems
-          <Help text="Sudden moves: keys that jump much more than their neighbours (click one to go there and fix it). Foot sliding: ranges where a planted foot drifts — fix by keying the foot (or its IK target) in place at the start and end of each range." />
+          <Help text="Sudden moves: keys that jump much more than their neighbours (click one to go there and fix it). Foot sliding: ranges where a planted foot drifts — Lock keeps that foot on its spot for the range." />
         </h3>
         <button className="btn solid wide" disabled={busy} onClick={findSudden} title="Moves much faster than the rest of that track — usually a stray key">
           Find sudden moves {scope.list.length ? 'in selection' : 'in all tracks'}
@@ -286,6 +291,7 @@ export function CleanupPanel() {
                     {s.t0.toFixed(2)}s – {s.t1.toFixed(2)}s · {s.distance.toFixed(3)} units
                   </small>
                 </button>
+                {sampledFor != null && <LockSlideButton id={sampledFor} bone={s.bone} t0={s.t0} t1={s.t1} />}
               </div>
             ))}
           </div>

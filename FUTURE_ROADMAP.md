@@ -232,7 +232,8 @@ Built on the Phase 2 overlays in Studio's viewport; the Phase 3 preview is used 
 - **Viewport posing** (Phase 2): click a joint and turn it on its rings, drag IK targets, FK and IK together per limb, numeric entry in the app.
 - **Mirroring:** pose mirror (`M`) and copy pose between characters (Pose library).
 - **ABMX:** bone sliders in Pose › Character.
-- **Not done:** foot and hand locking, ABMX controls tied to the bone picked in the viewport, bone influence display.
+- **Foot and hand locking (2026-11-20):** Animate › Cleanup › Lock a foot or hand. The bridge steps through the range frame by frame, works out where the limb's IK target must sit under its moving parent to stay on one world spot, and keys it with the fewest linear keys that stay within 0.2% of the limb's length. It eases back into the limb's own motion afterwards (0–0.5 s), and reports when the body moves further than the limb reaches. A limb posed with FK is converted first: its FK motion over the whole timeline is baked into all of its IK targets, so nothing else changes. Keys, new tracks and the FK/IK switch are one undo step. Each slide found by Check foot sliding has a Lock button. Test suite 36: zero drift while locked, motion unchanged outside the range, no snap on release, undo/redo, reach warning.
+- **Not done:** ABMX controls tied to the bone picked in the viewport, bone influence display.
 
 ### 4.2 Clothing and Accessory Editor
 - Select accessories in the viewport and edit them with gizmos.
