@@ -70,15 +70,16 @@ namespace StudioEX.Bridge.Api
                     float dur = TimelineApi.Duration();
                     float n = Convert.ToSingle(Get("_limitDurationNumber"));
                     var versions = ShotApi.Versions(a);
+                    bool useShots = a.GetBool("useShots", true); // the shots' cameras and transitions, when there are shots
                     if (mode == "Timeline")
                     {
-                        ShotApi.StartRange(0f, dur, Warmups(), versions);
+                        ShotApi.StartRange(0f, dur, Warmups(), versions, useShots);
                         return Status();
                     }
                     float start = a.Has("from") ? a.GetFloat("from") : TimelineApi.PlaybackTime();
                     if (start >= dur - 0.01f) start = 0f; // at the end: from the start
                     float secs = mode == "Seconds" ? n : mode == "Frames" ? n / Math.Max(1, (int)Get("_fps")) : dur - start;
-                    ShotApi.StartRange(start, secs, Warmups(), versions);
+                    ShotApi.StartRange(start, secs, Warmups(), versions, useShots);
                     return Status();
                 }
                 AccessTools.Method(T, "RecordVideo").Invoke(Plugin, null);

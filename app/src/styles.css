@@ -8289,3 +8289,39 @@ a.btn {
 .sq-card-trans {
   color: var(--accent) !important;
 }
+
+/* the track past the end of the timeline (it was made shorter than the shots) */
+.sq-past {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  z-index: 5;
+  pointer-events: none;
+  border-left: 2px solid var(--danger);
+  background: repeating-linear-gradient(135deg, rgba(10, 11, 14, 0.55) 0 6px, rgba(255, 93, 93, 0.18) 6px 12px);
+}
+.sq-past span {
+  position: absolute;
+  top: 2px;
+  left: 4px;
+  font: 700 9.5px/12px var(--font);
+  color: #ff8a8a;
+  text-transform: none;
+}
+.sq-warn.past {
+  color: #ff8a8a;
+}
+.sq-fix {
+  font: inherit;
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--accent);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.sq-fix:focus-visible {
+  outline: 2px solid var(--accent);
+}

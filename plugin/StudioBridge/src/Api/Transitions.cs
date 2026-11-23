@@ -58,7 +58,7 @@ namespace StudioEX.Bridge.Api
             {
                 { "camera", cam != null ? cam.name : null },
                 { "component", fx != null }, { "enabled", fx != null && fx.enabled },
-                { "last", fx != null && all.Length > 0 && all[all.Length - 1] == fx },
+                { "last", fx != null && IsLast(cam, fx) },
                 { "shader", Mat != null ? Mat.shader.name : null },
                 { "calls", _calls }, { "drawn", _drawn }, { "error", _lastError },
                 { "outRT", OutRT != null }, { "outFor", _outFor }, { "outAge", Time.frameCount - _outFrame },
@@ -97,7 +97,27 @@ namespace StudioEX.Bridge.Api
                 if (!need) return;
                 fx = cam.gameObject.AddComponent<TransitionFx>();
             }
+            else if (need && !IsLast(cam, fx))
+            {
+                // another effect (fog, a colour grade…) was added after it: dips and dissolves have to come last,
+                // over the finished picture, so it moves to the end (components can't be reordered: a new one)
+                fx.enabled = false;
+                Destroy(fx);
+                fx = cam.gameObject.AddComponent<TransitionFx>();
+            }
             if (fx.enabled != need) fx.enabled = need;
+        }
+
+        private static bool IsLast(Camera cam, TransitionFx fx)
+        {
+            var all = cam.GetComponents<MonoBehaviour>();
+            for (int i = all.Length - 1; i >= 0; i--)
+            {
+                if (all[i] == fx) return true;
+                // only components that change the picture count (they have OnRenderImage)
+                if (all[i] != null && all[i].GetType().GetMethod("OnRenderImage", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic) != null) return false;
+            }
+            return true;
         }
 
         private void OnRenderImage(RenderTexture src, RenderTexture dst)

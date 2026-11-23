@@ -155,7 +155,9 @@ namespace StudioEX.Bridge
                     if (_inbox.Count == 0) break;
                     item = _inbox.Dequeue();
                 }
-                item.Key.Send(_router.Handle(item.Value));
+                CurrentClient = item.Key; // who asked (the preview stream sends its frames to that client only)
+                try { item.Key.Send(_router.Handle(item.Value)); }
+                finally { CurrentClient = null; }
             }
 
             // While ghosts are baked the timeline jumps around on purpose: don't report it as user activity.
@@ -164,6 +166,9 @@ namespace StudioEX.Bridge
         }
 
         internal int ClientCount => _server?.ClientCount ?? 0;
+
+        /// <summary>The client whose request is being handled right now (null outside a request).</summary>
+        internal static WsClient CurrentClient { get; private set; }
 
         internal void BroadcastBinary(byte[] data) => _server?.BroadcastBinary(data);
 

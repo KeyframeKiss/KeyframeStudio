@@ -1,7 +1,7 @@
 // Shot track editing: move, trim / move the cut, swap, reorder, split, duplicate, gaps and overlaps.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { covered, duplicateShot, fixOverlaps, moveShot, newShotAt, problems, reorder, room, shotAt, snapTime, splitShot, swapWith, trimShot } from '../../app/src/lib/shots.ts';
+import { covered, duplicateShot, fixOverlaps, moveShot, newShotAt, pastEnd, problems, reorder, room, shotAt, snapTime, splitShot, swapWith, trimShot, trimToEnd } from '../../app/src/lib/shots.ts';
 
 const S = (id, start, end) => ({ id, name: id.toUpperCase(), start, end });
 const at = (list, id) => list.find((s) => s.id === id);
@@ -75,4 +75,11 @@ test('gaps, overlaps, coverage, the shot under the playhead', () => {
   assert.equal(shotAt(l, 1.7).id, 'b', 'a later shot wins an overlap');
   assert.equal(shotAt(l, 5).id, 'c', 'the very end belongs to the last shot');
   assert.equal(shotAt(l, 3.5), null);
+});
+
+test('a timeline made shorter than the shots', () => {
+  const l = [S('a', 0, 3), S('b', 3, 6), S('c', 6, 8)];
+  assert.deepEqual(pastEnd(l, 5).map((x) => x.id), ['b', 'c']);
+  const t = trimToEnd(l, 5);
+  assert.deepEqual(t.map((x) => [x.id, x.start, x.end]), [['a', 0, 3], ['b', 3, 5]], 'b ends at the end, c (past it) is left out');
 });

@@ -44,6 +44,7 @@ export default async function (t) {
     const st = await ok('render.status');
     const dir = st.framesFolder;
     const before = new Set(fs.existsSync(dir) ? fs.readdirSync(dir) : []);
+    await sleep(1050); // VideoExport names its frame folders by the second: each render here gets a new one
     await fn();
     for (let i = 0; i < 60; i++) {
       await sleep(500);
@@ -66,27 +67,30 @@ export default async function (t) {
       // "from the playhead": the timeline has to play while it records, not stand still
       await ok('timeline.seek', { t: 1 });
       await sleep(300);
-      const times = [];
+      // the bridge's per-frame trace says what the timeline did on every frame (a 0.3 s render is over before a
+      // poll from here would see it)
+      const tracing = (await req('shots.trace', { on: true })).ok;
       const made = await framesMadeBy(async () => {
         await ok('render.start', {});
         for (let i = 0; i < 40; i++) {
           const st = await ok('render.status');
           const q = await ok('render.queueStatus');
           if (!st.recording && !q.running) break;
-          if (st.recording) times.push((await ok('timeline.state')).time);
           await sleep(30);
         }
       });
+      const trace = tracing ? await ok('shots.trace', {}) : [];
+      const times = trace.filter((r) => r[2]).map((r) => r[1]);
       const frames = made.length ? fs.readdirSync(made[0]).length : 0;
       check('3 frames captured', made.length === 1 && frames === 3, `${made.length} folders, ${frames} frames`);
-      check('the animation plays while recording (from the playhead)', times.length > 0 && Math.max(...times) > 1.05, times.map((x) => x.toFixed(2)).join(' '));
+      if (tracing) check('the animation plays while recording (from the playhead)', times.length > 0 && Math.max(...times) > 1.05, times.map((x) => x.toFixed(2)).join(' '));
       const after = await ok('timeline.state');
       check('the playhead goes back to where the render started', near(after.time, 1, 0.02) && !after.playing, String(after.time));
       // "to the end": from the playhead to the end of the timeline; the chosen length mode stays chosen
       const tl = await ok('timeline.state');
       await ok('render.set', { limit: 'none' });
       await ok('timeline.seek', { t: tl.duration - 0.3 });
-      await sleep(300);
+      await sleep(1100); // VideoExport names its frame folders by the second: a new second, a new folder
       const made2 = await framesMadeBy(() => ok('render.start', {}));
       const frames2 = made2.length ? fs.readdirSync(made2[0]).length : 0;
       check('"to the end" records the rest of the timeline', made2.length === 1 && frames2 >= 2 && frames2 <= 4, `${frames2} frames`);

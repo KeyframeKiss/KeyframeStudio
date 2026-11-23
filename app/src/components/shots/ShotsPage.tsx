@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { call, editTimeline, refreshShots, renderShots, saveShots, setLiveCuts, toast, useStore } from '../../state/store';
-import { byStart, covered, fixOverlaps, problems } from '../../lib/shots';
+import { call, editTimeline, refreshShots, renderShots, saveShots, setLiveCuts, setSettings, toast, useStore } from '../../state/store';
+import { byStart, covered, fixOverlaps, pastEnd, problems, trimToEnd } from '../../lib/shots';
 import { ContextMenu, type MenuItem } from '../ContextMenu';
 import { Help } from '../Help';
 import { Icon } from '../Icon';
@@ -84,7 +84,9 @@ export function ShotsPage() {
     ...(overlaps ? [{ label: 'Fix overlaps (each shot ends where the next starts)', action: () => saveShots(fixOverlaps(shots), 'Fix overlaps') }] : []),
   ];
 
-  const total = covered(shots);
+  const past = pastEnd(shots, duration);
+  const lastEnd = Math.max(0, ...shots.map((s) => s.end));
+  const total = covered(trimToEnd(shots, duration));
   return (
     <div className="sq-page">
       <div className="sq-main">
@@ -98,6 +100,19 @@ export function ShotsPage() {
               <>
                 {shots.length} shot{shots.length === 1 ? '' : 's'} · {total.toFixed(1)} of {duration.toFixed(1)} s
                 {gaps > 0 && <span className="sq-warn gap"> · {gaps} gap{gaps > 1 ? 's' : ''}</span>}
+                {past.length > 0 && (
+                  <span className="sq-warn past">
+                    {' · '}
+                    {past.length === 1 ? `${past[0].name} runs` : `${past.length} shots run`} past the end —{' '}
+                    <button className="sq-fix" onClick={() => saveShots(trimToEnd(shots, duration), 'Trim shots to the timeline')} title="Each shot ends by the end of the timeline; shots that would start past it are removed (Ctrl+Z brings them back)">
+                      trim to {duration.toFixed(1)} s
+                    </button>{' '}
+                    or{' '}
+                    <button className="sq-fix" onClick={() => setSettings({ duration: Math.ceil(lastEnd * 10) / 10 })} title="Make the timeline long enough for every shot">
+                      make the timeline {(Math.ceil(lastEnd * 10) / 10).toFixed(1)} s
+                    </button>
+                  </span>
+                )}
                 {overlaps > 0 && (
                   <button className="sq-warn overlap" onClick={() => saveShots(fixOverlaps(shots), 'Fix overlaps')} title="Two shots claim the same time. Click to make each end where the next starts">
                     · {overlaps} overlap{overlaps > 1 ? 's' : ''} — fix

@@ -46,6 +46,21 @@ export function RenderPanel() {
   const [error, setError] = useState<string | null>(null);
   const request = useStore((s) => s.renderShotIds);
   const [what, setWhat] = useState<'timeline' | 'shots'>(request ? 'shots' : 'timeline');
+  const [useShots, setUseShotsState] = useState(() => {
+    try {
+      return localStorage.getItem('kf.render.useShots') !== '0';
+    } catch {
+      return true;
+    }
+  });
+  const setUseShots = (v: boolean) => {
+    setUseShotsState(v);
+    try {
+      localStorage.setItem('kf.render.useShots', v ? '1' : '0');
+    } catch {
+      /* storage blocked */
+    }
+  };
   const [included, setIncluded] = useState<string[] | null>(request);
   useEffect(() => {
     if (!request) return;
@@ -109,7 +124,7 @@ export function RenderPanel() {
   };
   const start = async () => {
     if (what === 'shots') return startQueue();
-    const r = await call<RenderStatus>('render.start', sendVersions() ? { versions: toWire(versions) } : {});
+    const r = await call<RenderStatus>('render.start', { ...(sendVersions() ? { versions: toWire(versions) } : {}), useShots: shots.length > 0 && useShots });
     if (!r) return;
     setSt(r);
     toast('Rendering — Studio plays the animation and captures every frame. Leave it alone until it finishes.');
@@ -400,7 +415,12 @@ export function RenderPanel() {
                 </button>
               ))}
             </div>
-            <label className="rigs-opt" style={{ marginTop: 10 }}>
+            {shots.length > 0 && what === 'timeline' && (
+              <label className="rigs-opt" style={{ marginTop: 10 }} title="The render switches to each shot's camera at its cut and plays its transition (glide, dip, dissolve) — whether or not live cuts are on in Studio">
+                <input type="checkbox" checked={useShots} disabled={running} onChange={(e) => setUseShots(e.target.checked)} /> Use the shots ({shots.length}): their cameras, cuts and transitions
+              </label>
+            )}
+            <label className="rigs-opt" style={{ marginTop: shots.length > 0 && what === 'timeline' ? 0 : 10 }}>
               <input type="checkbox" checked={s.autoEncode} disabled={running} onChange={(e) => set({ autoEncode: e.target.checked })} /> Make the video when done
             </label>
             <label className="rigs-opt" style={{ marginTop: 0 }}>

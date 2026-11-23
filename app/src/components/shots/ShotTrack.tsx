@@ -47,7 +47,9 @@ export function ShotTrack() {
     return () => ro.disconnect();
   }, []);
 
-  const pps = Math.max(1, w / Math.max(0.1, duration));
+  // shots past the end of the timeline (it was made shorter) stay in view, past a marked end
+  const span = Math.max(duration, ...shots.map((s) => s.end));
+  const pps = Math.max(1, w / Math.max(0.1, span));
   const xOf = (t: number) => t * pps;
   const tOf = (x: number) => Math.min(duration, Math.max(0, x / pps));
   const sorted = useMemo(() => byStart(shots), [shots]);
@@ -175,7 +177,7 @@ export function ShotTrack() {
   };
 
   const ticks: number[] = [];
-  for (let t = 0; t <= duration + 1e-6 && ticks.length < 400; t += step) ticks.push(Math.round(t * 1000) / 1000);
+  for (let t = 0; t <= span + 1e-6 && ticks.length < 400; t += step) ticks.push(Math.round(t * 1000) / 1000);
 
   return (
     <div className="sq-track-wrap">
@@ -224,6 +226,11 @@ export function ShotTrack() {
           }}
         >
           {laneDrop != null && <div className="sq-lane-drop" style={{ left: laneDrop }} />}
+          {span > duration + 1e-3 && (
+            <div className="sq-past" style={{ left: xOf(duration) }} title={`Past the end of the timeline (${duration.toFixed(2)} s): shots here don't play`}>
+              <span>end</span>
+            </div>
+          )}
           {issues
             .filter((p) => p.kind === 'gap')
             .map((p) => (

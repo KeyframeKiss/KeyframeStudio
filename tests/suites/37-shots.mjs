@@ -1,3 +1,7 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { spawnSync } from 'node:child_process';
+
 export const name = 'Shots: undo, live cuts, camera types, angles, the monitor, transitions, pictures, frame guides, looping, baked cuts';
 
 export default async function (t) {
@@ -264,6 +268,51 @@ export default async function (t) {
     await ok('undo');
     await withTrans(undefined);
     check('back to a hard cut', !(await shot('B')).trans);
+  });
+
+  await t.step('a render uses the shots (live cuts off): first frame, the cut, a dip', async () => {
+    if (!t.has('render')) return t.say('VideoExport not usable: skipped');
+    await ok('shots.setLiveCuts', { on: false });
+    await ok('camera.setFov', { fov: 30 });
+    await sleep(200);
+    await ok('shots.set', { shots: [{ id: 'A', name: 'Wide', start: 0, end: 2 }, { id: 'B', name: 'Close', start: 2, end: 4, trans: { type: 'dipBlack', dur: 1, ease: 'linear' } }], label: 'Shots' });
+    await ok('shots.captureCamera', { id: 'A' });
+    await ok('camera.setFov', { fov: 6 });
+    await sleep(200);
+    await ok('shots.captureCamera', { id: 'B' });
+    await ok('camera.setFov', { fov: 60 }); // Studio's own view: nothing like either shot
+    const original = (await ok('render.status')).settings;
+    t.defer(() => req('render.set', { fps: original.fps, exportFps: original.exportFps, limit: original.limit, limitNumber: original.limitNumber, format: original.format, resize: original.resize, width: original.width, height: original.height, autoEncode: original.autoEncode, deleteFrames: original.deleteFrames, prewarm: original.prewarm }));
+    await ok('render.set', { fps: 30, limit: 'Seconds', limitNumber: 4, autoEncode: false, deleteFrames: false, resize: true, width: 320, height: 180, prewarm: 0 });
+    const dir = (await ok('render.status')).framesFolder;
+    const before = new Set(fs.existsSync(dir) ? fs.readdirSync(dir) : []);
+    await ok('timeline.resetPose');
+    await sleep(300);
+    await ok('render.start', { from: 0 });
+    for (let i = 0; i < 600; i++) {
+      await sleep(250);
+      const st = await ok('render.status');
+      const q = await ok('render.queueStatus');
+      if (!st.recording && !st.encoding && !q.running) break;
+    }
+    const made = (fs.existsSync(dir) ? fs.readdirSync(dir) : []).filter((f) => !before.has(f));
+    t.defer(() => made.forEach((f) => fs.rmSync(path.join(dir, f), { recursive: true, force: true })));
+    check('frames recorded', made.length === 1);
+    if (!made.length) return;
+    const folder = path.join(dir, made[0]);
+    const files = fs.readdirSync(folder).filter((f) => /\.(png|jpg|bmp)$/i.test(f)).sort((a, b) => parseInt(a) - parseInt(b));
+    const ffmpeg = path.join(path.dirname(t.paths.userData), 'BepInEx', 'plugins', 'VideoExport', 'ffmpeg', 'ffmpeg-64.exe');
+    const grey = (f) => spawnSync(ffmpeg, ['-v', 'error', '-i', path.join(folder, f), '-vf', 'scale=8:8', '-f', 'rawvideo', '-pix_fmt', 'gray', '-'], { maxBuffer: 1 << 16 }).stdout;
+    const mean = (b) => b.reduce((n, x) => n + x, 0) / b.length;
+    const diff = (a, b) => a.reduce((n, x, i) => n + Math.abs(x - b[i]), 0) / a.length;
+    const at = (sec) => grey(files[Math.min(files.length - 1, Math.round(sec * 30))]);
+    const a = at(1), b = at(3.5), first = at(0), cut = at(2);
+    t.metric('rendered frames', files.length, '');
+    check('the two shots look different in the render', diff(a, b) > 5, diff(a, b).toFixed(1));
+    check('frame 0 is shot A (not Studio’s own view)', diff(first, a) < 3, diff(first, a).toFixed(1));
+    check('black at the cut (the dip)', mean(cut) < 12, mean(cut).toFixed(1));
+    check('shot B after the dip', diff(at(3.5), b) < 1 && diff(at(3), b) < 3);
+    check('Studio’s own view is back after the render', near(await fovNow(), 60, 0.05), String(await fovNow()));
   });
 
   await t.step('bake cuts', async () => {

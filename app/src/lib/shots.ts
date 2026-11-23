@@ -142,6 +142,14 @@ export function newShotAt(shots: ShotLike[], t: number, duration: number): { sta
   return end - start >= MIN_SHOT - EPS ? { start: r4(start), end: r4(end) } : null;
 }
 
+/** Shots that run past the end of the timeline (they won't play there). */
+export const pastEnd = <T extends ShotLike>(shots: T[], duration: number) => shots.filter((s) => s.end > duration + 1e-3);
+
+/** Every shot ends by the end of the timeline; shots that would start there or later are left out. */
+export function trimToEnd<T extends ShotLike>(shots: T[], duration: number): T[] {
+  return shots.filter((s) => s.start < duration - MIN_SHOT + EPS).map((s) => (s.end > duration ? { ...s, end: r4(duration) } : s));
+}
+
 export interface Problem {
   kind: 'gap' | 'overlap';
   start: number;

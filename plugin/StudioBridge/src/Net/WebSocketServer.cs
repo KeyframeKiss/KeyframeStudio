@@ -118,6 +118,7 @@ namespace StudioEX.Bridge.Net
         private volatile bool _open;
 
         public int Id { get; }
+        public bool IsOpen => _open;
 
         internal WsClient(WebSocketServer server, TcpClient tcp, int id)
         {

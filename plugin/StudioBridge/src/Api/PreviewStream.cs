@@ -37,6 +37,9 @@ namespace StudioEX.Bridge.Api
         private bool _delayed;  // read back one game frame after rendering (GPU has finished: shorter stall)
         private bool _pendingRead;
         private bool _program;  // render through the playhead's shot camera (the monitor), Studio's view untouched
+        // the client that asked for the stream: only it gets the frames (others — tests, a second window — never
+        // asked for megabytes a second, and a client that doesn't read them gets dropped)
+        private WsClient _target;
         internal static bool ProgramOn => Instance != null && Instance._on && Instance._program;
         private double _captureMs;
         private int _captureSeq;
@@ -64,6 +67,7 @@ namespace StudioEX.Bridge.Api
                 Instance._raw = a.GetString("format") == "raw";
                 Instance._delayed = a.GetBool("delayed", true);
                 Instance._program = a.GetBool("program");
+                Instance._target = StudioBridgePlugin.CurrentClient;
                 int w = a.GetInt("width", 1280), h = a.GetInt("height", 720);
                 // the shape of Studio's window (what renders), even width and height for the encoder
                 if (a.GetBool("matchScreen") && Screen.width > 0) h = Mathf.Max(90, Mathf.RoundToInt(w * (float)Screen.height / Screen.width / 2f) * 2);
@@ -81,6 +85,7 @@ namespace StudioEX.Bridge.Api
             // Game frame time, always measured, so "preview off" gives the baseline.
             _gameDt = Mathf.Lerp(_gameDt, Time.unscaledDeltaTime, 0.05f);
             if (_on && StudioBridgePlugin.Instance != null && StudioBridgePlugin.Instance.ClientCount == 0) Stop();
+            if (_on && _target != null && !_target.IsOpen) Stop(); // the window that asked for it went away
         }
 
         private object Start(int w, int h, float fps, int quality)
@@ -139,7 +144,13 @@ namespace StudioEX.Bridge.Api
                 lock (_outLock) { msg = _outgoing; _outgoing = null; }
                 if (msg == null) continue;
                 sw.Reset(); sw.Start();
-                try { StudioBridgePlugin.Instance.BroadcastBinary(msg); } catch { }
+                try
+                {
+                    var to = _target;
+                    if (to != null) to.SendBinary(msg);
+                    else StudioBridgePlugin.Instance.BroadcastBinary(msg);
+                }
+                catch { }
                 _sendMs = Ema(_sendMs, sw.Elapsed.TotalMilliseconds);
             }
         }
@@ -153,7 +164,8 @@ namespace StudioEX.Bridge.Api
                 try
                 {
                     if (_pendingRead) { _pendingRead = false; ReadAndShip(); } // rendered last game frame
-                    if (Time.unscaledTime < _next || ViewportTools.Busy) continue;
+                    // a render is recording: Studio's frames are all its own (the monitor waits)
+                    if (Time.unscaledTime < _next || ViewportTools.Busy || ShotApi.Rendering) continue;
                     _next = Time.unscaledTime + 1f / _fps;
                     if (!Render()) continue;
                     if (_delayed) _pendingRead = true;

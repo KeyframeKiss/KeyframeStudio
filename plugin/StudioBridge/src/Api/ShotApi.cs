@@ -35,6 +35,15 @@ namespace StudioEX.Bridge.Api
         /// <summary>How a shot starts: a hard cut, a glide from the previous shot's camera, a dip to black / white, a dissolve.</summary>
         private static readonly string[] TransTypes = { "cut", "glide", "dipBlack", "dipWhite", "dissolve" };
         private static float _liveT = -1f;
+        // a render with the shots: their cameras and transitions, live cuts on or not
+        private static bool _rendering, _renderShots;
+        /// <summary>A render (one range or the shot queue) is under way.</summary>
+        internal static bool Rendering => (bool)QueueState["running"];
+        /// <summary>Shots drive the camera: live cuts, or a render that uses the shots.</summary>
+        private static bool ShotsActive => _liveCuts || (_rendering && _renderShots);
+        private static List<object> _trace;
+        private static string _traceShot;
+        private static bool _traceApplied;
         /// <summary>Angles: named camera setups to reuse across shots ({id, name, cam, thumb, slot?}).</summary>
         private static List<Dictionary<string, object>> _angles = new List<Dictionary<string, object>>();
         internal static List<Dictionary<string, object>> All => _shots;
@@ -59,8 +68,15 @@ namespace StudioEX.Bridge.Api
                 yield return eof;
                 try
                 {
+                    if (_trace != null && _trace.Count < 4000)
+                    {
+                        var c = Camera.main;
+                        _trace.Add(new List<object> { Time.frameCount, Math.Round(TimelineApi.PlaybackTime(), 4), TimelineApi.Playing(), _traceShot, _traceApplied, c != null ? Math.Round(c.fieldOfView, 2) : -1, TransitionFx.Live?.Type, Math.Round(Time.deltaTime, 4) });
+                        _traceApplied = false;
+                    }
                     if (_shots.Count == 0 || !TimelineApi.Available || ViewportTools.Busy) continue;
-                    var st = TransitionFx.Live ?? (PreviewStream.ProgramOn ? Compute(TimelineApi.PlaybackTime()) : null);
+                    // live cuts / renders make it in LateUpdate, for the same frame; this is for the monitor alone
+                    var st = TransitionFx.Live == null && PreviewStream.ProgramOn ? Compute(TimelineApi.PlaybackTime()) : null;
                     if (st?.Out == null) continue;
                     var studio = Singleton<Studio.Studio>.Instance;
                     if (studio == null || studio.ociCamera != null) continue;
@@ -102,6 +118,13 @@ namespace StudioEX.Bridge.Api
             });
             r.Add("shots.fromAngle", FromAngle);
             r.Add("shots.fxDiag", a => TransitionFx.Diag());
+            // a per-frame trace of live cuts (for finding timing problems in renders): {on} starts, {} returns it
+            r.Add("shots.trace", a =>
+            {
+                var t = _trace;
+                _trace = a.GetBool("on") ? new List<object>() : null;
+                return t ?? new List<object>();
+            });
             r.Add("angles.add", AngleAdd);
             r.Add("angles.update", AngleUpdate);
             r.Add("angles.set", AnglesSet);
@@ -182,11 +205,12 @@ namespace StudioEX.Bridge.Api
 
         private static void SetAll(List<object> list)
         {
-            float dur = TimelineApi.Duration();
+            // times are kept as they are, even past the end of the timeline: shortening it and lengthening it again
+            // loses nothing (the app shows those shots past the end and offers to trim them or fit the timeline)
             var next = new List<Dictionary<string, object>>();
             foreach (var o in list.OfType<Dictionary<string, object>>())
             {
-                float s = Mathf.Clamp(o.GetFloat("start"), 0f, dur), e = Mathf.Clamp(o.GetFloat("end"), 0f, dur);
+                float s = Mathf.Max(0f, o.GetFloat("start")), e = Mathf.Max(0f, o.GetFloat("end"));
                 if (e - s < 0.05f) throw new BridgeException("Shot “" + o.GetString("name") + "” needs an end after its start");
                 var shot = new Dictionary<string, object>
                 {
@@ -589,7 +613,7 @@ namespace StudioEX.Bridge.Api
         private void LateUpdate()
         {
             var studio = Singleton<Studio.Studio>.Instance;
-            if (!_liveCuts || _shots.Count == 0 || !TimelineApi.Available || ViewportTools.Busy || studio == null || studio.ociCamera != null)
+            if (!ShotsActive || _shots.Count == 0 || !TimelineApi.Available || ViewportTools.Busy || studio == null || studio.ociCamera != null)
             {
                 // sampling / ghost baking jump around on purpose; a scene camera is being looked through
                 if (TransitionFx.Live != null) { TransitionFx.Live = null; TransitionFx.Sync(Camera.main); }
@@ -610,7 +634,6 @@ namespace StudioEX.Bridge.Api
                 // a transition: its picture effect, and for glides / dissolves the camera it needs
                 var tr = Compute(t);
                 TransitionFx.Live = tr;
-                TransitionFx.Sync(Camera.main);
                 if (tr?.Cam != null)
                 {
                     if (playing || moved || entered)
@@ -618,12 +641,18 @@ namespace StudioEX.Bridge.Api
                         ApplyCamera(tr.Cam);
                         PlaceMainCamera(tr.Cam);
                     }
+                    // a dissolve's outgoing picture for this very frame (its first frame included)
+                    if (tr.Out != null) TransitionFx.RenderOutgoing(Camera.main, tr.Out);
+                    TransitionFx.Sync(Camera.main);
                     return;
                 }
+                TransitionFx.Sync(Camera.main);
+                _traceShot = shot?.GetString("id");
                 if (shot == null) return;
                 if (shot.GetString("camMode") != "still") return; // camera keys, first person or follow drive it
                 if (entered || playing)
                 {
+                    _traceApplied = true;
                     ApplyCamera(shot);
                     PlaceMainCamera(shot); // this very frame, not the next (a render records it)
                 }
@@ -689,13 +718,14 @@ namespace StudioEX.Bridge.Api
             if (TimelineApi.Pending() > 0) throw new BridgeException("Key or reset your unkeyed changes first — rendering plays the timeline");
             // VideoExport must be usable before we start moving the playhead around
             if (RenderApi.Probe() != null) throw new BridgeException("Render needs VideoExport");
+            _renderShots = true; // one video per shot: through the shots' cameras
             _queue = _i.StartCoroutine(_i.RunQueue(Jobs(shots, Versions(a), true), RenderApi.Warmups()));
             return QueueState;
         }
 
         /// <summary>Render `seconds` of the timeline from `start` as one video per version, playing it while recording
         /// (VideoExport's own modes only record whatever is on screen, so the animation wouldn't move).</summary>
-        public static object StartRange(float start, float seconds, int warmups = 0, List<Dictionary<string, object>> versions = null)
+        public static object StartRange(float start, float seconds, int warmups = 0, List<Dictionary<string, object>> versions = null, bool useShots = true)
         {
             if ((bool)QueueState["running"]) throw new BridgeException("A render is already running");
             if (!TimelineApi.Available) throw new BridgeException("Rendering the animation needs Timeline");
@@ -703,6 +733,7 @@ namespace StudioEX.Bridge.Api
             if (RenderApi.Probe() != null) throw new BridgeException("Render needs VideoExport");
             if (seconds <= 0.01f) throw new BridgeException("Nothing to render: the playhead is at the end of the timeline");
             var range = new Dictionary<string, object> { { "name", "Timeline" }, { "start", (double)start }, { "end", (double)(start + seconds) } };
+            _renderShots = useShots && _shots.Count > 0;
             _queue = _i.StartCoroutine(_i.RunQueue(Jobs(new List<Dictionary<string, object>> { range }, versions, false), warmups));
             return QueueState;
         }
@@ -751,6 +782,11 @@ namespace StudioEX.Bridge.Api
             QueueState["audioError"] = null;
             QueueState["files"] = new List<object>();
             AudioTrack.Silenced = true;
+            _rendering = true;
+            // with live cuts off, the render moves Studio's camera through the shots: your view comes back after
+            var cc = Singleton<Studio.Studio>.Instance.cameraCtrl;
+            Studio.CameraControl.CameraData viewBefore = !_liveCuts && _renderShots ? cc.Export() : null;
+            float fovBefore = cc.fieldOfView;
             var sizeSettings = RenderApi.SaveSizeSettings(); // each version sets its own size; the user's comes back after
             var limit = RenderApi.SaveLimit(); // each job is recorded in Seconds mode; the user's own mode comes back after
             var preview = RenderFraming.Active; // a framing preview pauses during the render
@@ -774,6 +810,7 @@ namespace StudioEX.Bridge.Api
                     {
                         QueueState["phase"] = "Warm-up " + (w + 1) + " of " + warmups;
                         TimelineApi.PauseAt(start);
+                        _liveId = null; // this frame already shows the starting shot's camera
                         yield return null;
                         TimelineApi.Play();
                         float t0 = Time.realtimeSinceStartup;
@@ -782,6 +819,9 @@ namespace StudioEX.Bridge.Api
                     QueueState["phase"] = null;
                     if ((bool)QueueState["cancel"]) break;
                     TimelineApi.PauseAt(start);
+                    // the very first recorded frame is taken before playing starts: the starting shot's camera has to
+                    // be in place already (live cuts would only switch on entering a shot, or while playing)
+                    _liveId = null;
                     yield return null;
                     yield return new WaitForEndOfFrame();
                     var startedAt = DateTime.Now;
@@ -831,6 +871,17 @@ namespace StudioEX.Bridge.Api
             }
             finally
             {
+                _rendering = false;
+                if (viewBefore != null)
+                {
+                    try
+                    {
+                        cc.Import(viewBefore);
+                        cc.fieldOfView = fovBefore;
+                        TransitionFx.Reset();
+                    }
+                    catch (Exception e) { StudioBridgePlugin.Logger.LogDebug("View after render: " + e.Message); }
+                }
                 AudioTrack.Silenced = false;
                 RenderFraming.Active = preview;
                 RenderApi.RestoreSize(size);
