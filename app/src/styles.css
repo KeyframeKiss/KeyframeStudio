@@ -8336,3 +8336,8 @@ a.btn {
   font-size: 11px;
   line-height: 1.4;
 }
+
+/* the dope sheet: an eye on folder / object rows (some of its tracks muted: half-dimmed) */
+.sheet-row .group-eye.mixed {
+  opacity: 0.5;
+}

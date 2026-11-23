@@ -385,15 +385,34 @@ namespace StudioEX.Bridge.Api
             return groups;
         }
 
+        /// <summary>
+        /// args: {ids, group, category, no, letPlay? (default true)}. Picking a clip should show it: FK or IK hold the
+        /// body still (they override the animation), so with letPlay they're switched off for those characters, and a
+        /// stopped animation (speed 0) gets speed 1 — all in the same undo step as the clip.
+        /// → {applied, freed: [names whose FK / IK went off], started: [names whose speed was 0]}
+        /// </summary>
         private static object LoadAnime(Dictionary<string, object> a)
         {
             int g = a.GetInt("group"), cat = a.GetInt("category"), no = a.GetInt("no");
-            int n = 0;
             var targets = Targets(a).ToList();
-            if (targets.Count > 0) UndoStack.Push(CharaUndo.Capture(targets, "anime", "Change animation"));
-            foreach (var c in targets) { c.LoadAnime(g, cat, no); n++; }
-            if (n == 0) throw new BridgeException("Select a character first");
-            return n;
+            if (targets.Count == 0) throw new BridgeException("Select a character first");
+            bool letPlay = a.GetBool("letPlay", true);
+            var held = letPlay ? targets.Where(c => c.oiCharInfo.enableFK || c.oiCharInfo.enableIK).ToList() : new List<OCIChar>();
+            var stopped = letPlay ? targets.Where(c => c.animeSpeed <= 0.001f).ToList() : new List<OCIChar>();
+            UndoStack.Push(CharaUndo.Capture(targets, held.Count > 0 ? "anime,fk,ik,fkParts,ikParts" : "anime", "Change animation"));
+            foreach (var c in targets) c.LoadAnime(g, cat, no);
+            foreach (var c in held)
+            {
+                if (c.oiCharInfo.enableFK) c.ActiveKinematicMode(OICharInfo.KinematicMode.FK, false, false);
+                if (c.oiCharInfo.enableIK) c.ActiveKinematicMode(OICharInfo.KinematicMode.IK, false, false);
+            }
+            foreach (var c in stopped) c.animeSpeed = 1f;
+            return new Dictionary<string, object>
+            {
+                { "applied", targets.Count },
+                { "freed", held.Select(c => (object)SceneApi.DisplayName(c)).ToList() },
+                { "started", stopped.Select(c => (object)SceneApi.DisplayName(c)).ToList() },
+            };
         }
     }
 }

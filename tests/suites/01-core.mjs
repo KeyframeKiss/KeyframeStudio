@@ -86,5 +86,19 @@ export default async function (t) {
     await sleep(300);
     const st = await ok('chara.get', { id: chara.id });
     check('loadAnime applied', st.anime.group === g.id && st.anime.category === c.id && st.anime.no === clip.no);
+
+    // posed with FK (it holds the body still): picking a clip switches it off so the clip plays; one undo for all
+    const other = c.clips[Math.min(2, c.clips.length - 1)];
+    await ok('chara.set', { ids: [chara.id], fk: true });
+    await sleep(200);
+    const r = await ok('chara.loadAnime', { ids: [chara.id], group: g.id, category: c.id, no: other.no });
+    await sleep(300);
+    const after = await ok('chara.get', { id: chara.id });
+    check('a clip on an FK-posed character: FK goes off so it plays', !after.kinematics.fk && !after.kinematics.ik && r.freed?.length === 1, JSON.stringify({ r, k: after.kinematics.fk }));
+    await ok('undo');
+    await sleep(300);
+    const back = await ok('chara.get', { id: chara.id });
+    check('one undo: the old clip and FK back', back.kinematics.fk && back.anime.no === clip.no, JSON.stringify({ fk: back.kinematics.fk, no: back.anime.no }));
+    await ok('chara.set', { ids: [chara.id], fk: false });
   });
 }

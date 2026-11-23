@@ -167,6 +167,8 @@ export interface AppState {
   settingsPage: LibraryPage;
   paletteOpen: boolean;
   helpOpen: boolean;
+  /** the characters the animation browser window is open for (null = closed) */
+  animBrowserFor: number[] | null;
   /** Experimental live preview window (roadmap Phase 3 spike). */
   previewOpen: boolean;
   /** Material tweaks queued to be saved with the next look preset. */
@@ -252,6 +254,7 @@ export const useStore = create<AppState>(() => ({
   settingsPage: 'settings',
   paletteOpen: false,
   helpOpen: false,
+  animBrowserFor: null,
   previewOpen: false,
   lookRules: [],
 }));
@@ -1046,6 +1049,12 @@ export async function redo() {
 
 export function setTrackProps(track: number, props: { enabled?: boolean; alias?: string; color?: number[] }) {
   return edit('timeline.setTrack', { track, ...props });
+}
+
+/** Mute or unmute several tracks at once (a folder, an object): one undo step. */
+export function setTracksEnabled(ids: number[], enabled: boolean) {
+  if (!ids.length) return;
+  return edit('timeline.setTracksEnabled', { tracks: ids, enabled });
 }
 
 export function removeTracks(ids: number[]) {

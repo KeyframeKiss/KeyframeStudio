@@ -1,6 +1,6 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { bridge } from '../bridge/client';
-import { call, openLibrary, showTab, workingShot, renderShots, displayName, selectedCharacters, toast, useStore, type LibraryPage } from '../state/store';
+import { openLibrary, showTab, workingShot, renderShots, displayName, selectedCharacters, useStore, type LibraryPage } from '../state/store';
 import { FaceAnimation } from './FaceAnimation';
 import { Group, SelectionHeader, Stack } from './InspectorStack';
 import { AudioPage } from './AudioPage';
@@ -12,6 +12,7 @@ import { columns, leftCss, rightCss, setPanelSizes, usePanelSizes } from '../lib
 import { CleanupPanel } from './CleanupPanel';
 import { ClipsPanel } from './ClipsPanel';
 import { AnimationBrowser } from './AnimationBrowser';
+import { applyAnimation } from '../lib/animation';
 import { CharacterPanel } from './CharacterPanel';
 import { DopeSheet } from './DopeSheet';
 import { Icon } from './Icon';
@@ -352,9 +353,7 @@ function AnimationLibrary() {
         current={current}
         onClose={() => {}}
         onPick={async (g, c, n) => {
-          if (!chars.length) return toast('Select a character first');
-          await call('chara.loadAnime', { ids: chars, group: g, category: c, no: n });
-          setCurrent({ group: g, category: c, no: n });
+          if (await applyAnimation(chars, g, c, n)) setCurrent({ group: g, category: c, no: n });
         }}
       />
     </>

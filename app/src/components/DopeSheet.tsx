@@ -21,6 +21,7 @@ import {
   selectKeys,
   selectTracks,
   setTrackProps,
+  setTracksEnabled,
   studioSelect,
   keyAllOfSelectedObjects,
   showTab,
@@ -1317,6 +1318,8 @@ export function DopeSheet({ compact = false }: { compact?: boolean } = {}) {
       { label: 'Select all tracks', action: () => selectTracks(row.tracks.map((t) => t.id)) },
       { label: 'Select all keys', action: () => selectKeys(row.tracks.flatMap((t) => t.keys.map((k) => keyId(t.id, k[0])))) },
       { label: 'Key all at playhead', kbd: 'K', action: () => keyTracks(row.tracks.map((t) => t.id)) },
+      { label: 'Mute all its tracks', action: () => setTracksEnabled(row.tracks.map((t) => t.id), false) },
+      { label: 'Unmute all its tracks', action: () => setTracksEnabled(row.tracks.map((t) => t.id), true) },
       { sep: true },
       { label: 'Ungroup (keep tracks)', action: () => ungroupFolder(row.gid) },
       { label: `Delete folder and its ${row.tracks.length} tracks`, danger: true, action: () => removeTracks(row.tracks.map((t) => t.id)) },
@@ -1484,6 +1487,7 @@ export function DopeSheet({ compact = false }: { compact?: boolean } = {}) {
                     >
                       <Icon name={isCollapsed ? 'chevronRight' : 'chevronDown'} size={12} />
                     </span>
+                    <GroupEye tracks={row.tracks} />
                     <TypeIcon type={row.type} sex={row.sex} />
                     <span className="name">{row.label}</span>
                     <span className="count">{row.tracks.length}</span>
@@ -1513,6 +1517,7 @@ export function DopeSheet({ compact = false }: { compact?: boolean } = {}) {
                     >
                       <Icon name={row.expanded ? 'chevronDown' : 'chevronRight'} size={12} />
                     </span>
+                    <GroupEye tracks={row.tracks} />
                     <span className="type-icon type-Folder">
                       <Icon name="folder" size={13} />
                     </span>
@@ -1898,5 +1903,28 @@ function KindFilter() {
         <small className="hint" style={{ margin: '4px 0 0' }}>Nothing ticked shows every kind. Tick one or more to narrow the list.</small>
       </div>
     </Popover>
+  );
+}
+
+/** The eye on a folder or object row: mutes / unmutes every track in it (half-dimmed when only some are muted). */
+function GroupEye({ tracks }: { tracks: WireTrack[] }) {
+  const on = tracks.filter((t) => t.enabled).length;
+  if (!tracks.length) return null;
+  const all = on === tracks.length;
+  const none = on === 0;
+  const title = all ? `Mute all ${tracks.length} tracks` : none ? `Unmute all ${tracks.length} tracks` : `${tracks.length - on} of ${tracks.length} muted — click to unmute all`;
+  return (
+    <span
+      {...pressable}
+      aria-label={title}
+      className={`toggle group-eye ${!all && !none ? 'mixed' : ''}`}
+      title={title}
+      onClick={(e) => {
+        e.stopPropagation();
+        void setTracksEnabled(tracks.map((t) => t.id), !all);
+      }}
+    >
+      <Icon name={none ? 'eyeOff' : 'eye'} size={13} />
+    </span>
   );
 }

@@ -10,6 +10,20 @@ export default async function (t) {
       .sort((a, b) => a.order - b.order)
       .map((x) => x.id);
 
+  await t.step('mute / unmute a folder (all its tracks, one undo step)', async () => {
+    const a = await ok('timeline.addTrack', { owner: 'Timeline', model: 'cameraFOV', keyAt: 0 });
+    const b = await ok('timeline.addTrack', { owner: 'Timeline', model: 'timeScale', keyAt: 0 });
+    t.defer(() => t.req('timeline.removeTracks', { tracks: [a, b] }));
+    const on = async () => (await tl()).tracks.filter((x) => x.id === a || x.id === b).map((x) => x.enabled);
+    check('muted both', (await ok('timeline.setTracksEnabled', { tracks: [a, b], enabled: false })) === 2 && (await on()).every((x) => !x));
+    check('already muted: nothing to change', (await ok('timeline.setTracksEnabled', { tracks: [a, b], enabled: false })) === 0);
+    await ok('undo');
+    check('one undo unmutes both', (await on()).every((x) => x));
+    await ok('redo');
+    check('redo mutes them again', (await on()).every((x) => !x));
+    await ok('timeline.setTracksEnabled', { tracks: [a, b], enabled: true });
+  });
+
   await t.step('create, rename, move, ungroup', async () => {
     const a = await ok('timeline.addTrack', { owner: 'Timeline', model: 'cameraFOV', keyAt: 0 });
     const b = await ok('timeline.addTrack', { owner: 'Timeline', model: 'timeScale', keyAt: 0 });

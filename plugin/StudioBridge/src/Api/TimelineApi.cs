@@ -265,6 +265,8 @@ namespace StudioEX.Bridge.Api
             r.Add("timeline.addTrack", AddTrack);
             r.Add("timeline.removeTracks", RemoveTracks);
             r.Add("timeline.setTrack", SetTrack);
+            // mute / unmute several tracks at once (a folder, an object): one undo step
+            r.Add("timeline.setTracksEnabled", SetTracksEnabled);
 
             r.Add("timeline.keyInfo", KeyInfo);
             r.Add("timeline.addKeys", AddKeys);
@@ -835,6 +837,36 @@ namespace StudioEX.Bridge.Api
             int n = targets.Count;
             AfterEdit();
             return n;
+        }
+
+        private static object SetTracksEnabled(Dictionary<string, object> a)
+        {
+            var targets = TracksFromIds(a.GetList("tracks"));
+            bool on = a.GetBool("enabled", true);
+            var change = targets.Where(ip => ip.enabled != on).ToList();
+            if (change.Count == 0) return 0;
+            UndoStack.Push(new MuteUndo(change.ToDictionary(ip => ip, ip => ip.enabled), on ? "Unmute tracks" : "Mute tracks"));
+            foreach (var ip in change) ip.enabled = on;
+            RefreshView();
+            AfterEdit();
+            return change.Count;
+        }
+
+        private sealed class MuteUndo : IUndoEntry
+        {
+            private readonly Dictionary<Interpolable, bool> _was;
+            public MuteUndo(Dictionary<Interpolable, bool> was, string label) { _was = was; Label = label; }
+            public string Label { get; }
+            public bool Absorbs(IUndoEntry newer) => false;
+            public IUndoEntry Restore()
+            {
+                var live = _was.Keys.Where(ip => Interpolables.ContainsKey(ip.GetHashCode())).ToList();
+                var inverse = new MuteUndo(live.ToDictionary(ip => ip, ip => ip.enabled), Label);
+                foreach (var ip in live) ip.enabled = _was[ip];
+                RefreshView();
+                AfterEdit();
+                return inverse;
+            }
         }
 
         private static object SetTrack(Dictionary<string, object> a)

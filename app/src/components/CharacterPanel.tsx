@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { pressable } from '../lib/pressable';
 import { bridge } from '../bridge/client';
-import { call, displayName, selectedCharacters, showTab, toast, useStore } from '../state/store';
+import { displayName, selectedCharacters, showTab, toast, useStore } from '../state/store';
 import { Icon } from './Icon';
 import { AnimationBrowser } from './AnimationBrowser';
+import { applyAnimation } from '../lib/animation';
 import { AbmxSection } from './AbmxSection';
 
 type Named = { name: string; nameEn?: string };
@@ -291,8 +292,7 @@ export function CharacterPanel({ bare, sections = ['anim', 'pose', 'face', 'outf
           current={state.anime}
           onClose={() => setBrowse(false)}
           onPick={async (g, c, n) => {
-            await call('chara.loadAnime', { ids: chars, group: g, category: c, no: n });
-            refresh();
+            if (await applyAnimation(chars, g, c, n)) refresh();
           }}
         />
       )}

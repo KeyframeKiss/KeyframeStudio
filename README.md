@@ -61,7 +61,7 @@ editor beside it — ideal on a second monitor:
 
 Dope sheet and graph editor (`Tab`), **Key changes** to key exactly what you moved in Studio, auto-key, snapping
 to keys / the playhead / ruler ticks, easing presets and your own saved curves, values you can drag or type, motion
-paths and onion-skin ghosts, folders, search and a type filter — and one undo history for all of it.
+paths and onion-skin ghosts, folders (an eye mutes a whole folder or object), search and a type filter — and one undo history for all of it.
 
 <table>
   <tr>
@@ -145,7 +145,7 @@ window kept on top of Studio) and saved layouts.
 | **Cleanup** (Animate) | Smooth, retime, make loop, find and fix sudden moves, check foot sliding — each one undo step |
 | **Motion clips** (Animate) | Save the selected keys of one character as a clip (body, face, any track type); apply it at the playhead on any character — replace or add on top, strength, blend, speed, repeats; one undo step |
 | **Face** (Animate) & **Lip-sync** | Expressions keyed at the playhead; lip-sync from audio (loudness + A/I/U/E/O vowel shapes) with voice per character, part of a clip, style presets, vowel map and all speakers at once; natural blinks |
-| **Character** (Pose) | Animation browser (33k+ clips incl. mods, searchable), speed/options, FK/IK + parts, eyebrows/eyes/mouth, eye & neck look, blush/tears, hands, outfit + per-slot clothing state, accessories (MoreAccessories slots), ABMX bone sliders. Multi-select applies to all selected characters |
+| **Character** (Pose) | Animation browser (33k+ clips incl. mods, searchable; also Ctrl+K › Change animation, or right-click a character in the scene list — picking a clip makes it play: FK / IK that would hold the body still go off and a stopped animation starts, one undo), speed/options, FK/IK + parts, eyebrows/eyes/mouth, eye & neck look, blush/tears, hands, outfit + per-slot clothing state, accessories (MoreAccessories slots), ABMX bone sliders. Multi-select applies to all selected characters |
 | **Pose library** (Pose) | Studio-compatible pose library (`.dat` and PNG poses, folders, thumbnails), save, apply, **mirror** (`M`), copy pose between characters |
 | **Face Studio** (Pose) | KKPE face parts and shapes on a close-up, saved faces and expressions with tags, before/after |
 | **Outfit** (Pose) | Saved outfits, accessories by body area with Solo, clipping checks |

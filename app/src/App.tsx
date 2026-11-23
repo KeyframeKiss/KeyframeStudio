@@ -3,6 +3,7 @@ import { CommandPalette } from './components/CommandPalette';
 import { DialogHost } from './components/Dialogs';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { PreviewPanel } from './components/PreviewPanel';
+import { AnimationsOverlay } from './components/AnimationsOverlay';
 import { RecordingBadge } from './components/QuickActions';
 import { Header, MiniHeader, TransportBar } from './components/Shell';
 import { DopeSheet } from './components/DopeSheet';
@@ -286,6 +287,7 @@ export function App() {
       <DialogHost />
       {previewOpen && <PreviewPanel />}
 
+      <AnimationsOverlay />
       {helpOpen && (
         <div className="overlay" onClick={() => useStore.setState({ helpOpen: false })}>
           <div className="dialog" onClick={(e) => e.stopPropagation()}>

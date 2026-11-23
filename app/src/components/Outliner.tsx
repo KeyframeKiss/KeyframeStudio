@@ -7,6 +7,7 @@ import { call, displayName, lsSet, refreshScene, setNodeVisible, setWorkspace, s
 import type { SceneNode } from '../bridge/types';
 
 import { pressable } from '../lib/pressable';
+import { openAnimations } from '../lib/animation';
 type TypeKey = 'Char' | 'Item' | 'Light' | 'Folder' | 'Camera' | 'Route';
 const TYPE_FILTERS: { key: TypeKey; label: string; title: string }[] = [
   { key: 'Char', label: '♀', title: 'Characters' },
@@ -244,7 +245,17 @@ export function Outliner() {
     if (n.type === 'Item') items.push({ label: 'Attach to…', action: () => {
       setAttachmentId(n.id);
     } });
-    if (n.type === 'Char') items.push({ label: 'Open Character panel', action: () => showPanel('pose', 'character') });
+    if (n.type === 'Char') {
+      items.push({
+        label: 'Change animation…',
+        action: () => {
+          // the selected characters when this one is among them, else just this one
+          const sel = useStore.getState().studioSelection.filter((x) => useStore.getState().nodes[x]?.type === 'Char');
+          openAnimations(sel.includes(n.id) ? sel : [n.id]);
+        },
+      });
+      items.push({ label: 'Open Character panel', action: () => showPanel('pose', 'character') });
+    }
     items.push({
       label: 'Add animation track…',
       action: () => {
