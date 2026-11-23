@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { pressable } from '../lib/pressable';
 import { Help } from './Help';
 import { Icon } from './Icon';
@@ -152,6 +153,8 @@ export function Popover({
     const close = (e: Event) => {
       const t = e.target;
       if (t instanceof Node && (ref.current?.contains(t) || menuRef.current?.contains(t))) return;
+      // a menu opened from inside this one (e.g. Length · fps in the transport's ··· menu) keeps this one open
+      if (t instanceof Element && t.closest('.menu.popover')) return;
       setOpen(false);
     };
     const esc = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
@@ -169,11 +172,15 @@ export function Popover({
   return (
     <div ref={ref} style={{ position: 'relative', display: 'inline-flex' }}>
       {trigger(open, () => setOpen((o) => !o))}
-      {open && (
-        <div ref={menuRef} className="menu popover" style={pos ?? { visibility: 'hidden', left: 0, top: 0, width }}>
-          {typeof children === 'function' ? children(() => setOpen(false)) : children}
-        </div>
-      )}
+      {/* drawn at the top of the page: a menu inside another one (which animates in with a transform) would be
+          placed and clipped inside it otherwise */}
+      {open &&
+        createPortal(
+          <div ref={menuRef} className="menu popover" style={pos ?? { visibility: 'hidden', left: 0, top: 0, width }}>
+            {typeof children === 'function' ? children(() => setOpen(false)) : children}
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }
