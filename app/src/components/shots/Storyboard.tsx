@@ -3,7 +3,7 @@ import { saveShots, toast, useStore, type Shot } from '../../state/store';
 import { byStart, reorder } from '../../lib/shots';
 import { ContextMenu } from '../ContextMenu';
 import { ANGLE_DRAG } from '../CameraPanel';
-import { camLabel, fromAngle, lookThrough, selectShot, shotMenu, STATUSES } from './actions';
+import { camLabel, fromAngle, lookThrough, selectShot, shotMenu, STATUSES, TRANSITIONS } from './actions';
 
 const SHOT_DRAG = 'application/x-kf-shot';
 
@@ -82,6 +82,11 @@ export function Storyboard() {
               <small>
                 {s.start.toFixed(2)}–{s.end.toFixed(2)} s · {(s.end - s.start).toFixed(2)} s{camLabel(s) && (s.camMode ?? 'still') === 'still' ? ` · ${camLabel(s)}` : ''}
               </small>
+              {s.trans && s.trans.type !== 'cut' && (
+                <small className="sq-card-trans">
+                  {TRANSITIONS.find((x) => x.id === s.trans!.type)?.glyph} {TRANSITIONS.find((x) => x.id === s.trans!.type)?.label} in · {s.trans.dur.toFixed(2)} s
+                </small>
+              )}
               {s.notes && <p>{s.notes}</p>}
             </div>
           </div>

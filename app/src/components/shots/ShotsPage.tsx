@@ -57,7 +57,11 @@ export function ShotsPage() {
 
   const bake = async () => {
     const n = await editTimeline<number>('shots.buildCuts', {});
-    if (n) toast(`Camera cuts keyed for ${n} shot${n > 1 ? 's' : ''} — the scene now cuts without Keyframe Studio too. Ctrl+Z to undo`);
+    const live = shots.filter((s) => s.trans && (s.trans.type === 'dipBlack' || s.trans.type === 'dipWhite' || s.trans.type === 'dissolve')).length;
+    if (n)
+      toast(
+        `Camera keys written for ${n} cut${n > 1 ? 's and glides' : ''} — the camera now moves without Keyframe Studio too.${live ? ` ${live} dip${live > 1 ? 's and dissolves' : ' or dissolve'} keep playing from live cuts (they need the bridge).` : ''} Ctrl+Z to undo`,
+      );
   };
   const exportBoard = async () => {
     if (!shots.length) return;

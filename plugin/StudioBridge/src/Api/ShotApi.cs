@@ -32,13 +32,43 @@ namespace StudioEX.Bridge.Api
         private static readonly string[] Statuses = { "idea", "blocked", "framed", "final" };
         /// <summary>still: its own camera · keys: its Timeline camera keys · pov: through a character's eyes · follow: keeps a body part in view</summary>
         private static readonly string[] Modes = { "still", "keys", "pov", "follow" };
+        /// <summary>How a shot starts: a hard cut, a glide from the previous shot's camera, a dip to black / white, a dissolve.</summary>
+        private static readonly string[] TransTypes = { "cut", "glide", "dipBlack", "dipWhite", "dissolve" };
+        private static float _liveT = -1f;
         /// <summary>Angles: named camera setups to reuse across shots ({id, name, cam, thumb, slot?}).</summary>
         private static List<Dictionary<string, object>> _angles = new List<Dictionary<string, object>>();
         internal static List<Dictionary<string, object>> All => _shots;
         private static Coroutine _queue;
         private static readonly Dictionary<string, object> QueueState = new Dictionary<string, object> { { "running", false } };
 
-        private void Awake() => _i = this;
+        private void Awake()
+        {
+            _i = this;
+            StartCoroutine(OutgoingLoop());
+        }
+
+        /// <summary>
+        /// At the end of each frame, while a dissolve shows (live, or on the monitor), render the outgoing shot once
+        /// more for the next frame to blend in.
+        /// </summary>
+        private System.Collections.IEnumerator OutgoingLoop()
+        {
+            var eof = new WaitForEndOfFrame();
+            while (true)
+            {
+                yield return eof;
+                try
+                {
+                    if (_shots.Count == 0 || !TimelineApi.Available || ViewportTools.Busy) continue;
+                    var st = TransitionFx.Live ?? (PreviewStream.ProgramOn ? Compute(TimelineApi.PlaybackTime()) : null);
+                    if (st?.Out == null) continue;
+                    var studio = Singleton<Studio.Studio>.Instance;
+                    if (studio == null || studio.ociCamera != null) continue;
+                    TransitionFx.RenderOutgoing(Camera.main, st.Out);
+                }
+                catch (Exception e) { StudioBridgePlugin.Logger.LogDebug("Dissolve picture: " + e.Message); }
+            }
+        }
 
         public static void Register(CommandRouter r)
         {
@@ -71,6 +101,7 @@ namespace StudioEX.Bridge.Api
                 return true;
             });
             r.Add("shots.fromAngle", FromAngle);
+            r.Add("shots.fxDiag", a => TransitionFx.Diag());
             r.Add("angles.add", AngleAdd);
             r.Add("angles.update", AngleUpdate);
             r.Add("angles.set", AnglesSet);
@@ -100,9 +131,16 @@ namespace StudioEX.Bridge.Api
             _angles = new List<Dictionary<string, object>>();
             _liveCuts = false;
             _liveId = null;
+            TransitionFx.Reset();
         }
 
-        private static Dictionary<string, object> State() => new Dictionary<string, object> { { "shots", _shots }, { "liveCuts", _liveCuts }, { "angles", _angles } };
+        private static Dictionary<string, object> State()
+        {
+            var d = new Dictionary<string, object> { { "shots", _shots }, { "liveCuts", _liveCuts }, { "angles", _angles } };
+            var tr = TransitionFx.Live;
+            if (tr != null) d["transition"] = new Dictionary<string, object> { { "type", tr.Type }, { "f", Math.Round(tr.F, 4) }, { "fade", Math.Round(tr.FadeA, 4) }, { "out", Math.Round(tr.OutA, 4) }, { "id", tr.Id } };
+            return d;
+        }
 
         private static void Broadcast() => StudioBridgePlugin.Instance?.Broadcast("shots.changed", null);
 
@@ -161,6 +199,15 @@ namespace StudioEX.Bridge.Api
                 if (o.Has("who")) shot["who"] = o.GetInt("who"); // the character a first-person / follow shot is about
                 if (!string.IsNullOrEmpty(o.GetString("bone"))) shot["bone"] = o.GetString("bone");
                 if (!string.IsNullOrEmpty(o.GetString("angle"))) shot["angle"] = o.GetString("angle");
+                // how it starts: {type, dur (s), ease: smooth|linear}; a plain cut needs nothing stored
+                var tr = o.GetObject("trans");
+                if (tr != null && Array.IndexOf(TransTypes, tr.GetString("type")) > 0)
+                    shot["trans"] = new Dictionary<string, object>
+                    {
+                        { "type", tr.GetString("type") },
+                        { "dur", (double)Mathf.Clamp(tr.GetFloat("dur", 0.5f), 0.05f, 5f) },
+                        { "ease", tr.GetString("ease") == "linear" ? "linear" : "smooth" },
+                    };
                 if (o.Has("aspect") && o.GetFloat("aspect") > 0f) shot["aspect"] = (double)Mathf.Clamp(o.GetFloat("aspect"), 0.2f, 5f);
                 // camera and thumbnail are kept from the existing shot unless given
                 var old = _shots.FirstOrDefault(x => x.GetString("id") == shot.GetString("id"));
@@ -378,6 +425,71 @@ namespace StudioEX.Bridge.Api
             else if (_shots.Any(s => s.GetString("camMode") == "pov" || s.GetString("camMode") == "follow")) CameraTools.ShotMode(null, -1, null);
         }
 
+        // ---------------- transitions ----------------
+
+        private static bool StillWithCam(Dictionary<string, object> s) => s != null && s.GetString("camMode") == "still" && s.GetObject("cam") != null;
+
+        private static Dictionary<string, object> CamHolder(Vector3 pos, Vector3 rot, Vector3 dist, float fov, string id) => new Dictionary<string, object>
+        {
+            { "id", id }, { "cam", new Dictionary<string, object> { { "pos", V(pos) }, { "rot", V(rot) }, { "dist", V(dist) }, { "fov", (double)fov } } },
+        };
+
+        /// <summary>Between two shots' cameras: pivot, distance and lens in a straight line, the angle by the shortest turn.</summary>
+        private static Dictionary<string, object> BlendCam(Dictionary<string, object> a, Dictionary<string, object> b, float f)
+        {
+            var ca = a.GetObject("cam");
+            var cb = b.GetObject("cam");
+            var rot = Quaternion.Slerp(Quaternion.Euler(V(ca.GetList("rot"))), Quaternion.Euler(V(cb.GetList("rot"))), f).eulerAngles;
+            return CamHolder(Vector3.Lerp(V(ca.GetList("pos")), V(cb.GetList("pos")), f), rot, Vector3.Lerp(V(ca.GetList("dist")), V(cb.GetList("dist")), f),
+                Mathf.Lerp(ca.GetFloat("fov", 23f), cb.GetFloat("fov", 23f), f), b.GetString("id"));
+        }
+
+        /// <summary>
+        /// The transition the playhead is in, if any. A shot's transition is centred on its cut; it is never longer
+        /// than the shot or the one before it. Glides and dissolves need still cameras on both sides (otherwise the
+        /// shot just cuts); dips work with any shot, and on the first shot fade in from the colour.
+        /// </summary>
+        internal static TransitionFx.State Compute(float t)
+        {
+            Dictionary<string, object> prev = null;
+            foreach (var b in _shots) // kept in start order
+            {
+                var a = prev;
+                prev = b;
+                var tr = b.GetObject("trans");
+                string type = tr?.GetString("type");
+                if (type == null || type == "cut") continue;
+                float start = b.GetFloat("start");
+                float dur = tr.GetFloat("dur", 0.5f);
+                dur = Mathf.Min(dur, b.GetFloat("end") - start);
+                if (a != null) dur = Mathf.Min(dur, a.GetFloat("end") - a.GetFloat("start"));
+                if (dur < 0.02f) continue;
+                float w0 = start - dur / 2f, w1 = start + dur / 2f;
+                if (t < w0 - 1e-4f || t >= w1) continue;
+                bool needsBoth = type == "glide" || type == "dissolve";
+                if (needsBoth && (!StillWithCam(a) || !StillWithCam(b))) continue;
+                float f = Mathf.Clamp01((t - w0) / dur);
+                float e = tr.GetString("ease") == "linear" ? f : f * f * (3f - 2f * f);
+                var st = new TransitionFx.State { Type = type, F = f, Id = b.GetString("id") };
+                if (type == "glide") st.Cam = BlendCam(a, b, e);
+                else if (type == "dissolve")
+                {
+                    st.Cam = b; // the incoming shot underneath, the outgoing one fading off it
+                    st.Out = a;
+                    st.OutA = 1f - e;
+                }
+                else
+                {
+                    // dips: into the colour until the cut, out of it after (the camera cuts at the middle)
+                    float k = 1f - Mathf.Abs(2f * f - 1f);
+                    st.FadeA = tr.GetString("ease") == "linear" ? k : k * k * (3f - 2f * k);
+                    st.Fade = type == "dipWhite" ? Color.white : Color.black;
+                }
+                return st;
+            }
+            return null;
+        }
+
         /// <summary>For the monitor: where the playhead's shot looks from, when it's a still shot with a camera.</summary>
         internal static bool ProgramCamera(out Vector3 pos, out Quaternion rot, out float fov)
         {
@@ -385,8 +497,10 @@ namespace StudioEX.Bridge.Api
             rot = Quaternion.identity;
             fov = 0f;
             if (_shots.Count == 0 || !TimelineApi.Available) return false;
-            var shot = ShotAt(TimelineApi.PlaybackTime());
-            var cam = shot?.GetString("camMode") == "still" ? shot.GetObject("cam") : null;
+            float t = TimelineApi.PlaybackTime();
+            var shot = ShotAt(t);
+            var tr = Compute(t);
+            var cam = tr?.Cam != null ? tr.Cam.GetObject("cam") : shot?.GetString("camMode") == "still" ? shot.GetObject("cam") : null;
             if (cam == null) return false;
             rot = Quaternion.Euler(V(cam.GetList("rot")));
             pos = V(cam.GetList("pos")) + rot * V(cam.GetList("dist"));
@@ -398,7 +512,7 @@ namespace StudioEX.Bridge.Api
         /// Put Unity's camera where the shot's camera looks from, right now (Studio's camera control would only move
         /// it at the end of the frame): its pivot, turned by its angles, out at its distance.
         /// </summary>
-        private static bool PlaceMainCamera(Dictionary<string, object> shot)
+        internal static bool PlaceMainCamera(Dictionary<string, object> shot)
         {
             var cam = shot.GetObject("cam");
             var main = Camera.main;
@@ -474,21 +588,41 @@ namespace StudioEX.Bridge.Api
         /// </summary>
         private void LateUpdate()
         {
-            if (!_liveCuts || _shots.Count == 0 || !TimelineApi.Available) return;
-            if (ViewportTools.Busy) return; // sampling / ghost baking jump around on purpose
-            TimelineApi.LoopTick(StudioBridgePlugin.Instance?.ClientCount ?? 0); // a looping shot wraps before its camera is chosen
             var studio = Singleton<Studio.Studio>.Instance;
-            if (studio == null || studio.ociCamera != null) return; // looking through a scene camera
+            if (!_liveCuts || _shots.Count == 0 || !TimelineApi.Available || ViewportTools.Busy || studio == null || studio.ociCamera != null)
+            {
+                // sampling / ghost baking jump around on purpose; a scene camera is being looked through
+                if (TransitionFx.Live != null) { TransitionFx.Live = null; TransitionFx.Sync(Camera.main); }
+                return;
+            }
+            TimelineApi.LoopTick(StudioBridgePlugin.Instance?.ClientCount ?? 0); // a looping shot wraps before its camera is chosen
             try
             {
-                var shot = ShotAt(TimelineApi.PlaybackTime());
+                float t = TimelineApi.PlaybackTime();
+                bool moved = Mathf.Abs(t - _liveT) > 1e-5f;
+                _liveT = t;
+                bool playing = TimelineApi.Playing();
+                var shot = ShotAt(t);
                 string id = shot?.GetString("id");
                 bool entered = id != _liveId;
                 _liveId = id;
+                if (shot != null && entered) { ApplyAspect(shot); ApplyMode(shot); }
+                // a transition: its picture effect, and for glides / dissolves the camera it needs
+                var tr = Compute(t);
+                TransitionFx.Live = tr;
+                TransitionFx.Sync(Camera.main);
+                if (tr?.Cam != null)
+                {
+                    if (playing || moved || entered)
+                    {
+                        ApplyCamera(tr.Cam);
+                        PlaceMainCamera(tr.Cam);
+                    }
+                    return;
+                }
                 if (shot == null) return;
-                if (entered) { ApplyAspect(shot); ApplyMode(shot); }
                 if (shot.GetString("camMode") != "still") return; // camera keys, first person or follow drive it
-                if (entered || TimelineApi.Playing())
+                if (entered || playing)
                 {
                     ApplyCamera(shot);
                     PlaceMainCamera(shot); // this very frame, not the next (a render records it)
@@ -511,9 +645,36 @@ namespace StudioEX.Bridge.Api
             return BuildCutsImpl(withCam);
         }
 
+        /// <summary>
+        /// The keys bake writes: a hard cut at each still shot's start, or for a glide a key with the previous shot's
+        /// camera where the glide starts and one with this shot's where it ends, eased in between. Dips and dissolves
+        /// can't be camera keys: they stay as cuts in the keys and keep playing from live cuts.
+        /// </summary>
+        private static List<CutKey> CutKeys(List<Dictionary<string, object>> shots)
+        {
+            var keys = new List<CutKey>();
+            Dictionary<string, object> prev = null;
+            foreach (var s in _shots)
+            {
+                var a = prev;
+                prev = s;
+                if (!shots.Contains(s)) continue;
+                var tr = s.GetObject("trans");
+                float start = s.GetFloat("start");
+                if (tr?.GetString("type") == "glide" && StillWithCam(a) && StillWithCam(s))
+                {
+                    float dur = Mathf.Min(tr.GetFloat("dur", 0.5f), s.GetFloat("end") - start, a.GetFloat("end") - a.GetFloat("start"));
+                    var from = a;
+                    keys.Add(new CutKey { T = start - dur / 2f, Apply = () => ApplyCamera(from), Glide = false });
+                    keys.Add(new CutKey { T = start + dur / 2f, Apply = () => ApplyCamera(s), Glide = true, Smooth = tr.GetString("ease") != "linear" });
+                }
+                else keys.Add(new CutKey { T = start, Apply = () => ApplyCamera(s) });
+            }
+            return keys;
+        }
+
         [MethodImpl(MethodImplOptions.NoInlining)]
-        private static object BuildCutsImpl(List<Dictionary<string, object>> shots) =>
-            TimelineImpl.KeyShotCuts(shots.Select(s => new KeyValuePair<float, Action>(s.GetFloat("start"), () => ApplyCamera(s))).ToList());
+        private static object BuildCutsImpl(List<Dictionary<string, object>> shots) => TimelineImpl.KeyShotCuts(CutKeys(shots));
 
         // ---------------- render queue ----------------
 

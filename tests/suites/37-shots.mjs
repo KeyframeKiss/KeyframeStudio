@@ -1,4 +1,4 @@
-export const name = 'Shots: undo, live cuts, camera types, angles, the monitor, pictures, frame guides, looping, baked cuts';
+export const name = 'Shots: undo, live cuts, camera types, angles, the monitor, transitions, pictures, frame guides, looping, baked cuts';
 
 export default async function (t) {
   const { ok, req, check, sleep, near, studio } = t;
@@ -210,6 +210,60 @@ export default async function (t) {
     check('frames are going out', stats.frames > 3, String(stats.frames));
     check('Studio’s camera stays where you put it', near(await fovNow(), 33, 0.05), String(await fovNow()));
     await ok('preview.stop');
+  });
+
+  await t.step('transitions: glide, dips, dissolve', async () => {
+    await ok('shots.setLiveCuts', { on: true });
+    await ok('camera.setFov', { fov: 20 });
+    await sleep(200);
+    await ok('shots.set', { shots: [{ id: 'A', name: 'Wide', start: 0, end: 2 }, { id: 'B', name: 'Close', start: 2, end: 4 }], label: 'Shots' });
+    await ok('shots.captureCamera', { id: 'A' });
+    await ok('camera.setFov', { fov: 60 });
+    await sleep(200);
+    await ok('shots.captureCamera', { id: 'B' });
+    const withTrans = async (trans) => {
+      const st = await state();
+      await ok('shots.set', { shots: st.shots.map((x) => (x.id === 'B' ? { ...x, trans } : x)), label: 'Transition' });
+    };
+    const at = async (tm) => {
+      await ok('timeline.seek', { t: tm });
+      await sleep(350);
+      return (await state()).transition ?? null;
+    };
+    await withTrans({ type: 'glide', dur: 1, ease: 'linear' });
+    let tr = await at(2);
+    check('glide: half way at the cut', tr?.type === 'glide' && near(tr.f, 0.5, 0.02) && near(await fovNow(), 40, 0.6), JSON.stringify({ tr, fov: await fovNow() }));
+    await at(1.6);
+    check('glide: a tenth in, a tenth of the way', near(await fovNow(), 24, 0.6), String(await fovNow()));
+    tr = await at(2.6);
+    check('after the window: shot B as it is', !tr && near(await fovNow(), 60, 0.05));
+    await withTrans({ type: 'dipBlack', dur: 1, ease: 'linear' });
+    tr = await at(2);
+    check('dip to black: fully dark at the cut', tr?.type === 'dipBlack' && near(tr.fade, 1, 0.03), JSON.stringify(tr));
+    tr = await at(1.75);
+    check('…half way at a quarter in', near(tr?.fade ?? -1, 0.5, 0.05), JSON.stringify(tr));
+    await at(2);
+    const fx = await ok('shots.fxDiag');
+    check('the picture effect is on, last on Studio’s camera, and drawing', fx.enabled && fx.last && fx.shader && !fx.error, JSON.stringify(fx));
+    await at(2.8);
+    check('…and off again outside the transition (costs nothing)', !(await ok('shots.fxDiag')).enabled);
+    await withTrans({ type: 'dissolve', dur: 1, ease: 'linear' });
+    tr = await at(2.25);
+    check('dissolve: the shot before fading off', tr?.type === 'dissolve' && near(tr.out, 0.25, 0.03), JSON.stringify(tr));
+    await at(1.75);
+    check('…over shot B’s camera, even before the cut', near(await fovNow(), 60, 0.05), String(await fovNow()));
+    const st = await state();
+    await ok('shots.set', { shots: st.shots.map((x) => (x.id === 'B' ? { ...x, camMode: 'keys', trans: { type: 'glide', dur: 1 } } : x)), label: 'Keys' });
+    tr = await at(2);
+    check('a glide into a camera-key shot plays as a cut', !tr, JSON.stringify(tr));
+    await ok('undo');
+    await withTrans({ type: 'glide', dur: 1, ease: 'smooth' });
+    const n = await ok('shots.buildCuts', {});
+    const keys = (await ok('camera.shots')).map((k) => Math.round(k.t * 100) / 100);
+    check('baking a glide keys its start and end (eased between), not the cut', keys.includes(1.5) && keys.includes(2.5) && !keys.includes(2), keys.join(', '));
+    await ok('undo');
+    await withTrans(undefined);
+    check('back to a hard cut', !(await shot('B')).trans);
   });
 
   await t.step('bake cuts', async () => {

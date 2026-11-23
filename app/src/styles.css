@@ -8191,3 +8191,101 @@ a.btn {
 .mon-head > b {
   cursor: help;
 }
+
+/* shot transitions on the track */
+.sq-cut {
+  position: absolute;
+  top: -9px;
+  z-index: 6;
+  width: 18px;
+  height: 18px;
+  margin-left: -9px;
+  padding: 0;
+  border-radius: 9px;
+  border: 1px solid var(--line);
+  background: var(--bg-2);
+  color: var(--text-2);
+  font: 700 10px/16px var(--font);
+  cursor: pointer;
+  opacity: 0.7;
+}
+.sq-cut:hover,
+.sq-cut.on {
+  opacity: 1;
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.sq-cut.bad {
+  border-color: var(--danger);
+  color: #ff8a8a;
+}
+.sq-cut:focus-visible {
+  outline: 2px solid var(--accent);
+  opacity: 1;
+}
+.sq-trans {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 4;
+  pointer-events: none;
+  border-left: 1px solid rgba(255, 255, 255, 0.55);
+  border-right: 1px solid rgba(255, 255, 255, 0.55);
+  background: linear-gradient(90deg, rgba(255, 159, 46, 0.05), rgba(255, 159, 46, 0.3) 50%, rgba(255, 159, 46, 0.05));
+}
+.sq-trans.dipBlack {
+  background: linear-gradient(90deg, rgba(0, 0, 0, 0), rgba(0, 0, 0, 0.75) 50%, rgba(0, 0, 0, 0));
+}
+.sq-trans.dipWhite {
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.6) 50%, rgba(255, 255, 255, 0));
+}
+.sq-trans.dissolve {
+  background: linear-gradient(90deg, rgba(90, 169, 255, 0.05), rgba(90, 169, 255, 0.35) 50%, rgba(90, 169, 255, 0.05));
+}
+.sq-trans.bad {
+  background: repeating-linear-gradient(135deg, rgba(255, 93, 93, 0.25) 0 4px, transparent 4px 8px);
+}
+.sq-trans-edge {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 8px;
+  pointer-events: auto;
+  cursor: ew-resize;
+}
+.sq-trans-edge.l {
+  left: -4px;
+}
+.sq-trans-edge.r {
+  right: -4px;
+}
+.sq-trans-row {
+  gap: 8px;
+}
+.sq-trans-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-2);
+}
+.sq-glyph {
+  font-weight: 700;
+  opacity: 0.8;
+}
+.sq-trans-len {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10.5px;
+  color: var(--text-3);
+}
+.sq-trans-warn {
+  flex-basis: 100%;
+  font-size: 11px;
+  color: #ff8a8a;
+}
+.sq-card-trans {
+  color: var(--accent) !important;
+}

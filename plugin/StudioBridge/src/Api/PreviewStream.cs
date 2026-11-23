@@ -37,6 +37,7 @@ namespace StudioEX.Bridge.Api
         private bool _delayed;  // read back one game frame after rendering (GPU has finished: shorter stall)
         private bool _pendingRead;
         private bool _program;  // render through the playhead's shot camera (the monitor), Studio's view untouched
+        internal static bool ProgramOn => Instance != null && Instance._on && Instance._program;
         private double _captureMs;
         private int _captureSeq;
 
@@ -192,12 +193,15 @@ namespace StudioEX.Bridge.Api
                     cam.fieldOfView = f;
                     moved = true;
                 }
+                // the transition at the playhead (dip, dissolve) shows on the monitor even without live cuts
+                if (_program) { TransitionFx.Override = ShotApi.Compute(TimelineApi.PlaybackTime()); TransitionFx.Sync(cam); }
                 cam.targetTexture = _rt;
                 cam.Render();
             }
             finally
             {
                 cam.targetTexture = prevTarget;
+                if (_program) { TransitionFx.Override = null; TransitionFx.Sync(cam); }
                 if (moved)
                 {
                     cam.transform.position = keepPos;

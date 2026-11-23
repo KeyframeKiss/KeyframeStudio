@@ -15,6 +15,13 @@ export const parseKeyId = (id: KeyId): KeyRef => {
 
 export type ShotStatus = 'idea' | 'blocked' | 'framed' | 'final';
 export type ShotCamMode = 'still' | 'keys' | 'pov' | 'follow';
+export type TransType = 'cut' | 'glide' | 'dipBlack' | 'dipWhite' | 'dissolve';
+/** How a shot starts: centred on its cut, never longer than it or the shot before. */
+export interface ShotTrans {
+  type: TransType;
+  dur: number;
+  ease: 'smooth' | 'linear';
+}
 /** A named camera setup to reuse across shots (kept with the scene; mirrored in one of Studio's saved views). */
 export interface Angle {
   id: string;
@@ -39,6 +46,8 @@ export interface Shot {
   bone?: string;
   /** the angle its still camera came from */
   angle?: string;
+  /** how it starts (missing = a hard cut) */
+  trans?: ShotTrans;
   /** its frame guide (picture shape), 0 / missing = leave the guides alone */
   aspect?: number;
   cam?: { pos: number[]; rot: number[]; dist: number[]; fov: number };

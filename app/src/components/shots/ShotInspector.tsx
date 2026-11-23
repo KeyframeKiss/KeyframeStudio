@@ -8,7 +8,7 @@ import { Icon } from '../Icon';
 import { CameraMoves } from '../CameraMoves';
 import { ASPECTS, BONE_LABEL, setCamTools } from '../CameraToolsCards';
 import { ANGLE_DRAG, CamKeyList, keyCamera, reloadCam, useCam } from '../CameraPanel';
-import { canRender, deleteShot, duplicate, fromAngle, lookThrough, patchShot, playShot, splitAtPlayhead, STATUSES, useCurrentView, workOn } from './actions';
+import { canRender, deleteShot, duplicate, fromAngle, lookThrough, patchShot, playShot, setTrans, splitAtPlayhead, STATUSES, TRANSITIONS, transProblem, useCurrentView, workOn } from './actions';
 
 const MODES: { id: ShotCamMode; label: string; hint: string }[] = [
   { id: 'still', label: 'Still', hint: 'Its own camera: Studio’s view or an angle. Live cuts switch to it as the shot starts.' },
@@ -172,6 +172,37 @@ export function ShotInspector({ shot, index }: { shot: Shot; index: number }) {
               <Icon name="redo" size={12} /> Loop
             </button>
           </div>
+        </div>
+
+        <div className="sq-insp-row sq-trans-row">
+          <span className="sq-trans-label">
+            Into this shot
+            <Help text="How the edit gets into this shot from the one before. Cut: at once. Glide: the camera travels between the two shots' cameras. Dips: fade to a colour and back. Dissolve: the shot before fades into this one. Centred on the cut; plays with live cuts, on the monitor and in renders." />
+          </span>
+          <div className="seg" role="radiogroup" aria-label="Transition into this shot">
+            {TRANSITIONS.map((t) => (
+              <button key={t.id} role="radio" aria-checked={(shot.trans?.type ?? 'cut') === t.id} className={(shot.trans?.type ?? 'cut') === t.id ? 'on' : ''} title={t.hint} onClick={() => setTrans(shot.id, { type: t.id })}>
+                <span className="sq-glyph">{t.glyph}</span> {t.label}
+              </button>
+            ))}
+          </div>
+          {shot.trans && shot.trans.type !== 'cut' && (
+            <>
+              <label className="sq-trans-len">
+                <span>Length</span>
+                <DragNumber value={shot.trans.dur} step={1 / fps} digits={2} unit=" s" min={0.05} max={5} onCommit={(v) => setTrans(shot.id, { dur: v })} title="How long the transition takes, centred on the cut" />
+              </label>
+              <div className="seg">
+                <button className={shot.trans.ease !== 'linear' ? 'on' : ''} onClick={() => setTrans(shot.id, { ease: 'smooth' })} title="Ease in and out">
+                  Smooth
+                </button>
+                <button className={shot.trans.ease === 'linear' ? 'on' : ''} onClick={() => setTrans(shot.id, { ease: 'linear' })} title="An even pace">
+                  Linear
+                </button>
+              </div>
+            </>
+          )}
+          {transProblem(shot) && <span className="sq-trans-warn">{transProblem(shot)}</span>}
         </div>
 
         <div className="sq-insp-cols">

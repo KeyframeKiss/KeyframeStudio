@@ -166,6 +166,52 @@ export function shotMenu(id: string): MenuItem[] {
   ];
 }
 
+export const TRANSITIONS: { id: import('../../state/store').TransType; label: string; glyph: string; hint: string }[] = [
+  { id: 'cut', label: 'Cut', glyph: '│', hint: 'A hard cut: the camera switches at once' },
+  { id: 'glide', label: 'Glide', glyph: '↝', hint: 'The camera travels from the shot before to this one (short = a whip pan)' },
+  { id: 'dipBlack', label: 'Dip to black', glyph: '●', hint: 'Fade to black, cut, fade back in' },
+  { id: 'dipWhite', label: 'Dip to white', glyph: '○', hint: 'Fade to white, cut, fade back in' },
+  { id: 'dissolve', label: 'Dissolve', glyph: '◇', hint: 'The shot before fades into this one' },
+];
+
+/** The shot before (by start), or null. */
+export function shotBefore(id: string): Shot | null {
+  const list = [...st().shots].sort((a, b) => a.start - b.start);
+  const i = list.findIndex((s) => s.id === id);
+  return i > 0 ? list[i - 1] : null;
+}
+
+const stillCam = (s: Shot | null) => !!s && (s.camMode ?? 'still') === 'still' && !!s.cam;
+
+/** Why a transition can't play (glides and dissolves need still cameras on both sides), or null. */
+export function transProblem(s: Shot): string | null {
+  const t = s.trans?.type ?? 'cut';
+  if (t !== 'glide' && t !== 'dissolve') return null;
+  const a = shotBefore(s.id);
+  if (!a) return 'There’s no shot before this one — it plays as a cut';
+  if (!stillCam(a) || !stillCam(s)) return 'Needs a still camera on this shot and the one before — until then it plays as a cut';
+  return null;
+}
+
+/** The time the transition covers (centred on the cut, no longer than either shot), or null for a cut. */
+export function transWindow(s: Shot): [number, number] | null {
+  const tr = s.trans;
+  if (!tr || tr.type === 'cut') return null;
+  const a = shotBefore(s.id);
+  let dur = Math.min(tr.dur, s.end - s.start);
+  if (a) dur = Math.min(dur, a.end - a.start);
+  return [s.start - dur / 2, s.start + dur / 2];
+}
+
+export function setTrans(id: string, p: Partial<import('../../state/store').ShotTrans>) {
+  const s = st().shots.find((x) => x.id === id);
+  if (!s) return;
+  const cur = s.trans ?? { type: 'cut' as const, dur: 0.5, ease: 'smooth' as const };
+  const next = { ...cur, ...p };
+  if (p.type && p.type !== 'cut' && cur.type === 'cut' && p.dur == null) next.dur = p.type === 'glide' ? 0.8 : 0.6;
+  return patchShot(id, { trans: next.type === 'cut' ? undefined : next }, `Transition: ${TRANSITIONS.find((x) => x.id === next.type)!.label.toLowerCase()}`);
+}
+
 export const STATUSES: { id: NonNullable<Shot['status']>; label: string; hint: string }[] = [
   { id: 'idea', label: 'Idea', hint: 'Planned: a rough range and a note' },
   { id: 'blocked', label: 'Blocked', hint: 'The timing and the main poses are in' },

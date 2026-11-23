@@ -148,7 +148,11 @@ namespace StudioEX.Bridge.Api
         /// Shot cuts: for each (time, put the shot's camera in place), key the camera there and make the key before
         /// it a hold, so the view jumps into the shot. One undo step; the camera is back where it was afterwards.
         /// </summary>
-        public static object KeyShotCuts(List<KeyValuePair<float, Action>> cuts)
+        public static object KeyShotCuts(List<KeyValuePair<float, Action>> cuts) =>
+            KeyShotCuts(cuts.Select(c => new CutKey { T = c.Key, Apply = c.Value }).ToList());
+
+        /// <summary>Key Studio's camera at each time (Apply puts it there): a hard cut, or with Glide an eased move from the key before.</summary>
+        public static object KeyShotCuts(List<CutKey> cuts)
         {
             var cc = Singleton<Studio.Studio>.Instance.cameraCtrl;
             var tracks = CameraTracksForEdit(out var snap);
@@ -159,16 +163,19 @@ namespace StudioEX.Bridge.Api
             var hold = new AnimationCurve(new UnityEngine.Keyframe(0f, 0f, 0f, 0f), new UnityEngine.Keyframe(1f, 1f, float.PositiveInfinity, 0f));
             try
             {
-                foreach (var cut in cuts.OrderBy(c => c.Key))
+                foreach (var cut in cuts.OrderBy(c => c.T))
                 {
-                    float t = Mathf.Clamp(cut.Key, 0f, TL.duration);
-                    cut.Value();
+                    float t = Mathf.Clamp(cut.T, 0f, TL.duration);
+                    cut.Apply();
                     foreach (var ip in tracks)
                     {
                         AddOrUpdateKey(ip, t);
                         TLKeyframe prev = null;
                         foreach (var kv in ip.keyframes) { if (kv.Key < t - 1e-4f) prev = kv.Value; else break; }
-                        if (prev != null) prev.curve = new AnimationCurve(hold.keys);
+                        if (prev != null)
+                            prev.curve = cut.Glide
+                                ? (cut.Smooth ? AnimationCurve.EaseInOut(0f, 0f, 1f, 1f) : AnimationCurve.Linear(0f, 0f, 1f, 1f))
+                                : new AnimationCurve(hold.keys);
                     }
                 }
             }

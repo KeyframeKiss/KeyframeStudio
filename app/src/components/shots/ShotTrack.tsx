@@ -5,7 +5,8 @@ import { ContextMenu } from '../ContextMenu';
 import { Icon } from '../Icon';
 import { useAnimationFrame } from '../useAnimationFrame';
 import { ANGLE_DRAG, useCam } from '../CameraPanel';
-import { addShotAt, addShotWithAngle, camLabel, deleteShot, duplicate, fromAngle, lookThrough, selectShot, shotMenu, splitAtPlayhead, swap } from './actions';
+import { addShotAt, addShotWithAngle, camLabel, deleteShot, duplicate, fromAngle, lookThrough, selectShot, setTrans, shotMenu, splitAtPlayhead, swap, TRANSITIONS, transProblem, transWindow } from './actions';
+import type { MenuItem } from '../ContextMenu';
 
 const EDGE = 7; // px: grab a shot's edge to trim it
 const SNAP_PX = 8;
@@ -31,6 +32,8 @@ export function ShotTrack() {
   const [dropOn, setDropOn] = useState<string | null>(null);
   const [hint, setHint] = useState<{ x: number; text: string } | null>(null);
   const [laneDrop, setLaneDrop] = useState<number | null>(null);
+  const [transMenu, setTransMenu] = useState<{ x: number; y: number; id: string } | null>(null);
+  const transDrag = useRef<{ id: string; start: number; orig: Shot[] } | null>(null);
   const camKeys = useCam((s) => s.keys);
   useStore((s) => s.angles); // labels name the angle a shot uses
   useStore((s) => s.showEnglish);
@@ -285,6 +288,59 @@ export function ShotTrack() {
               </div>
             );
           })}
+          {sorted.map((s, i) => {
+            if (i === 0 && !s.trans) return null; // nothing before the first shot to cut from
+            const win = transWindow(s);
+            const t = TRANSITIONS.find((x) => x.id === (s.trans?.type ?? 'cut'))!;
+            const bad = transProblem(s);
+            return (
+              <div key={`t${s.id}`}>
+                {win && (
+                  <div className={`sq-trans ${s.trans!.type} ${bad ? 'bad' : ''}`} style={{ left: xOf(win[0]), width: Math.max(4, xOf(win[1]) - xOf(win[0])) }} title={`${t.label} · ${(win[1] - win[0]).toFixed(2)} s${bad ? ` — ${bad}` : ''}\nDrag an edge to change its length`}>
+                    {(['l', 'r'] as const).map((side) => (
+                      <span
+                        key={side}
+                        className={`sq-trans-edge ${side}`}
+                        onPointerDown={(e) => {
+                          e.stopPropagation();
+                          transDrag.current = { id: s.id, start: s.start, orig: shots };
+                          try {
+                            (e.target as HTMLElement).setPointerCapture(e.pointerId);
+                          } catch {
+                            /* not a live pointer */
+                          }
+                        }}
+                        onPointerMove={(e) => {
+                          const d = transDrag.current;
+                          if (!d || d.id !== s.id) return;
+                          const dur = Math.min(5, Math.max(0.05, 2 * Math.abs(tOf(localX(e)) - d.start)));
+                          useStore.setState({ shots: d.orig.map((x) => (x.id === s.id ? { ...x, trans: { ...x.trans!, dur: Math.round(dur * fps) / fps } } : x)) });
+                          setHint({ x: localX(e), text: `${t.label} ${dur.toFixed(2)} s` });
+                        }}
+                        onPointerUp={() => {
+                          const d = transDrag.current;
+                          transDrag.current = null;
+                          setHint(null);
+                          const now = useStore.getState().shots.find((x) => x.id === s.id)?.trans;
+                          if (d && now) void setTrans(s.id, { dur: now.dur });
+                        }}
+                      />
+                    ))}
+                  </div>
+                )}
+                <button
+                  className={`sq-cut ${s.trans ? 'on' : ''} ${bad ? 'bad' : ''}`}
+                  style={{ left: xOf(s.start) }}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={(e) => setTransMenu({ x: e.clientX, y: e.clientY, id: s.id })}
+                  title={`Into ${s.name}: ${t.label}${s.trans ? ` (${s.trans.dur.toFixed(2)} s)` : ''}${bad ? ` — ${bad}` : ''}\nClick to change`}
+                  aria-label={`Transition into ${s.name}: ${t.label}`}
+                >
+                  {t.glyph}
+                </button>
+              </div>
+            );
+          })}
           {issues
             .filter((p) => p.kind === 'overlap')
             .map((p) => (
@@ -300,6 +356,7 @@ export function ShotTrack() {
         )}
       </div>
       {menu && <ContextMenu x={menu.x} y={menu.y} items={shotMenu(menu.id)} onClose={() => setMenu(null)} />}
+      {transMenu && <ContextMenu x={transMenu.x} y={transMenu.y} items={transItems(transMenu.id, shots)} onClose={() => setTransMenu(null)} />}
     </div>
   );
 }
@@ -311,4 +368,21 @@ function Playhead({ pps }: { pps: number }) {
     if (ref.current) ref.current.style.transform = `translateX(${Math.round(liveTime() * pps)}px)`;
   });
   return <div ref={ref} className="sq-playhead" aria-hidden />;
+}
+
+/** The menu at a cut: how the edit gets into the shot after it. */
+function transItems(id: string, shots: Shot[]): MenuItem[] {
+  const s = shots.find((x) => x.id === id);
+  if (!s) return [];
+  const cur = s.trans?.type ?? 'cut';
+  return [
+    { header: true, label: `Into ${s.name}` },
+    ...TRANSITIONS.map((t) => ({ label: `${cur === t.id ? '✓ ' : '   '}${t.glyph}  ${t.label}`, action: () => setTrans(id, { type: t.id }) })),
+    ...(s.trans
+      ? [
+          { sep: true } as MenuItem,
+          ...[0.25, 0.5, 1, 2].map((d) => ({ label: `${Math.abs(s.trans!.dur - d) < 1e-3 ? '✓ ' : '   '}${d} s long`, action: () => setTrans(id, { dur: d }) })),
+        ]
+      : []),
+  ];
 }
