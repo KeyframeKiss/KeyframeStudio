@@ -385,8 +385,13 @@ namespace StudioEX.Bridge.Api
                 }
                 if (travel) keys += BakeTravel(c, times, hipsAt, rootM, parentInv, rootPos);
                 made.AddRange(Interpolables.Values.Where(ip => !existing.Contains(ip)).Select(ip => ip.GetHashCode()));
+                // the clip's own tracks belong to the bake too (they hold the clip still under it): in the same folder,
+                // first — unless they're already filed in a folder of their own (an earlier bake)
+                var clipTracks = new[] { CharTrack(c, "charAnimation"), CharTrack(c, "charAnimationTime") }
+                    .Where(ip => ip != null && (LeafNode(ip) as Timeline.INode)?.parent == null).Select(ip => ip.GetHashCode()).ToList();
+                var folder = clipTracks.Concat(made).ToList();
                 if (made.Count > 0)
-                    Undoable("Bake " + name, () => GroupCreate(new Dictionary<string, object> { { "name", name + " (baked)" }, { "tracks", made.Cast<object>().ToList() } }));
+                    Undoable("Bake " + name, () => GroupCreate(new Dictionary<string, object> { { "name", name + " (baked)" }, { "tracks", folder.Cast<object>().ToList() } }));
             }
             finally
             {

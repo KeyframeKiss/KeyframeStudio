@@ -93,7 +93,7 @@ export async function bakeClip(id: number, t0: number, t1: number, parts: BakePa
   if (!r) return false;
   const what = BAKE_PARTS.filter((p) => parts.includes(p.id)).map((p) => p.label.toLowerCase());
   toast(
-    `Baked “${r.name}” (${sec(r.t0)}–${sec(r.t1)}): ${r.keys} keys on ${r.bones} bones${r.tracks ? `, in the folder “${r.name} (baked)”` : ''}. FK now drives the ${names(what)}${
+    `Baked “${r.name}” (${sec(r.t0)}–${sec(r.t1)}): ${r.keys} keys on ${r.bones} bones${r.tracks ? `, in the folder “${r.name} (baked)” with the clip's own tracks (hide the folder to hide it all)` : ''}. FK now drives the ${names(what)}${
       r.travel ? "; the hips' bob and travel are on the character's position track and the clip is held still underneath, so the keys carry it all" : '; the clip still moves the hips'
     }. Edit the keys like any others — Ctrl+Z undoes it`,
     'done',

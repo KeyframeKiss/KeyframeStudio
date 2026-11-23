@@ -124,8 +124,24 @@ export default async function (t) {
 
     check("the hips' travel is baked too (the character's position track)", r.travel === true && tl.tracks.some((x) => x.oci === id && x.model === 'guideObjectPos'), JSON.stringify(r));
 
-    // the bake stands on its own: muting the clip changes nothing
+    // the clip's own tracks are filed with the bake
     const info0 = await ok('anim.timeline', { id });
+    const folder = (tl.groups ?? []).find((g) => g.name.includes('(baked)'));
+    const clipRows = tl.tracks.filter((x) => x.id === info0.tracks.clip || x.id === info0.tracks.time);
+    check('the Animation tracks are in the baked folder', !!folder && clipRows.length === 2 && clipRows.every((x) => x.group === folder.id), JSON.stringify(clipRows.map((x) => x.group)));
+
+    // hiding the whole folder, then showing it again: the same motion as straight after the bake
+    const inFolder = tl.tracks.filter((x) => x.group === folder.id).map((x) => x.id);
+    await ok('timeline.setTracksEnabled', { tracks: inFolder, enabled: false });
+    await ok('timeline.setTracksEnabled', { tracks: inFolder, enabled: true });
+    await sleep(300);
+    const shownAgain = await sample(0, 2);
+    check('folder hidden and shown again: motion as baked', worst(after, shownAgain) < 1e-3, `${worst(after, shownAgain).toFixed(5)} at ${where}`);
+    await ok('undo');
+    await ok('undo');
+    await sleep(300);
+
+    // the bake stands on its own: muting the clip changes nothing
     await ok('timeline.setTracksEnabled', { tracks: [info0.tracks.clip, info0.tracks.time], enabled: false });
     await sleep(300);
     const alone = await sample(0, 2);
@@ -168,5 +184,7 @@ export default async function (t) {
     const un = await ok('timeline.get');
     check('one undo removes the baked tracks', un.tracks.length === tracksBefore, `${un.tracks.length} vs ${tracksBefore}`);
     check('…and FK goes back off', (await ok('chara.get', { id })).kinematics.fk === false);
+    const back = await ok('timeline.get');
+    check('…and the Animation tracks are back at the top level', back.tracks.filter((x) => x.id === info0.tracks.clip || x.id === info0.tracks.time).every((x) => x.group === -1));
   });
 }
