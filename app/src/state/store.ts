@@ -1048,13 +1048,28 @@ export async function redo() {
 }
 
 export function setTrackProps(track: number, props: { enabled?: boolean; alias?: string; color?: number[] }) {
+  if (props.enabled === false) clipMuteNote([track]);
   return edit('timeline.setTrack', { track, ...props });
 }
 
 /** Mute or unmute several tracks at once (a folder, an object): one undo step. */
 export function setTracksEnabled(ids: number[], enabled: boolean) {
   if (!ids.length) return;
+  if (!enabled) clipMuteNote(ids);
   return edit('timeline.setTracksEnabled', { tracks: ids, enabled });
+}
+
+/**
+ * Muting a character's clip (Animation / Animation Time) while its bone keys stay on: the bones keep moving but the
+ * hips stop where the clip did — say so, and what to mute to see the clip alone.
+ */
+function clipMuteNote(ids: number[]) {
+  const { tracks } = get();
+  const muting = new Set(ids);
+  const clipOf = tracks.filter((t) => muting.has(t.id) && /^charAnimation(Time)?$/.test(t.model ?? '')).map((t) => t.oci);
+  const held = clipOf.some((oci) => tracks.some((t) => t.oci === oci && !muting.has(t.id) && t.enabled && t.keys.length > 0 && t.model === 'guideObjectRot'));
+  if (held)
+    toast("The clip is muted but this character's bone keys still play: the body keeps moving while the hips stay where the clip stopped. To see the clip on its own, mute the bone keys (the baked folder) instead", 'info');
 }
 
 export function removeTracks(ids: number[]) {

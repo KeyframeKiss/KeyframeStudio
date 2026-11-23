@@ -122,6 +122,12 @@ namespace StudioEX.Bridge.Api
 
             var clip = EnsureCharTrack(c, "charAnimation");
             var time = EnsureCharTrack(c, "charAnimationTime");
+            var muted = new[] { clip, time }.Where(ip => !ip.enabled).ToList();
+            if (muted.Count > 0)
+            {
+                UndoStack.Push(new MuteUndo(muted.ToDictionary(ip => ip, ip => ip.enabled), "Unmute tracks"));
+                foreach (var ip in muted) ip.enabled = true;
+            }
             // which clip from t0 (Timeline's own reader of the current one)
             AddOrUpdateKey(clip, t0);
             // its stretch: up to the next clip on the track, or the end of the timeline
@@ -166,6 +172,73 @@ namespace StudioEX.Bridge.Api
                 { "length", Math.Round(len, 4) }, { "speed", Math.Round(speed, 4) }, { "loop", st.loop },
                 { "tracks", new List<object> { clip.GetHashCode(), time.GetHashCode() } },
             };
+        }
+
+        // ------------------------------------------------------------------ muting follows through
+
+        /// <summary>
+        /// After tracks were muted / unmuted (inside the mute's undo group). Only for characters whose clip is on the
+        /// timeline (what they'd show without their bone keys is that clip):
+        ///  · an FK part whose bone keys are now all muted goes back to the clip (FK off for it); unmuting any of them
+        ///    gives the part to its keys again (FK on). Otherwise FK would hold the last pose: a frozen body while the
+        ///    clip carries the hips on.
+        ///  · an unmuted Animation Time track drives the clip again: Studio's own playback stops (speed 0), or the clip
+        ///    would run on by itself between frames and while paused.
+        /// </summary>
+        private static void FollowMute(List<Interpolable> changed, bool on)
+        {
+            foreach (var c in changed.Select(ip => ip.oci as OCIChar).Where(x => x?.charInfo != null).Distinct().ToList())
+            {
+                var mine = changed.Where(ip => ip.oci == c).ToList();
+                var time = CharTrack(c, "charAnimationTime");
+                if (time == null || time.keyframes.Count == 0) continue; // no clip on the timeline: muting stays as it was
+
+                if (on && mine.Contains(time) && c.animeSpeed > 1e-3f)
+                {
+                    UndoStack.Push(CharaApi.CharaUndo.Capture(new[] { c }, "anime", "Unmute tracks"));
+                    c.animeSpeed = 0f;
+                }
+
+                // bone keys: which FK part each belongs to
+                Func<Interpolable, int> partOf = ip =>
+                {
+                    if (ip.id != "guideObjectRot" || !(ip.parameter is GuideObject g)) return -1;
+                    var b = c.listBones.FirstOrDefault(x => x?.guideObject == g);
+                    return b != null ? ViewportGizmos.FkPart(b.boneGroup) : -1;
+                };
+                var parts = mine.Select(partOf).Where(p => p >= 0).Distinct().ToList();
+                if (parts.Count == 0) continue;
+                var all = Interpolables.Values.Where(ip => ip.oci == c && ip.keyframes.Count > 0).ToList();
+                bool recorded = false;
+                foreach (int part in parts)
+                {
+                    var tracks = all.Where(ip => partOf(ip) == part).ToList();
+                    if (tracks.Count == 0) continue;
+                    bool want = tracks.Any(ip => ip.enabled);
+                    if (want == ViewportGizmos.FkOn(c, part)) continue;
+                    if (!recorded) { UndoStack.Push(new KinematicsUndo(c, ViewportGizmos.KinematicsRestorer(c))); recorded = true; }
+                    if (want)
+                    {
+                        int bone = c.listBones.FindIndex(b => b?.guideObject != null && ViewportGizmos.FkPart(b.boneGroup) == part);
+                        if (bone >= 0) ViewportGizmos.EnsureFk(c, bone);
+                    }
+                    else
+                    {
+                        c.ActiveFK(FKCtrl.parts[part], false, false);
+                        if (!c.oiCharInfo.activeFK.Any(x => x)) c.ActiveKinematicMode(OICharInfo.KinematicMode.FK, false, false);
+                    }
+                }
+            }
+        }
+
+        /// <summary>The character's clip tracks are there with keys but muted: unmute them (undoable). True if it did.</summary>
+        private static bool UnmuteClip(OCIChar c)
+        {
+            var tracks = new[] { CharTrack(c, "charAnimation"), CharTrack(c, "charAnimationTime") }.Where(ip => ip != null && !ip.enabled && ip.keyframes.Count > 0).ToList();
+            if (tracks.Count == 0) return false;
+            UndoStack.Push(new MuteUndo(tracks.ToDictionary(ip => ip, ip => ip.enabled), "Unmute tracks"));
+            foreach (var ip in tracks) ip.enabled = true;
+            return true;
         }
 
         // ------------------------------------------------------------------ bake to FK keys
@@ -227,8 +300,13 @@ namespace StudioEX.Bridge.Api
             try
             {
                 // the clip runs on the timeline (so the bake and what's left of the clip stay in step)
-                bool putOn = !ClipDriven(c);
-                if (putOn) PutOnTimeline(c, t0);
+                // its tracks muted: unmute them (re-putting it from t0 would rewrite its stretches)
+                if (!UnmuteClip(c) && !ClipDriven(c)) PutOnTimeline(c, t0);
+                if (c.animeSpeed > 1e-3f)
+                {
+                    UndoStack.Push(CharaApi.CharaUndo.Capture(new[] { c }, "anime", "Bake"));
+                    c.animeSpeed = 0f;
+                }
                 UndoStack.Push(new KinematicsUndo(c, ViewportGizmos.KinematicsRestorer(c)));
                 // nothing holding the body: the bones show the clip alone
                 if (c.oiCharInfo.enableFK) c.ActiveKinematicMode(OICharInfo.KinematicMode.FK, false, false);

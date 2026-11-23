@@ -119,6 +119,38 @@ export default async function (t) {
     t.metric('worst bone off after the bake', w.toFixed(4), 'units');
     check('the baked motion matches the clip (within 2% of body height)', w < 0.02 * h, `${w.toFixed(4)} vs ${(0.02 * h).toFixed(4)} at ${where}`);
 
+    // muting the baked keys shows the clip again (not a body frozen in its last baked pose); unmuting brings them back
+    const bakedIds = (await ok('timeline.get')).tracks.filter((x) => x.model === 'guideObjectRot' && x.oci === id).map((x) => x.id);
+    await ok('timeline.setTracksEnabled', { tracks: bakedIds, enabled: false });
+    await sleep(300);
+    const fkMuted = (await ok('chara.get', { id })).kinematics;
+    check('all baked keys muted: FK lets go of those parts', !fkMuted.fk || !fkMuted.fkParts.find((p) => p.name === 'Body').on, JSON.stringify(fkMuted.fkParts));
+    const shown = await sample(0, 2);
+    check('…and the clip plays as it did', worst(base, shown) < 1e-3, `${worst(base, shown).toFixed(5)} at ${where}`);
+    await ok('undo');
+    await sleep(300);
+    check('one undo: keys and FK back', (await ok('chara.get', { id })).kinematics.fk === true && (await ok('timeline.get')).tracks.filter((x) => bakedIds.includes(x.id)).every((x) => x.enabled));
+    await ok('timeline.setTrack', { track: bakedIds[0], enabled: false });
+    check('muting one bone keeps FK on its part', (await ok('chara.get', { id })).kinematics.fk === true);
+    await ok('undo');
+
+    // the clip muted, Studio's playback started, then unmuted: the timeline drives it again (stopped in between)
+    const info = await ok('anim.timeline', { id });
+    const clipIds = [info.tracks.clip, info.tracks.time];
+    await ok('timeline.setTracksEnabled', { tracks: clipIds, enabled: false });
+    await ok('chara.set', { ids: [id], animeSpeed: 1 });
+    await sleep(400);
+    await ok('timeline.setTracksEnabled', { tracks: clipIds, enabled: true });
+    check('unmuted clip: speed back to 0', (await ok('chara.get', { id })).anime.speed === 0);
+    await ok('timeline.seek', { t: 0.5 });
+    await sleep(300);
+    const again = await sample(0, 2);
+    check('…and baked + clip play as before', worst(after, again) < 1e-3, `${worst(after, again).toFixed(5)} at ${where}`);
+    await ok('undo');
+    await ok('undo');
+    await ok('undo');
+    await sleep(300);
+
     await ok('undo');
     await sleep(300);
     const un = await ok('timeline.get');

@@ -843,14 +843,28 @@ namespace StudioEX.Bridge.Api
             return n;
         }
 
-        private static object SetTracksEnabled(Dictionary<string, object> a)
+        private static object SetTracksEnabled(Dictionary<string, object> a) =>
+            MuteTracks(TracksFromIds(a.GetList("tracks")), a.GetBool("enabled", true));
+
+        /// <summary>
+        /// Mute / unmute tracks as one undo step. A character's animation follows along: a part whose bone keys are
+        /// all muted hands back to its clip (and takes over again when they're unmuted), and an unmuted clip is driven
+        /// by the timeline again (see FollowMute).
+        /// </summary>
+        private static int MuteTracks(List<Interpolable> targets, bool on)
         {
-            var targets = TracksFromIds(a.GetList("tracks"));
-            bool on = a.GetBool("enabled", true);
             var change = targets.Where(ip => ip.enabled != on).ToList();
             if (change.Count == 0) return 0;
-            UndoStack.Push(new MuteUndo(change.ToDictionary(ip => ip, ip => ip.enabled), on ? "Unmute tracks" : "Mute tracks"));
-            foreach (var ip in change) ip.enabled = on;
+            string label = on ? "Unmute tracks" : "Mute tracks";
+            UndoStack.BeginGroup();
+            try
+            {
+                UndoStack.Push(new MuteUndo(change.ToDictionary(ip => ip, ip => ip.enabled), label));
+                foreach (var ip in change) ip.enabled = on;
+                try { FollowMute(change, on); }
+                catch (Exception e) { StudioBridgePlugin.Logger.LogWarning("Mute: " + e); }
+            }
+            finally { UndoStack.EndGroup(label); }
             RefreshView();
             AfterEdit();
             return change.Count;
@@ -876,7 +890,7 @@ namespace StudioEX.Bridge.Api
         private static object SetTrack(Dictionary<string, object> a)
         {
             var ip = Track(a["track"]);
-            if (a.Has("enabled")) ip.enabled = a.GetBool("enabled", true);
+            if (a.Has("enabled")) MuteTracks(new List<Interpolable> { ip }, a.GetBool("enabled", true));
             if (a.ContainsKey("alias")) ip.alias = a.GetString("alias") ?? "";
             if (a.Has("color"))
             {
