@@ -143,6 +143,12 @@ namespace StudioEX.Bridge.Api
         [MethodImpl(MethodImplOptions.NoInlining)]
         private static void ClearHistoryImpl() => TimelineImpl.ClearHistory();
 
+        /// <summary>Does Studio's camera move by Timeline keys between s and e?</summary>
+        public static bool CameraAnimatedIn(float s, float e) => Available && CameraAnimatedInImpl(s, e);
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static bool CameraAnimatedInImpl(float s, float e) => TimelineImpl.IsReady && TimelineImpl.CameraAnimatedIn(s, e);
+
         /// <summary>Every frame: keep playback inside the loop range (a shot), if one is set.</summary>
         public static void LoopTick(int clients) { if (Available) LoopTickImpl(clients); }
 

@@ -8325,3 +8325,14 @@ a.btn {
 .sq-fix:focus-visible {
   outline: 2px solid var(--accent);
 }
+
+.sq-keyed {
+  margin: 0 0 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--line));
+  background: var(--accent-soft);
+  color: var(--text-1);
+  font-size: 11px;
+  line-height: 1.4;
+}

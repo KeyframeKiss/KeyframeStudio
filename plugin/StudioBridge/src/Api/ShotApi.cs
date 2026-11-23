@@ -40,7 +40,7 @@ namespace StudioEX.Bridge.Api
         /// <summary>A render (one range or the shot queue) is under way.</summary>
         internal static bool Rendering => (bool)QueueState["running"];
         /// <summary>Shots drive the camera: live cuts, or a render that uses the shots.</summary>
-        private static bool ShotsActive => _liveCuts || (_rendering && _renderShots);
+        private static bool ShotsActive => _liveCuts;
         private static List<object> _trace;
         private static string _traceShot;
         private static bool _traceApplied;
@@ -111,7 +111,7 @@ namespace StudioEX.Bridge.Api
             {
                 var sh = Find(a.GetString("id"));
                 ApplyMode(sh);
-                if (sh.GetString("camMode") == "still") ApplyCamera(sh);
+                if (Mode(sh) == "still") ApplyCamera(sh);
                 ApplyAspect(sh);
                 _liveId = sh.GetString("id");
                 return true;
@@ -159,7 +159,8 @@ namespace StudioEX.Bridge.Api
 
         private static Dictionary<string, object> State()
         {
-            var d = new Dictionary<string, object> { { "shots", _shots }, { "liveCuts", _liveCuts }, { "angles", _angles } };
+            var keyed = _shots.Where(x => x.GetString("camMode") == "still" && Mode(x) == "keys").Select(x => (object)x.GetString("id")).ToList();
+            var d = new Dictionary<string, object> { { "shots", _shots }, { "liveCuts", _liveCuts }, { "angles", _angles }, { "keyed", keyed } };
             var tr = TransitionFx.Live;
             if (tr != null) d["transition"] = new Dictionary<string, object> { { "type", tr.Type }, { "f", Math.Round(tr.F, 4) }, { "fade", Math.Round(tr.FadeA, 4) }, { "out", Math.Round(tr.OutA, 4) }, { "id", tr.Id } };
             return d;
@@ -440,7 +441,7 @@ namespace StudioEX.Bridge.Api
         /// </summary>
         private static void ApplyMode(Dictionary<string, object> shot)
         {
-            string m = shot.GetString("camMode");
+            string m = Mode(shot);
             if (m == "pov" || m == "follow")
             {
                 if (m == "follow") ApplyCamera(shot); // start from the shot's framing, then keep the body part in view
@@ -451,7 +452,31 @@ namespace StudioEX.Bridge.Api
 
         // ---------------- transitions ----------------
 
-        private static bool StillWithCam(Dictionary<string, object> s) => s != null && s.GetString("camMode") == "still" && s.GetObject("cam") != null;
+        // which shots have camera moves keyed in them (looked up again when the timeline changes, at most 4× a second)
+        private static readonly Dictionary<string, bool> _keyed = new Dictionary<string, bool>();
+        private static long _keyedSig = long.MinValue;
+        private static float _keyedAt = -10f;
+
+        /// <summary>
+        /// How the shot's camera works: a still shot that has camera keys in it (or a keyed camera move running through
+        /// it) plays those keys — the moves you keyed always win over a still camera.
+        /// </summary>
+        internal static string Mode(Dictionary<string, object> s)
+        {
+            string m = s.GetString("camMode") ?? "still";
+            if (m != "still") return m;
+            if (Time.unscaledTime - _keyedAt > 0.25f)
+            {
+                _keyedAt = Time.unscaledTime;
+                long sig = TimelineApi.Signature();
+                if (sig != _keyedSig) { _keyedSig = sig; _keyed.Clear(); }
+            }
+            string key = s.GetString("id") + "|" + s.GetFloat("start") + "|" + s.GetFloat("end");
+            if (!_keyed.TryGetValue(key, out bool k)) _keyed[key] = k = TimelineApi.CameraAnimatedIn(s.GetFloat("start"), s.GetFloat("end"));
+            return k ? "keys" : "still";
+        }
+
+        private static bool StillWithCam(Dictionary<string, object> s) => s != null && Mode(s) == "still" && s.GetObject("cam") != null;
 
         private static Dictionary<string, object> CamHolder(Vector3 pos, Vector3 rot, Vector3 dist, float fov, string id) => new Dictionary<string, object>
         {
@@ -524,7 +549,7 @@ namespace StudioEX.Bridge.Api
             float t = TimelineApi.PlaybackTime();
             var shot = ShotAt(t);
             var tr = Compute(t);
-            var cam = tr?.Cam != null ? tr.Cam.GetObject("cam") : shot?.GetString("camMode") == "still" ? shot.GetObject("cam") : null;
+            var cam = tr?.Cam != null ? tr.Cam.GetObject("cam") : shot != null && Mode(shot) == "still" ? shot.GetObject("cam") : null;
             if (cam == null) return false;
             rot = Quaternion.Euler(V(cam.GetList("rot")));
             pos = V(cam.GetList("pos")) + rot * V(cam.GetList("dist"));
@@ -573,7 +598,7 @@ namespace StudioEX.Bridge.Api
             foreach (var shot in _shots)
             {
                 if (ids.Count > 0 && !ids.Contains(shot.GetString("id"))) continue;
-                if (shot.GetString("camMode") == "keys" || shot.GetObject("cam") == null) continue;
+                if (Mode(shot) != "still" || shot.GetObject("cam") == null) continue;
                 var t = ThumbThrough(shot);
                 if (t != null) { shot["thumb"] = t; n++; }
             }
@@ -649,8 +674,9 @@ namespace StudioEX.Bridge.Api
                 TransitionFx.Sync(Camera.main);
                 _traceShot = shot?.GetString("id");
                 if (shot == null) return;
-                if (shot.GetString("camMode") != "still") return; // camera keys, first person or follow drive it
-                if (entered || playing)
+                if (Mode(shot) != "still") return; // camera keys, first person or follow drive it
+                // playing, crossing a cut, or the playhead moved (scrubbing): the edit. Orbiting while paused is free.
+                if (entered || playing || moved)
                 {
                     _traceApplied = true;
                     ApplyCamera(shot);
@@ -669,7 +695,7 @@ namespace StudioEX.Bridge.Api
         private static object BuildCuts()
         {
             if (!TimelineApi.Available) throw new BridgeException("Camera cuts need Timeline");
-            var withCam = _shots.Where(s => s.GetObject("cam") != null && s.GetString("camMode") != "keys").ToList();
+            var withCam = _shots.Where(s => s.GetObject("cam") != null && Mode(s) == "still").ToList();
             if (withCam.Count == 0) throw new BridgeException("Give the shots a camera first (frame the view, then Set camera)");
             return BuildCutsImpl(withCam);
         }
@@ -783,9 +809,8 @@ namespace StudioEX.Bridge.Api
             QueueState["files"] = new List<object>();
             AudioTrack.Silenced = true;
             _rendering = true;
-            // with live cuts off, the render moves Studio's camera through the shots: your view comes back after
             var cc = Singleton<Studio.Studio>.Instance.cameraCtrl;
-            Studio.CameraControl.CameraData viewBefore = !_liveCuts && _renderShots ? cc.Export() : null;
+            Studio.CameraControl.CameraData viewBefore = null; // (the render follows the same switch as Studio)
             float fovBefore = cc.fieldOfView;
             var sizeSettings = RenderApi.SaveSizeSettings(); // each version sets its own size; the user's comes back after
             var limit = RenderApi.SaveLimit(); // each job is recorded in Seconds mode; the user's own mode comes back after

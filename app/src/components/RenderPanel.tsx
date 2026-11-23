@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { pressable } from '../lib/pressable';
 import { Help } from './Help';
 import { bridge } from '../bridge/client';
-import { call, refreshShots, seekNow, toast, useStore } from '../state/store';
+import { call, refreshShots, seekNow, setLiveCuts, toast, useStore } from '../state/store';
 import { lastVersions, needsVersions, sameSize, SIZES, toWire, useRenderVersions, type RenderVersion } from '../lib/renderVersions';
 import { FramingCard } from './RenderFraming';
 
@@ -46,21 +46,8 @@ export function RenderPanel() {
   const [error, setError] = useState<string | null>(null);
   const request = useStore((s) => s.renderShotIds);
   const [what, setWhat] = useState<'timeline' | 'shots'>(request ? 'shots' : 'timeline');
-  const [useShots, setUseShotsState] = useState(() => {
-    try {
-      return localStorage.getItem('kf.render.useShots') !== '0';
-    } catch {
-      return true;
-    }
-  });
-  const setUseShots = (v: boolean) => {
-    setUseShotsState(v);
-    try {
-      localStorage.setItem('kf.render.useShots', v ? '1' : '0');
-    } catch {
-      /* storage blocked */
-    }
-  };
+  const liveCuts = useStore((st) => st.liveCuts);
+
   const [included, setIncluded] = useState<string[] | null>(request);
   useEffect(() => {
     if (!request) return;
@@ -124,7 +111,7 @@ export function RenderPanel() {
   };
   const start = async () => {
     if (what === 'shots') return startQueue();
-    const r = await call<RenderStatus>('render.start', { ...(sendVersions() ? { versions: toWire(versions) } : {}), useShots: shots.length > 0 && useShots });
+    const r = await call<RenderStatus>('render.start', { ...(sendVersions() ? { versions: toWire(versions) } : {}), useShots: shots.length > 0 && liveCuts });
     if (!r) return;
     setSt(r);
     toast('Rendering — Studio plays the animation and captures every frame. Leave it alone until it finishes.');
@@ -416,8 +403,8 @@ export function RenderPanel() {
               ))}
             </div>
             {shots.length > 0 && what === 'timeline' && (
-              <label className="rigs-opt" style={{ marginTop: 10 }} title="The render switches to each shot's camera at its cut and plays its transition (glide, dip, dissolve) — whether or not live cuts are on in Studio">
-                <input type="checkbox" checked={useShots} disabled={running} onChange={(e) => setUseShots(e.target.checked)} /> Use the shots ({shots.length}): their cameras, cuts and transitions
+              <label className="rigs-opt" style={{ marginTop: 10 }} title="The same switch as Shoot › Shots: the render follows the shots — their cameras, cuts and transitions (shots with camera keys play their keys). Off: the timeline's own camera.">
+                <input type="checkbox" checked={liveCuts} disabled={running} onChange={(e) => setLiveCuts(e.target.checked)} /> Play the edit ({shots.length} shot{shots.length === 1 ? '' : 's'}): their cameras, cuts and transitions
               </label>
             )}
             <label className="rigs-opt" style={{ marginTop: shots.length > 0 && what === 'timeline' ? 0 : 10 }}>

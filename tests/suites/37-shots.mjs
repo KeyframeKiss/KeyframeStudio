@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 
-export const name = 'Shots: undo, live cuts, camera types, angles, the monitor, transitions, pictures, frame guides, looping, baked cuts';
+export const name = 'Shots: undo, Play the edit, camera types, angles, the monitor, transitions, pictures, frame guides, looping, baked cuts';
 
 export default async function (t) {
   const { ok, req, check, sleep, near, studio } = t;
@@ -74,11 +74,13 @@ export default async function (t) {
     await ok('timeline.seek', { t: 3 });
     await sleep(400);
     check('in shot B: its camera', near(await fovNow(), 50, 0.05), String(await fovNow()));
-    // paused, scrubbing inside the same shot leaves your framing alone
+    // paused: changing the view is free until the playhead moves; scrubbing shows the shot again
     await ok('camera.setFov', { fov: 33 });
+    await sleep(300);
+    check('while paused you can look around', near(await fovNow(), 33, 0.05), String(await fovNow()));
     await ok('timeline.seek', { t: 3.4 });
     await sleep(400);
-    check('scrubbing inside a shot keeps your framing', near(await fovNow(), 33, 0.05), String(await fovNow()));
+    check('moving the playhead shows the shot again', near(await fovNow(), 50, 0.05), String(await fovNow()));
     // while playing, the shot's camera wins every frame
     await ok('timeline.seek', { t: 0.2 });
     await sleep(300);
@@ -270,9 +272,9 @@ export default async function (t) {
     check('back to a hard cut', !(await shot('B')).trans);
   });
 
-  await t.step('a render uses the shots (live cuts off): first frame, the cut, a dip', async () => {
+  await t.step('a render with Play the edit: first frame, the cut, a dip', async () => {
     if (!t.has('render')) return t.say('VideoExport not usable: skipped');
-    await ok('shots.setLiveCuts', { on: false });
+    await ok('shots.setLiveCuts', { on: true });
     await ok('camera.setFov', { fov: 30 });
     await sleep(200);
     await ok('shots.set', { shots: [{ id: 'A', name: 'Wide', start: 0, end: 2 }, { id: 'B', name: 'Close', start: 2, end: 4, trans: { type: 'dipBlack', dur: 1, ease: 'linear' } }], label: 'Shots' });
@@ -312,7 +314,73 @@ export default async function (t) {
     check('frame 0 is shot A (not Studio’s own view)', diff(first, a) < 3, diff(first, a).toFixed(1));
     check('black at the cut (the dip)', mean(cut) < 12, mean(cut).toFixed(1));
     check('shot B after the dip', diff(at(3.5), b) < 1 && diff(at(3), b) < 3);
-    check('Studio’s own view is back after the render', near(await fovNow(), 60, 0.05), String(await fovNow()));
+  });
+
+  await t.step('camera keys win; scrubbing shows the edit; one switch for Studio and renders', async () => {
+    await ok('shots.setLiveCuts', { on: true });
+    await ok('timeline.seek', { t: 0 });
+    await sleep(200);
+    await ok('camera.setFov', { fov: 30 });
+    await sleep(150);
+    await ok('shots.set', { shots: [{ id: 'A', name: 'Still', start: 0, end: 2 }, { id: 'B', name: 'Moving', start: 2, end: 4 }], label: 'Shots' });
+    await ok('shots.captureCamera', { id: 'A' });
+    await ok('camera.setFov', { fov: 60 });
+    await sleep(150);
+    await ok('shots.captureCamera', { id: 'B' });
+    // a camera move keyed inside shot B: 40° at 2.5 s → 50° at 3.5 s
+    await ok('shots.setLiveCuts', { on: false });
+    for (const [tm, fov] of [[2.5, 40], [3.5, 50]]) {
+      await ok('timeline.seek', { t: tm });
+      await sleep(250);
+      await ok('camera.setFov', { fov });
+      await sleep(150);
+      await ok('camera.key', { t: tm, cut: false });
+    }
+    await ok('shots.setLiveCuts', { on: true });
+    const st = await state();
+    check('the shot with camera keys is marked as playing them', st.keyed?.includes('B') && !st.keyed?.includes('A'), JSON.stringify(st.keyed));
+    await ok('timeline.seek', { t: 3 });
+    await sleep(400);
+    check('inside it, its camera keys play (not its still camera)', near(await fovNow(), 45, 1), String(await fovNow()));
+    await ok('timeline.seek', { t: 1 });
+    await sleep(400);
+    check('the shot without keys uses its still camera', near(await fovNow(), 30, 0.1), String(await fovNow()));
+    await ok('camera.setFov', { fov: 70 }); // orbiting / changing the view while paused…
+    await sleep(200);
+    await ok('timeline.seek', { t: 1.2 }); // …then scrubbing inside the same shot
+    await sleep(400);
+    check('scrubbing shows the edit again', near(await fovNow(), 30, 0.1), String(await fovNow()));
+    const n = await ok('shots.buildCuts', {});
+    check('bake leaves the keyed shot’s own moves alone (one cut: shot A)', n === 1, String(n));
+    await ok('undo');
+
+    // renders follow the same switch: on → keyed moves inside B; off → the timeline's camera everywhere
+    if (!t.has('render')) return t.say('VideoExport not usable: render part skipped');
+    const original = (await ok('render.status')).settings;
+    t.defer(() => req('render.set', { fps: original.fps, exportFps: original.exportFps, limit: original.limit, limitNumber: original.limitNumber, format: original.format, resize: original.resize, width: original.width, height: original.height, autoEncode: original.autoEncode, deleteFrames: original.deleteFrames, prewarm: original.prewarm }));
+    await ok('render.set', { fps: 30, limit: 'Seconds', limitNumber: 4, autoEncode: false, deleteFrames: true, resize: true, width: 160, height: 90, prewarm: 0 });
+    const renderTrace = async (on) => {
+      await ok('shots.setLiveCuts', { on });
+      await ok('timeline.resetPose');
+      await sleep(300);
+      await ok('shots.trace', { on: true });
+      await ok('render.start', { from: 0, useShots: on });
+      for (let i = 0; i < 600; i++) {
+        await sleep(250);
+        const s2 = await ok('render.status');
+        const q = await ok('render.queueStatus');
+        if (!s2.recording && !s2.encoding && !q.running) break;
+      }
+      return (await ok('shots.trace', {})).filter((r) => r[2]); // playing frames: [frame, t, playing, shot, applied, fov, ...]
+    };
+    const fovAt = (tr, tm) => tr.reduce((best, r) => (Math.abs(r[1] - tm) < Math.abs(best[1] - tm) ? r : best))[5];
+    const on = await renderTrace(true);
+    check('render with Play the edit: shot A’s still camera', near(fovAt(on, 1), 30, 0.2), String(fovAt(on, 1)));
+    check('…and shot B’s keyed move (40° → 50°)', near(fovAt(on, 2.5), 40, 1) && near(fovAt(on, 3), 45, 1) && near(fovAt(on, 3.5), 50, 1), `${fovAt(on, 2.5)} ${fovAt(on, 3)} ${fovAt(on, 3.5)}`);
+    const off = await renderTrace(false);
+    check('render without it: the timeline’s camera (the first key holds before 2.5 s)', near(fovAt(off, 1), 40, 1), String(fovAt(off, 1)));
+    await ok('undo');
+    await ok('undo');
   });
 
   await t.step('bake cuts', async () => {

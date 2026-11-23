@@ -5,7 +5,7 @@ import { ContextMenu } from '../ContextMenu';
 import { Icon } from '../Icon';
 import { useAnimationFrame } from '../useAnimationFrame';
 import { ANGLE_DRAG, useCam } from '../CameraPanel';
-import { addShotAt, addShotWithAngle, camLabel, deleteShot, duplicate, fromAngle, lookThrough, selectShot, setTrans, shotMenu, splitAtPlayhead, swap, TRANSITIONS, transProblem, transWindow } from './actions';
+import { addShotAt, addShotWithAngle, camLabel, effMode, deleteShot, duplicate, fromAngle, lookThrough, selectShot, setTrans, shotMenu, splitAtPlayhead, swap, TRANSITIONS, transProblem, transWindow } from './actions';
 import type { MenuItem } from '../ContextMenu';
 
 const EDGE = 7; // px: grab a shot's edge to trim it
@@ -36,6 +36,7 @@ export function ShotTrack() {
   const transDrag = useRef<{ id: string; start: number; orig: Shot[] } | null>(null);
   const camKeys = useCam((s) => s.keys);
   useStore((s) => s.angles); // labels name the angle a shot uses
+  useStore((s) => s.keyedShots);
   useStore((s) => s.showEnglish);
 
   useLayoutEffect(() => {
@@ -274,7 +275,7 @@ export function ShotTrack() {
                 }}
                 title={`${i + 1}. ${s.name} · ${s.start.toFixed(2)}–${s.end.toFixed(2)} s (${(s.end - s.start).toFixed(2)} s)${s.notes ? `\n${s.notes}` : ''}\nDrag to move · drag an edge to trim · double-click to look through · right-click for more`}
               >
-                {s.thumb && (s.camMode ?? 'still') === 'still' && <img className="sq-shot-img" src={s.thumb} alt="" draggable={false} />}
+                {s.thumb && effMode(s) === 'still' && <img className="sq-shot-img" src={s.thumb} alt="" draggable={false} />}
                 <span className="sq-shot-shade" />
                 <span className="sq-shot-n">{i + 1}</span>
                 {!narrow && (
@@ -286,7 +287,7 @@ export function ShotTrack() {
                   </span>
                 )}
                 {(s.camMode === 'pov' || s.camMode === 'follow') && !narrow && <Icon name={s.camMode === 'pov' ? 'eye' : 'target'} size={11} />}
-                {s.camMode === 'keys' &&
+                {effMode(s) === 'keys' &&
                   camKeys
                     .filter((k) => k.t >= s.start - 1e-4 && k.t < s.end - 1e-4)
                     .map((k) => <span key={k.t} className={`sq-key ${k.cut ? 'cut' : ''}`} style={{ left: xOf(k.t) - left }} title={`Camera key ${k.t.toFixed(2)} s${k.cut ? ' (cut)' : ''}`} />)}

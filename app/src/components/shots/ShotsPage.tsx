@@ -60,7 +60,7 @@ export function ShotsPage() {
     const live = shots.filter((s) => s.trans && (s.trans.type === 'dipBlack' || s.trans.type === 'dipWhite' || s.trans.type === 'dissolve')).length;
     if (n)
       toast(
-        `Camera keys written for ${n} cut${n > 1 ? 's and glides' : ''} — the camera now moves without Keyframe Studio too.${live ? ` ${live} dip${live > 1 ? 's and dissolves' : ' or dissolve'} keep playing from live cuts (they need the bridge).` : ''} Ctrl+Z to undo`,
+        `Camera keys written for ${n} cut${n > 1 ? 's and glides' : ''} — the camera now moves without Keyframe Studio too.${live ? ` ${live} dip${live > 1 ? 's and dissolves' : ' or dissolve'} keep playing from Play the edit (they need the bridge).` : ''} Ctrl+Z to undo`,
       );
   };
   const exportBoard = async () => {
@@ -93,7 +93,7 @@ export function ShotsPage() {
         <header className="sq-head">
           <h2>
             Shots
-            <Help text="A shot is a stretch of the timeline with its own camera. Lay them out on the track, give each a camera (Studio's current view, a saved view, or camera keys), and play: with live cuts on, Studio switches cameras at every cut. Render can make one video per shot." />
+            <Help text="A shot is a stretch of the timeline with its own camera. Lay them out on the track, give each a camera (Studio's current view, a saved view, or camera keys), and play: with Play the edit on, Studio switches cameras at every cut. Render can make one video per shot." />
           </h2>
           <span className="sq-sum">
             {shots.length ? (
@@ -138,10 +138,14 @@ export function ShotsPage() {
             aria-checked={live}
             disabled={status !== 'open'}
             onClick={() => setLiveCuts(!live)}
-            title={live ? 'Live cuts are on: while the timeline plays, Studio switches to each shot’s camera. Click to turn off' : 'Turn on live cuts: Studio switches to each shot’s camera while the timeline plays (nothing is keyed)'}
+            title={
+              live
+                ? 'Play the edit is on: Studio’s view (playing and scrubbing), the monitor and renders all follow the shots — their cameras, cuts and transitions. Shots with camera keys play their keys. Click to turn off'
+                : 'Play the edit is off: Studio, the monitor and renders play the timeline’s own camera and ignore the shots. Click to turn on'
+            }
           >
             <span className="sq-live-dot" />
-            Live cuts
+            Play the edit
           </button>
           <button className="btn small primary" disabled={status !== 'open'} onClick={() => addShotAt()} title="A shot from the playhead to the next shot (or 3 s), with Studio's camera as it is now">
             <Icon name="plus" size={12} /> Shot at playhead
@@ -170,7 +174,7 @@ export function ShotsPage() {
                 Frame a view in Studio and keep it as an angle (<b>Angles › + From Studio’s view</b>). Make one for each camera position.
               </li>
               <li>Drag an angle onto the track where the shot should be — or put the playhead there and press <b>+ Shot at playhead</b>.</li>
-              <li>Press play: with live cuts, Studio switches cameras at every cut.</li>
+              <li>Press play: with Play the edit on, Studio, the monitor and renders switch cameras at every cut.</li>
             </ol>
           </div>
         )}

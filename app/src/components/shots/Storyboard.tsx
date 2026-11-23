@@ -3,7 +3,7 @@ import { saveShots, toast, useStore, type Shot } from '../../state/store';
 import { byStart, reorder } from '../../lib/shots';
 import { ContextMenu } from '../ContextMenu';
 import { ANGLE_DRAG } from '../CameraPanel';
-import { camLabel, fromAngle, lookThrough, selectShot, shotMenu, STATUSES, TRANSITIONS } from './actions';
+import { camLabel, effMode, fromAngle, lookThrough, selectShot, shotMenu, STATUSES, TRANSITIONS } from './actions';
 
 const SHOT_DRAG = 'application/x-kf-shot';
 
@@ -73,14 +73,14 @@ export function Storyboard() {
             title="Click to pick · double-click to look through · drag to reorder · right-click for more"
           >
             <div className="sq-card-img">
-              {s.thumb && (s.camMode ?? 'still') === 'still' ? <img src={s.thumb} alt="" draggable={false} /> : <span>{camLabel(s) || 'No camera yet'}</span>}
+              {s.thumb && effMode(s) === 'still' ? <img src={s.thumb} alt="" draggable={false} /> : <span>{camLabel(s) || 'No camera yet'}</span>}
               <i>{i + 1}</i>
               <em className={`sq-chip st-${st.id}`}>{st.label}</em>
             </div>
             <div className="sq-card-text">
               <b>{s.name}</b>
               <small>
-                {s.start.toFixed(2)}–{s.end.toFixed(2)} s · {(s.end - s.start).toFixed(2)} s{camLabel(s) && (s.camMode ?? 'still') === 'still' ? ` · ${camLabel(s)}` : ''}
+                {s.start.toFixed(2)}–{s.end.toFixed(2)} s · {(s.end - s.start).toFixed(2)} s{camLabel(s) && effMode(s) === 'still' ? ` · ${camLabel(s)}` : ''}
               </small>
               {s.trans && s.trans.type !== 'cut' && (
                 <small className="sq-card-trans">

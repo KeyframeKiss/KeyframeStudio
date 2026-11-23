@@ -38,7 +38,7 @@ export interface Shot {
   notes: string;
   /** how far along it is (a planning tag) */
   status?: ShotStatus;
-  /** still: its own camera (live cuts switch to it) · keys: its Timeline camera keys · pov: through a character's eyes · follow: keeps a body part in view */
+  /** still: its own camera (Play the edit switches to it; camera keys in it win) · keys: its Timeline camera keys · pov: through a character's eyes · follow: keeps a body part in view */
   camMode?: ShotCamMode;
   /** the character a first-person / follow shot is about (scene object id) */
   who?: number;
@@ -139,6 +139,8 @@ export interface AppState {
   liveCuts: boolean;
   /** the scene's angles (camera setups to reuse) */
   angles: Angle[];
+  /** still shots that have camera keys in them: they play those keys */
+  keyedShots: string[];
   workingShotId: string | null;
   frameFullTimeline: boolean;
   loopShot: boolean;
@@ -241,7 +243,7 @@ export const useStore = create<AppState>(() => ({
   audioListen: null,
   audioDelay: { output: 0, mixer: 0 },
   miniMode: false,
-  shots: [], selShotId: null, liveCuts: false, angles: [], workingShotId: null, frameFullTimeline: false, loopShot: false, renderShotIds: null, sceneName: null, sceneFilter: 'all',
+  shots: [], selShotId: null, liveCuts: false, angles: [], keyedShots: [], workingShotId: null, frameFullTimeline: false, loopShot: false, renderShotIds: null, sceneName: null, sceneFilter: 'all',
   groupMode: (lsGet('studioex.groupMode') as 'objects' | 'folders') || 'objects',
   settingsOpen: false,
   workspace: WORKSPACES.includes(lsGet('studioex.workspace') as Workspace) && lsGet('studioex.workspace') !== 'settings' ? (lsGet('studioex.workspace') as Workspace) : 'animate',
@@ -273,11 +275,11 @@ export async function saveSceneFile() {
   return result;
 }
 
-/** Re-read the scene's shots (and whether live cuts are on). */
+/** Re-read the scene's shots (and whether Play the edit is on). */
 export async function refreshShots() {
   if (get().hello?.commands.includes('shots.state')) {
-    const r = await bridge.request<{ shots: Shot[]; liveCuts: boolean; angles?: Angle[] }>('shots.state').catch(() => null);
-    set({ shots: r?.shots ?? [], liveCuts: !!r?.liveCuts, angles: r?.angles ?? [] });
+    const r = await bridge.request<{ shots: Shot[]; liveCuts: boolean; angles?: Angle[]; keyed?: string[] }>('shots.state').catch(() => null);
+    set({ shots: r?.shots ?? [], liveCuts: !!r?.liveCuts, angles: r?.angles ?? [], keyedShots: r?.keyed ?? [] });
   } else {
     const s = await bridge.request<Shot[]>('shots.get').catch(() => null);
     set({ shots: s ?? [] });
@@ -722,7 +724,10 @@ export function initBridge() {
     }
     set({ tl: { ...(get().tl ?? {}), ...tick }, tickAt: performance.now() });
   });
-  bridge.on('timeline.changed', scheduleTimelineRefresh);
+  bridge.on('timeline.changed', () => {
+    scheduleTimelineRefresh();
+    if (get().shots.length) refreshShots(); // camera keys added or removed: which shots play their keys
+  });
   bridge.on('scene.changed', scheduleSceneRefresh);
   // clips added, swapped or removed anywhere (a template, a scene load, another window)
   let audioTimer = 0;

@@ -7,7 +7,7 @@ import { useAnimationFrame } from '../useAnimationFrame';
 import { FrameGuidesPanel, useLoadedCamTools } from '../CameraToolsCards';
 import { CameraMenu } from '../CameraPanel';
 import { Icon } from '../Icon';
-import { lookThrough } from './actions';
+import { effMode, lookThrough } from './actions';
 
 const LIVE_KEY = 'kf.monitor.live';
 const WIDTH = 640;
@@ -47,6 +47,8 @@ export function Monitor() {
   const status = useStore((s) => s.status);
   const shots = useStore((s) => s.shots);
   const fps = useStore((s) => s.tl?.fps ?? 30);
+  const playEdit = useStore((s) => s.liveCuts);
+  useStore((s) => s.keyedShots);
   const { t: tools } = useLoadedCamTools();
   const [live, setLive] = useState(() => {
     try {
@@ -73,11 +75,12 @@ export function Monitor() {
   useEffect(() => {
     if (!streaming) return;
     setGot(false);
-    bridge.request('preview.start', { width: WIDTH, height: 360, matchScreen: true, fps: FPS, format: 'raw', delayed: true, program: true }).catch(() => setLive(false));
+    // Play the edit on: the shots' cameras and transitions (what renders); off: Studio's camera as it is
+    bridge.request('preview.start', { width: WIDTH, height: 360, matchScreen: true, fps: FPS, format: 'raw', delayed: true, program: playEdit }).catch(() => setLive(false));
     return () => {
       bridge.request('preview.stop').catch(() => {});
     };
-  }, [streaming]);
+  }, [streaming, playEdit]);
 
   // frames: "SXP" + 'R' (raw RGB24, rows bottom-up) or 'V' (JPEG)
   useEffect(
@@ -167,7 +170,8 @@ export function Monitor() {
 
   const showStill = !streaming || !got;
   const still = cur?.thumb;
-  const what = !cur ? 'No shot here' : cur.camMode === 'keys' ? 'Camera keys' : cur.camMode === 'pov' ? 'First person' : cur.camMode === 'follow' ? 'Follow' : cur.cam ? 'Its camera' : 'No camera yet';
+  const m = cur ? effMode(cur) : null;
+  const what = !cur ? 'No shot here' : !playEdit ? 'Play the edit is off' : m === 'keys' ? 'Camera keys' : m === 'pov' ? 'First person' : m === 'follow' ? 'Follow' : cur.cam ? 'Its camera' : 'No camera yet';
 
   return (
     <section className="mon" aria-label="Monitor">

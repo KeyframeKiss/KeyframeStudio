@@ -396,6 +396,29 @@ namespace StudioEX.Bridge.Api
         }
 
         /// <summary>Camera keyframe times with whether the camera cuts (holds) into them.</summary>
+        /// <summary>
+        /// Does Studio's camera move between s and e by its Timeline keys: a camera key inside, or a keyed move running
+        /// through (a key before and one after with different values, not a hold)?
+        /// </summary>
+        public static bool CameraAnimatedIn(float s, float e)
+        {
+            foreach (var ip in CameraTracks(false))
+            {
+                TLKeyframe before = null;
+                foreach (var kv in ip.keyframes)
+                {
+                    if (kv.Key >= s - 1e-4f && kv.Key < e - 1e-4f) return true;
+                    if (kv.Key < s) { before = kv.Value; continue; }
+                    // the first key after: a move through the whole stretch?
+                    if (before != null && !Equals(before.value, kv.Value.value) && !IsHold(before.curve)) return true;
+                    break;
+                }
+            }
+            return false;
+        }
+
+        private static bool IsHold(AnimationCurve c) => c != null && c.keys.Any(k => float.IsInfinity(k.outTangent) || float.IsInfinity(k.inTangent));
+
         public static List<object> CameraShots()
         {
             var tracks = CameraTracks(false);

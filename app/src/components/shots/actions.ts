@@ -9,7 +9,13 @@ const duration = () => st().tl?.duration ?? 10;
 
 export const selectShot = (id: string | null) => useStore.setState({ selShotId: id });
 
-/** A new shot at `t` with Studio's camera as it is now. The first shot turns live cuts on. */
+/** How a shot's camera works in fact: a still shot with camera keys in it plays its keys. */
+export function effMode(s: Shot): NonNullable<Shot['camMode']> {
+  const m = s.camMode ?? 'still';
+  return m === 'still' && st().keyedShots.includes(s.id) ? 'keys' : m;
+}
+
+/** A new shot at `t` with Studio's camera as it is now. The first shot turns Play the edit on. */
 export async function addShotAt(t = liveTime()) {
   const { shots } = st();
   const r = newShotAt(shots, Math.round(t * 100) / 100, duration());
@@ -22,7 +28,7 @@ export async function addShotAt(t = liveTime()) {
   selectShot(id);
   if (first && !st().liveCuts) {
     await setLiveCuts(true);
-    toast(`Shot added ${r.start.toFixed(2)}–${r.end.toFixed(2)} s with the current camera. Live cuts are on: playing switches to each shot's camera`, 'done');
+    toast(`Shot added ${r.start.toFixed(2)}–${r.end.toFixed(2)} s with the current camera. Play the edit is on: Studio, the monitor and renders follow the shots`, 'done');
   } else toast(`Shot added ${r.start.toFixed(2)}–${r.end.toFixed(2)} s with the current camera`);
 }
 
@@ -68,7 +74,7 @@ export async function lookThrough(id: string) {
   if (!s) return;
   selectShot(id);
   await seekNow(s.start);
-  if (s.camMode === 'keys') return; // its camera keys show it at the start
+  if (effMode(s) === 'keys') return; // its camera keys show it at the start
   if (!s.cam) return toast('This shot has no camera yet — frame the view in Studio and press Use current view');
   await call('shots.view', { id });
 }
@@ -107,7 +113,7 @@ export async function addShotWithAngle(t: number, angle: string) {
 export function camLabel(s: Shot): string {
   const who = s.who != null ? st().nodes[s.who] : null;
   const name = who ? displayName(who) : 'a character';
-  switch (s.camMode) {
+  switch (effMode(s)) {
     case 'keys':
       return 'Camera keys';
     case 'pov':
@@ -181,7 +187,7 @@ export function shotBefore(id: string): Shot | null {
   return i > 0 ? list[i - 1] : null;
 }
 
-const stillCam = (s: Shot | null) => !!s && (s.camMode ?? 'still') === 'still' && !!s.cam;
+const stillCam = (s: Shot | null) => !!s && effMode(s) === 'still' && !!s.cam;
 
 /** Why a transition can't play (glides and dissolves need still cameras on both sides), or null. */
 export function transProblem(s: Shot): string | null {
