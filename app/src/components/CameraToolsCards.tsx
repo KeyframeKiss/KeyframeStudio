@@ -35,7 +35,7 @@ const savedGuideColor = (): number[] | null => {
     return null;
   }
 };
-const ASPECTS: { label: string; v: number | 'render' }[] = [
+export const ASPECTS: { label: string; v: number | 'render' }[] = [
   { label: 'Off', v: 0 },
   { label: 'Render size', v: 'render' },
   { label: '16:9', v: 16 / 9 },
@@ -77,7 +77,19 @@ function loadCamTools() {
     .catch(() => useCamTools.setState({ renderAspect: 0 }));
 }
 
-function setCamTools(patch: Patch) {
+// the bridge changed a guide itself (a shot's frame shape): show it, with its chip picked
+bridge.on('camtools.changed', () => {
+  bridge
+    .request<Tools>('camtools.get')
+    .then((r) => {
+      const a = r.guides.aspect ?? 0;
+      const hit = ASPECTS.find((x) => typeof x.v === 'number' && Math.abs(x.v - a) < 1e-3);
+      useCamTools.setState({ t: r, aspectPick: hit ? hit.label : a > 0 ? useCamTools.getState().aspectPick : 'Off' });
+    })
+    .catch(() => {});
+});
+
+export function setCamTools(patch: Patch) {
   const cur = useCamTools.getState().t;
   if (cur) {
     const next = { ...cur } as unknown as Record<string, object>;

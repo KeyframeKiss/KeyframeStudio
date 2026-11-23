@@ -13,13 +13,20 @@ export const parseKeyId = (id: KeyId): KeyRef => {
   return { track: Number(id.slice(0, i)), t: Number(id.slice(i + 1)) };
 };
 
+export type ShotStatus = 'idea' | 'blocked' | 'framed' | 'final';
 export interface Shot {
   id: string;
   name: string;
   start: number;
   end: number;
   notes: string;
-  cam?: unknown;
+  /** how far along it is (a planning tag) */
+  status?: ShotStatus;
+  /** still: its own camera (live cuts switch to it); keys: the camera follows its Timeline keys */
+  camMode?: 'still' | 'keys';
+  /** its frame guide (picture shape), 0 / missing = leave the guides alone */
+  aspect?: number;
+  cam?: { pos: number[]; rot: number[]; dist: number[]; fov: number };
   thumb?: string;
 }
 
@@ -102,6 +109,10 @@ export interface AppState {
   audio: AudioClipInfo[];
   /** Shot sequencer: the scene's shots (time ranges with their own camera). */
   shots: Shot[];
+  /** the shot picked in Shoot › Shots (the track, the storyboard and the timeline ruler share it) */
+  selShotId: string | null;
+  /** Studio's camera switches to each shot's camera while the timeline plays */
+  liveCuts: boolean;
   workingShotId: string | null;
   frameFullTimeline: boolean;
   loopShot: boolean;
@@ -204,7 +215,7 @@ export const useStore = create<AppState>(() => ({
   audioListen: null,
   audioDelay: { output: 0, mixer: 0 },
   miniMode: false,
-  shots: [], workingShotId: null, frameFullTimeline: false, loopShot: false, renderShotIds: null, sceneName: null, sceneFilter: 'all',
+  shots: [], selShotId: null, liveCuts: false, workingShotId: null, frameFullTimeline: false, loopShot: false, renderShotIds: null, sceneName: null, sceneFilter: 'all',
   groupMode: (lsGet('studioex.groupMode') as 'objects' | 'folders') || 'objects',
   settingsOpen: false,
   workspace: WORKSPACES.includes(lsGet('studioex.workspace') as Workspace) && lsGet('studioex.workspace') !== 'settings' ? (lsGet('studioex.workspace') as Workspace) : 'animate',
@@ -236,10 +247,32 @@ export async function saveSceneFile() {
   return result;
 }
 
-/** Re-read the scene's shots. */
+/** Re-read the scene's shots (and whether live cuts are on). */
 export async function refreshShots() {
-  const s = await bridge.request<Shot[]>('shots.get').catch(() => null);
-  set({ shots: s ?? [] });
+  if (get().hello?.commands.includes('shots.state')) {
+    const r = await bridge.request<{ shots: Shot[]; liveCuts: boolean }>('shots.state').catch(() => null);
+    set({ shots: r?.shots ?? [], liveCuts: !!r?.liveCuts });
+  } else {
+    const s = await bridge.request<Shot[]>('shots.get').catch(() => null);
+    set({ shots: s ?? [] });
+  }
+  const sel = get().selShotId;
+  if (sel && !get().shots.some((x) => x.id === sel)) set({ selShotId: null });
+}
+
+/** Save the whole shot list (shown at once; one undo step in Studio, named by `label`). */
+export async function saveShots(next: Shot[], label = 'Edit shots') {
+  const before = get().shots;
+  set({ shots: next });
+  const r = await call<Shot[]>('shots.set', { shots: next, label });
+  set({ shots: r ?? before });
+  return !!r;
+}
+
+export async function setLiveCuts(on: boolean) {
+  set({ liveCuts: on });
+  const r = await call<{ shots: Shot[]; liveCuts: boolean }>('shots.setLiveCuts', { on });
+  if (r) set({ liveCuts: r.liveCuts });
 }
 
 type AudioGet = { clips: AudioClipInfo[]; previewing: boolean; previewId: number; previewAt: number; outputDelay?: number; mixerDelay?: number };
@@ -654,9 +687,15 @@ export function initBridge() {
     window.clearTimeout(audioTimer);
     audioTimer = window.setTimeout(refreshAudio, 80);
   });
+  // shots changed anywhere (undo, a scene load, another window): read them again, once per burst
+  let shotsTimer = 0;
+  bridge.on('shots.changed', () => {
+    window.clearTimeout(shotsTimer);
+    shotsTimer = window.setTimeout(refreshShots, 60);
+  });
   bridge.on('scene.file', (name) => set({ sceneName: typeof name === 'string' ? name : null }));
   bridge.on('scene.reset', () => {
-    set({ workingShotId: null, frameFullTimeline: false, loopShot: false, renderShotIds: null, sceneName: null, shots: [] });
+    set({ workingShotId: null, frameFullTimeline: false, loopShot: false, renderShotIds: null, sceneName: null, shots: [], selShotId: null, liveCuts: false });
     set({ selKeys: new Set(), selTracks: new Set(), clipboard: null });
     window.setTimeout(() => {
       refreshAudio(); // a loaded scene may bring its own audio and shots

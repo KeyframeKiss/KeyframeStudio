@@ -4,7 +4,7 @@ import { call, openLibrary, showTab, workingShot, renderShots, displayName, sele
 import { FaceAnimation } from './FaceAnimation';
 import { Group, SelectionHeader, Stack } from './InspectorStack';
 import { AudioPage } from './AudioPage';
-import { ShotsPanel } from './ShotsPanel';
+import { ShotsPage } from './shots/ShotsPage';
 import { TemplatesPanel } from './TemplatesPanel';
 import { CharacterLibrary } from './CharacterLibrary';
 import { QuickActionsPage } from './QuickActions';
@@ -12,7 +12,6 @@ import { columns, leftCss, rightCss, setPanelSizes, usePanelSizes } from '../lib
 import { CleanupPanel } from './CleanupPanel';
 import { ClipsPanel } from './ClipsPanel';
 import { AnimationBrowser } from './AnimationBrowser';
-import { CameraPanel } from './CameraPanel';
 import { CharacterPanel } from './CharacterPanel';
 import { DopeSheet } from './DopeSheet';
 import { Icon } from './Icon';
@@ -500,10 +499,7 @@ function ShotsAndCamera() {
   return (
     <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
       <div className="shoot-top" style={{ flexBasis: `${top * 100}%` }}>
-        <div className="shoot-page">
-          <ShotsPanel />
-          <CameraPanel />
-        </div>
+        <ShotsPage />
       </div>
       <div className="shoot-split" onPointerDown={drag} onDoubleClick={() => setShootTop(0.48)} title="Drag to resize · double-click to reset" />
       <div style={{ flex: 1, minHeight: 0, display: 'flex', position: 'relative' }}>

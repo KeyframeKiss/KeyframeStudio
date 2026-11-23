@@ -16,12 +16,20 @@ namespace StudioEX.Bridge.Api
     /// Shot sequencer: named time ranges of the timeline, each with a camera it remembers (and a thumbnail) and
     /// notes. "Build camera cuts" keys a hard cut to every shot's camera at its start (one undo step); the
     /// render queue renders shots one after another through VideoExport. Shots are saved with the scene.
-    /// A shot is {id, name, start, end, notes, cam?: {pos, rot, dist, fov}, thumb?}.
+    /// A shot is {id, name, start, end, notes, status (idea|blocked|framed|final), camMode (still|keys), aspect?
+    /// (its frame guide; 0 = leave the guides alone), cam?: {pos, rot, dist, fov}, thumb?}.
+    ///
+    /// Live cuts: while on, Studio's camera switches to each still shot's camera as the playhead enters it (every
+    /// frame while playing), so the edit is seen without keying anything. Shots set to "keys" leave the camera to
+    /// its Timeline keys. Every change to the shot list is one undo step and tells the app ("shots.changed").
     /// </summary>
     internal sealed class ShotApi : MonoBehaviour
     {
         private static ShotApi _i;
         private static List<Dictionary<string, object>> _shots = new List<Dictionary<string, object>>();
+        private static bool _liveCuts;
+        private static string _liveId; // the shot live cuts last switched to
+        private static readonly string[] Statuses = { "idea", "blocked", "framed", "final" };
         internal static List<Dictionary<string, object>> All => _shots;
         private static Coroutine _queue;
         private static readonly Dictionary<string, object> QueueState = new Dictionary<string, object> { { "running", false } };
@@ -31,9 +39,39 @@ namespace StudioEX.Bridge.Api
         public static void Register(CommandRouter r)
         {
             r.Add("shots.get", a => _shots);
-            r.Add("shots.set", a => { SetAll(a.GetList("shots")); return _shots; });
-            r.Add("shots.captureCamera", CaptureCamera);
-            r.Add("shots.view", a => { ApplyCamera(Find(a.GetString("id"))); return true; });
+            r.Add("shots.state", a => State());
+            r.Add("shots.set", a =>
+            {
+                var before = Copy(_shots);
+                SetAll(a.GetList("shots"));
+                Changed(before, a.GetString("label") ?? "Edit shots");
+                return _shots;
+            });
+            r.Add("shots.captureCamera", a =>
+            {
+                var before = Copy(_shots);
+                var result = CaptureCamera(a);
+                Find(a.GetString("id"))["camMode"] = "still";
+                Changed(before, "Set shot camera");
+                return result;
+            });
+            r.Add("shots.fromView", FromView);
+            r.Add("shots.thumbs", RefreshThumbs);
+            r.Add("shots.view", a =>
+            {
+                var sh = Find(a.GetString("id"));
+                ApplyCamera(sh);
+                ApplyAspect(sh);
+                _liveId = sh.GetString("id");
+                return true;
+            });
+            r.Add("shots.setLiveCuts", a =>
+            {
+                _liveCuts = a.GetBool("on");
+                _liveId = null; // the next frame switches to the shot under the playhead
+                Broadcast();
+                return State();
+            });
             r.Add("shots.buildCuts", a => BuildCuts());
             r.Add("render.queue", StartQueue);
             r.Add("render.queueStatus", a => QueueState);
@@ -45,7 +83,43 @@ namespace StudioEX.Bridge.Api
         [MethodImpl(MethodImplOptions.NoInlining)]
         private static void RegisterSceneData() => StudioSaveLoadApi.RegisterExtraBehaviour<ShotSceneData>(StudioBridgePlugin.GUID + ".shots");
 
-        public static void Clear() => _shots = new List<Dictionary<string, object>>();
+        public static void Clear()
+        {
+            _shots = new List<Dictionary<string, object>>();
+            _liveCuts = false;
+            _liveId = null;
+        }
+
+        private static Dictionary<string, object> State() => new Dictionary<string, object> { { "shots", _shots }, { "liveCuts", _liveCuts } };
+
+        private static void Broadcast() => StudioBridgePlugin.Instance?.Broadcast("shots.changed", null);
+
+        /// <summary>A deep copy (through JSON), for undo.</summary>
+        private static List<Dictionary<string, object>> Copy(List<Dictionary<string, object>> l) =>
+            (Json.Parse(Json.Serialize(l)) as List<object> ?? new List<object>()).OfType<Dictionary<string, object>>().ToList();
+
+        /// <summary>After a change: one undo step back to `before`, and the app hears about it.</summary>
+        private static void Changed(List<Dictionary<string, object>> before, string label)
+        {
+            if (Json.Serialize(before) != Json.Serialize(_shots)) UndoStack.Push(new ShotsUndo(before, label));
+            Broadcast();
+        }
+
+        private sealed class ShotsUndo : IUndoEntry
+        {
+            private readonly List<Dictionary<string, object>> _list;
+            public ShotsUndo(List<Dictionary<string, object>> list, string label) { _list = list; Label = label; }
+            public string Label { get; }
+            public bool Absorbs(IUndoEntry newer) => false;
+            public IUndoEntry Restore()
+            {
+                var inverse = new ShotsUndo(Copy(_shots), Label);
+                _shots = Copy(_list);
+                _liveId = null;
+                Broadcast();
+                return inverse;
+            }
+        }
 
         private static void SetAll(List<object> list)
         {
@@ -60,7 +134,10 @@ namespace StudioEX.Bridge.Api
                     { "id", o.GetString("id") ?? Guid.NewGuid().ToString("N").Substring(0, 8) },
                     { "name", (o.GetString("name") ?? "Shot").Trim() }, { "start", (double)s }, { "end", (double)e },
                     { "notes", o.GetString("notes") ?? "" },
+                    { "status", Array.IndexOf(Statuses, o.GetString("status")) >= 0 ? o.GetString("status") : "idea" },
+                    { "camMode", o.GetString("camMode") == "keys" ? "keys" : "still" },
                 };
+                if (o.Has("aspect") && o.GetFloat("aspect") > 0f) shot["aspect"] = (double)Mathf.Clamp(o.GetFloat("aspect"), 0.2f, 5f);
                 // camera and thumbnail are kept from the existing shot unless given
                 var old = _shots.FirstOrDefault(x => x.GetString("id") == shot.GetString("id"));
                 var cam = o.GetObject("cam") ?? old?.GetObject("cam");
@@ -85,7 +162,7 @@ namespace StudioEX.Bridge.Api
             var cc = Singleton<Studio.Studio>.Instance.cameraCtrl;
             var d = cc.Export();
             shot["cam"] = new Dictionary<string, object> { { "pos", V(d.pos) }, { "rot", V(d.rotate) }, { "dist", V(d.distance) }, { "fov", (double)cc.fieldOfView } };
-            var thumb = CameraApi.Snapshot(192);
+            var thumb = CameraApi.Snapshot(320);
             if (thumb != null) shot["thumb"] = thumb;
             return _shots;
         }
@@ -104,11 +181,134 @@ namespace StudioEX.Bridge.Api
             return true;
         }
 
+        private static Dictionary<string, object> CamOf(Studio.CameraControl.CameraData d, float fov) =>
+            new Dictionary<string, object> { { "pos", V(d.pos) }, { "rot", V(d.rotate) }, { "dist", V(d.distance) }, { "fov", (double)fov } };
+
+        /// <summary>args: {id, slot: 0-9} — the shot takes the camera of one of Studio's saved views (and its picture).</summary>
+        private static object FromView(Dictionary<string, object> a)
+        {
+            var shot = Find(a.GetString("id"));
+            int i = a.GetInt("slot", -1);
+            var s = Singleton<Studio.Studio>.Instance;
+            if (i < 0 || i >= s.sceneInfo.cameraData.Length) throw new BridgeException("Saved views are 1-10");
+            var d = s.sceneInfo.cameraData[i];
+            if (!CameraApi.Used(d, s.cameraCtrl.ExportResetData())) throw new BridgeException("View " + (i + 1) + " is empty — save a view there first");
+            var before = Copy(_shots);
+            shot["cam"] = CamOf(d, d.parse);
+            shot["camMode"] = "still";
+            var thumb = ThumbThrough(shot);
+            if (thumb != null) shot["thumb"] = thumb;
+            Changed(before, "Shot camera from view " + (i + 1));
+            return _shots;
+        }
+
+        /// <summary>
+        /// Put Unity's camera where the shot's camera looks from, right now (Studio's camera control would only move
+        /// it at the end of the frame): its pivot, turned by its angles, out at its distance.
+        /// </summary>
+        private static bool PlaceMainCamera(Dictionary<string, object> shot)
+        {
+            var cam = shot.GetObject("cam");
+            var main = Camera.main;
+            if (cam == null || main == null) return false;
+            var rot = Quaternion.Euler(V(cam.GetList("rot")));
+            main.transform.position = V(cam.GetList("pos")) + rot * V(cam.GetList("dist"));
+            main.transform.rotation = rot;
+            main.fieldOfView = cam.GetFloat("fov", main.fieldOfView);
+            return true;
+        }
+
+        /// <summary>A picture through the shot's camera (Unity's camera is put back straight after).</summary>
+        private static string ThumbThrough(Dictionary<string, object> shot)
+        {
+            var main = Camera.main;
+            if (main == null) return null;
+            var pos = main.transform.position;
+            var rot = main.transform.rotation;
+            float fov = main.fieldOfView;
+            try { return PlaceMainCamera(shot) ? CameraApi.Snapshot(320) : null; }
+            finally
+            {
+                main.transform.position = pos;
+                main.transform.rotation = rot;
+                main.fieldOfView = fov;
+            }
+        }
+
+        /// <summary>args: {ids?} — new pictures for still shots, through their own cameras.</summary>
+        private static object RefreshThumbs(Dictionary<string, object> a)
+        {
+            var ids = a.GetList("ids").Select(o => o as string).Where(x => x != null).ToList();
+            int n = 0;
+            foreach (var shot in _shots)
+            {
+                if (ids.Count > 0 && !ids.Contains(shot.GetString("id"))) continue;
+                if (shot.GetString("camMode") == "keys" || shot.GetObject("cam") == null) continue;
+                var t = ThumbThrough(shot);
+                if (t != null) { shot["thumb"] = t; n++; }
+            }
+            if (n > 0) Broadcast();
+            return n;
+        }
+
+        /// <summary>The shot's frame guide, if it has one.</summary>
+        private static void ApplyAspect(Dictionary<string, object> shot)
+        {
+            if (shot.Has("aspect") && shot.GetFloat("aspect") > 0f) CameraTools.SetAspect(shot.GetFloat("aspect"));
+        }
+
+        private static Dictionary<string, object> ShotAt(float t)
+        {
+            Dictionary<string, object> hit = null;
+            foreach (var s in _shots)
+                if (t >= s.GetFloat("start") - 1e-4f && t < s.GetFloat("end") - 1e-4f) hit = s; // a later shot wins an overlap
+            if (hit == null && _shots.Count > 0)
+            {
+                var last = _shots[_shots.Count - 1];
+                if (Mathf.Abs(t - last.GetFloat("end")) < 1e-3f) hit = last; // the very end belongs to the last shot
+            }
+            return hit;
+        }
+
+        /// <summary>
+        /// Live cuts: after Timeline has posed the scene for this frame, put the camera of the shot under the
+        /// playhead in place — every frame while playing (so camera keys left in a still shot don't win), and when
+        /// the playhead moves into another shot while paused (scrubbing inside one leaves your framing alone).
+        /// </summary>
+        private void LateUpdate()
+        {
+            if (!_liveCuts || _shots.Count == 0 || !TimelineApi.Available) return;
+            if (ViewportTools.Busy) return; // sampling / ghost baking jump around on purpose
+            var studio = Singleton<Studio.Studio>.Instance;
+            if (studio == null || studio.ociCamera != null) return; // looking through a scene camera
+            try
+            {
+                var shot = ShotAt(TimelineApi.PlaybackTime());
+                string id = shot?.GetString("id");
+                bool entered = id != _liveId;
+                _liveId = id;
+                if (shot == null) return;
+                if (entered) ApplyAspect(shot);
+                if (shot.GetString("camMode") == "keys") return;
+                if (entered || TimelineApi.Playing())
+                {
+                    ApplyCamera(shot);
+                    PlaceMainCamera(shot); // this very frame, not the next (a render records it)
+                }
+            }
+            catch (Exception e)
+            {
+                _liveCuts = false;
+                StudioBridgePlugin.Logger.LogWarning("Live cuts stopped: " + e.Message);
+                Broadcast();
+            }
+        }
+
         /// <summary>Key a hard cut to each shot's camera at its start (shots without a camera are skipped).</summary>
         private static object BuildCuts()
         {
             if (!TimelineApi.Available) throw new BridgeException("Camera cuts need Timeline");
-            var withCam = _shots.Where(s => s.GetObject("cam") != null).ToList();
+            var withCam = _shots.Where(s => s.GetObject("cam") != null && s.GetString("camMode") != "keys").ToList();
             if (withCam.Count == 0) throw new BridgeException("Give the shots a camera first (frame the view, then Set camera)");
             return BuildCutsImpl(withCam);
         }
@@ -290,7 +490,7 @@ namespace StudioEX.Bridge.Api
         {
             protected override void OnSceneSave()
             {
-                SetExtendedData(_shots.Count == 0 ? null : new PluginData { version = 1, data = new Dictionary<string, object> { { "shots", Json.Serialize(_shots) } } });
+                SetExtendedData(_shots.Count == 0 ? null : new PluginData { version = 1, data = new Dictionary<string, object> { { "shots", Json.Serialize(_shots) }, { "liveCuts", _liveCuts } } });
             }
 
             protected override void OnSceneLoad(SceneOperationKind operation, ReadOnlyDictionary<int, ObjectCtrlInfo> loadedItems)
@@ -299,8 +499,13 @@ namespace StudioEX.Bridge.Api
                 Clear();
                 var d = GetExtendedData();
                 if (d?.data == null || !d.data.TryGetValue("shots", out var j) || !(j is string json)) return;
-                try { _shots = (Json.Parse(json) as List<object> ?? new List<object>()).OfType<Dictionary<string, object>>().ToList(); }
+                try
+                {
+                    _shots = (Json.Parse(json) as List<object> ?? new List<object>()).OfType<Dictionary<string, object>>().ToList();
+                    _liveCuts = d.data.TryGetValue("liveCuts", out var lc) && lc is bool on && on;
+                }
                 catch (Exception e) { StudioBridgePlugin.Logger.LogWarning("Scene shots not loaded: " + e.Message); }
+                Broadcast();
             }
         }
     }

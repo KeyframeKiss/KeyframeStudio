@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { WireTrack } from '../bridge/types';
 import { curveKind, PRESETS, toFlat } from '../lib/curve';
 import { niceStep, snapToFrame } from '../lib/time';
+import { moveShot, snapTime, trimShot } from '../lib/shots';
 import {
   applyCurveToSelected,
   copySelected,
@@ -24,6 +25,8 @@ import {
   keyAllOfSelectedObjects,
   showTab,
   workingShot,
+  saveShots,
+  type Shot,
   useStore,
   visibleTracks,
   listenAudio,
@@ -65,6 +68,8 @@ let rowSize: RowSize = ((): RowSize => {
 let ROW_H: number = ROW_SIZES[rowSize];
 let followPlayhead = true;
 const RULER_H = 28;
+/** The shots' band along the top of the ruler: drag a shot to move it, its edge to trim it. */
+const SHOT_BAND = 6;
 /** The system's "reduce animations" setting: no key pops then. */
 const reducedMotion = () => typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 /** How long a new key's ring takes to fade (ms). */
@@ -123,7 +128,8 @@ type Interaction =
   | { mode: 'pan'; startX: number; startT0: number }
   | { mode: 'box'; x0: number; y0: number; x1: number; y1: number; additive: boolean; toggle: boolean }
   | { mode: 'drag'; startX: number; grabT: number; dt: number; active: boolean; clickedId: KeyId; collapseOnClick: boolean }
-  | { mode: 'audio'; id: number; startX: number; startOffset: number; offset: number; active: boolean };
+  | { mode: 'audio'; id: number; startX: number; startOffset: number; offset: number; active: boolean }
+  | { mode: 'shot'; id: string; kind: 'move' | 'start' | 'end'; startX: number; orig: Shot[]; moved: boolean; label: string };
 
 /**
  * Timeline's own folder tree. Folders that contain no visible track (after the Selected/search filter)
@@ -273,10 +279,11 @@ export function DopeSheet({ compact = false }: { compact?: boolean } = {}) {
   const audioPeaks = useStore((s) => s.audioPeaks);
   const audioInfo = useStore((s) => s.audio);
   const shotsList = useStore((s) => s.shots);
+  const selShot = useStore((s) => s.selShotId);
   const audioListen = useStore((s) => s.audioListen);
   useEffect(() => {
     dirty.current = true;
-  }, [audioPeaks, audioInfo, shotsList, audioListen]);
+  }, [audioPeaks, audioInfo, shotsList, selShot, audioListen]);
   const HEAD = RULER_H + audioInfo.length * AUDIO_H;
   const fitted = useRef(false);
   const lastAnchor = useRef<number | null>(null);
@@ -371,6 +378,18 @@ export function DopeSheet({ compact = false }: { compact?: boolean } = {}) {
   // ---------------- coordinate helpers ----------------
   const xOf = (t: number) => PAD + (t - view.current.t0) * view.current.pps;
   const tOf = (x: number) => view.current.t0 + (x - PAD) / view.current.pps;
+  /** The shot in the ruler's shot band at x, and which part: an edge (to trim) or the middle (to move). */
+  const shotHit = (x: number): { shot: Shot; kind: 'move' | 'start' | 'end' } | null => {
+    const list = useStore.getState().shots;
+    for (const sh of list) {
+      const a = xOf(sh.start),
+        b = xOf(sh.end);
+      if (x < a - 3 || x > b + 3) continue;
+      const wide = b - a > 18;
+      return { shot: sh, kind: wide && x - a < 6 ? 'start' : wide && b - x < 6 ? 'end' : 'move' };
+    }
+    return null;
+  };
   const rowIndexAt = (y: number) => Math.floor((y - headH() + scrollRef.current) / ROW_H);
 
   /** True until the user zooms/pans; while true the view auto-fits on resize. */
@@ -724,13 +743,14 @@ export function DopeSheet({ compact = false }: { compact?: boolean } = {}) {
       // ruler
       ctx.fillStyle = colors.bg1;
       ctx.fillRect(0, 0, w, RULER_H);
-      // shots: a thin coloured strip per shot along the top of the ruler (names are in the Shots tab)
-      st.shots.forEach((sh, i) => {
+      // shots: a band along the top of the ruler (drag to move, edges to trim; the picked one is brighter)
+      [...st.shots].sort((a, b) => a.start - b.start).forEach((sh, i) => {
         const x0 = Math.max(PAD, xOf(sh.start)),
           x1 = Math.min(w, xOf(sh.end));
         if (x1 <= x0) return;
-        ctx.fillStyle = i % 2 ? 'rgba(255,159,46,0.75)' : 'rgba(139,123,255,0.8)';
-        ctx.fillRect(x0 + 1, 0, Math.max(1, x1 - x0 - 2), 3);
+        const picked = sh.id === st.selShotId;
+        ctx.fillStyle = picked ? colors.accent : i % 2 ? 'rgba(255,159,46,0.55)' : 'rgba(139,123,255,0.65)';
+        ctx.fillRect(x0 + 1, 0, Math.max(1, x1 - x0 - 2), picked ? SHOT_BAND : SHOT_BAND - 2);
       });
       ctx.fillStyle = colors.line;
       ctx.fillRect(0, RULER_H - 1, w, 1);
@@ -945,6 +965,14 @@ export function DopeSheet({ compact = false }: { compact?: boolean } = {}) {
     canvasRef.current!.setPointerCapture(e.pointerId);
 
     if (y < RULER_H) {
+      const hit = y <= SHOT_BAND + 2 ? shotHit(x) : null;
+      if (hit) {
+        const st = useStore.getState();
+        useStore.setState({ selShotId: hit.shot.id });
+        inter.current = { mode: 'shot', id: hit.shot.id, kind: hit.kind, startX: x, orig: st.shots, moved: false, label: hit.kind === 'move' ? 'Move shot' : 'Trim shot' };
+        dirty.current = true;
+        return;
+      }
       inter.current = { mode: 'scrub' };
       seek(snapT(tOf(x), e, { noPlayhead: true }));
       return;
@@ -987,6 +1015,17 @@ export function DopeSheet({ compact = false }: { compact?: boolean } = {}) {
       const r = canvasRef.current!.getBoundingClientRect();
       const x = e.clientX - r.left,
         y = e.clientY - r.top;
+      const onShot = e.buttons === 0 && y <= SHOT_BAND + 2 ? shotHit(x) : null;
+      const cv = canvasRef.current!;
+      if (onShot) {
+        cv.style.cursor = onShot.kind === 'move' ? 'grab' : 'ew-resize';
+        cv.title = `${onShot.shot.name} · ${onShot.shot.start.toFixed(2)}–${onShot.shot.end.toFixed(2)} s — drag to move, drag an edge to trim`;
+        return;
+      }
+      if (cv.title) {
+        cv.title = '';
+        cv.style.cursor = '';
+      }
       const hit = e.buttons === 0 ? keysAt(x, y) : [];
       const next = hit.length ? { row: rowIndexAt(y), t: parseKeyId(hit[0]).t } : null;
       const prev = hover.current;
@@ -1002,7 +1041,23 @@ export function DopeSheet({ compact = false }: { compact?: boolean } = {}) {
     const x = e.clientX - r.left;
     const y = e.clientY - r.top;
     if (it.mode === 'scrub') seek(snapT(tOf(x), e, { noPlayhead: true }));
-    else if (it.mode === 'audio') {
+    else if (it.mode === 'shot') {
+      if (!it.moved && Math.abs(x - it.startX) < 3) return;
+      it.moved = true;
+      const me = it.orig.find((sh) => sh.id === it.id);
+      const dur = useStore.getState().tl?.duration ?? 10;
+      const fps = useStore.getState().tl?.fps ?? 30;
+      if (me) {
+        const dt = (x - it.startX) / view.current.pps;
+        const targets = e.altKey ? [] : [0, dur, liveTime(), ...it.orig.filter((sh) => sh.id !== it.id).flatMap((sh) => [sh.start, sh.end])];
+        const tol = 8 / view.current.pps;
+        const next =
+          it.kind === 'move'
+            ? moveShot(it.orig, it.id, snapTime(me.start + dt, fps, targets, tol), dur)
+            : trimShot(it.orig, it.id, it.kind, snapTime((it.kind === 'start' ? me.start : me.end) + dt, fps, targets, tol), dur);
+        useStore.setState({ shots: next });
+      }
+    } else if (it.mode === 'audio') {
       if (!it.active && Math.abs(x - it.startX) > 3) it.active = true;
       if (it.active) it.offset = Math.round(snapT(it.startOffset + (x - it.startX) / view.current.pps, e, { skipClip: it.id }) * 1000) / 1000;
     } else if (it.mode === 'pan') view.current.t0 = it.startT0 - (x - it.startX) / view.current.pps;
@@ -1033,7 +1088,13 @@ export function DopeSheet({ compact = false }: { compact?: boolean } = {}) {
     } catch {
       /* not captured */
     }
-    if (it.mode === 'audio') {
+    if (it.mode === 'shot') {
+      if (!it.moved) seek(snapT(tOf(it.startX), e));
+      else {
+        const now = useStore.getState().shots;
+        if (JSON.stringify(now) !== JSON.stringify(it.orig)) void saveShots(now, it.label);
+      }
+    } else if (it.mode === 'audio') {
       if (it.active && Math.abs(it.offset - it.startOffset) > 1e-6) setAudio(it.id, { offset: it.offset });
       else if (!it.active) seek(snapT(tOf(it.startX), e));
     } else if (it.mode === 'drag') {

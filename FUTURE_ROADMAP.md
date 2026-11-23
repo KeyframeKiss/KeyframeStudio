@@ -387,6 +387,8 @@ Reuses the bone sampling already used for motion paths.
 - Shot markers, notes, and reusable shot templates.
 
 **Status (2026-11-18): done** (Shoot › Shots, Shoot › Templates).
+
+**Update (2026-11-23): Shots rebuilt.** A shot track (move, trim, move the shared cut, swap by dragging past a neighbour, split, duplicate, snapping; gaps and overlaps shown), a storyboard view (reorder by dragging, save as one PNG), an inspector (picture, name, status, start / end / length, play and loop, still camera with lens and saved views or camera keys with a camera move across the shot, frame shape, notes), live cuts (Studio's camera switches at each cut while playing, without keys; camera-key shots keep their keys; bake cuts writes them), drag a saved view onto a shot, shots draggable on the dope sheet's ruler, every change one undo step, and the app follows changes made anywhere. The camera tools moved into a collapsible column beside the shots. Tests: suite 37 (21 checks) and unit tests for the shot maths.
 - **Shots:** each has a name, start/end, notes, and a camera it remembers with a thumbnail. Shots are saved with the scene and shown as strips at the top of the dope sheet ruler.
 - **Build camera cuts:** keys a hard cut to each shot's camera, in one undo step.
 - **Render queue:** see 7.5.

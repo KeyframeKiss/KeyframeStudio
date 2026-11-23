@@ -29,6 +29,7 @@ contextBridge.exposeInMainWorld('studioEx', {
   // newest release on the project's GitHub page vs this version (main process; nothing about the user is sent)
   checkUpdate: () => ipcRenderer.invoke('update:check'),
   openImage: () => ipcRenderer.invoke('dialog:openImage'),
+  savePng: (name, dataUrl) => ipcRenderer.invoke('dialog:savePng', name, dataUrl),
   openFolder: (p) => ipcRenderer.invoke('shell:openFolder', p),
   translate: {
     batch: (engine, items, settings) => ipcRenderer.invoke('translate:batch', engine, items, settings),

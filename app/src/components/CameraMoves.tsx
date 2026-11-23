@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Field, Panel } from './Page';
 import { call, liveTime, refreshTimeline, seekNow, toast, togglePlay, useStore } from '../state/store';
 import { Slider } from './CharacterPanel';
@@ -15,19 +15,25 @@ const MOVES: Record<Move, { label: string; hint: string; dirs: [string, string];
   truck: { label: 'Truck', hint: 'Slide sideways, looking the same way', dirs: ['Left', 'Right'], min: 10, max: 150, step: 10, def: 50, unit: '%', amount: (v, l) => (l ? -v / 100 : v / 100) },
 };
 
-/** Camera move presets: frame the start in Studio, pick a move, and the keys are written for you. */
-export function CameraMoves({ onDone }: { onDone: () => void }) {
+/**
+ * Camera move presets: frame the start in Studio, pick a move, and the keys are written for you. With `start` (a
+ * shot's start) the move begins there instead of at the playhead, and `length` sets its default length.
+ */
+export function CameraMoves({ onDone, start, length, title = 'Camera moves', bare }: { onDone: () => void; start?: number; length?: number; title?: string; bare?: boolean }) {
   const duration = useStore((s) => s.tl?.duration ?? 10);
   const [move, setMove] = useState<Move>('orbit');
   const [first, setFirst] = useState(true);
   const [amounts, setAmounts] = useState<Record<Move, number>>(() => Object.fromEntries(Object.entries(MOVES).map(([k, m]) => [k, m.def])) as Record<Move, number>);
-  const [secs, setSecs] = useState(3);
+  const [secs, setSecs] = useState(length ? Math.round(length * 100) / 100 : 3);
+  useEffect(() => {
+    if (length) setSecs(Math.round(length * 100) / 100);
+  }, [length]);
   const [smooth, setSmooth] = useState(true);
   const [last, setLast] = useState<{ t0: number; t1: number } | null>(null);
   const m = MOVES[move];
 
   const add = async () => {
-    const t0 = liveTime();
+    const t0 = start ?? liveTime();
     const r = await call<{ t0: number; t1: number; keys: number; replaced: number }>('camera.move', { preset: move, amount: m.amount(amounts[move], first), duration: secs, t0, ease: smooth ? 'smooth' : 'linear' });
     if (!r) return;
     setLast({ t0: r.t0, t1: r.t1 });
@@ -42,11 +48,9 @@ export function CameraMoves({ onDone }: { onDone: () => void }) {
     if (!useStore.getState().tl?.playing) togglePlay();
   };
 
-  return (
-    <Panel
-      title="Camera moves"
-      help={`A ready-made move starting from the camera as it is now. ${m.hint}. ${move === 'crane' || move === 'truck' ? 'Distance is relative to how far the camera is from its subject. ' : ''}Frame the start in Studio first; camera keys inside the move are replaced.`}
-    >
+  const help = `A ready-made move starting from the camera as it is ${start != null ? 'at the shot\'s start' : 'now'}. ${m.hint}. ${move === 'crane' || move === 'truck' ? 'Distance is relative to how far the camera is from its subject. ' : ''}Camera keys inside the move are replaced.`;
+  const body = (
+    <>
       <div className="cam-moves">
         {(Object.keys(MOVES) as Move[]).map((k) => (
           <button key={k} className={`btn solid ${move === k ? 'on' : ''}`} title={MOVES[k].hint} onClick={() => setMove(k)}>
@@ -78,13 +82,20 @@ export function CameraMoves({ onDone }: { onDone: () => void }) {
         </div>
       </Field>
       <div style={{ display: 'flex', gap: 6 }}>
-        <button className="btn primary" style={{ flex: 1 }} disabled={!(secs > 0)} onClick={add} title="Starts from the camera as it is now, at the playhead">
-          Add {m.label.toLowerCase()} at playhead
+        <button className="btn primary" style={{ flex: 1 }} disabled={!(secs > 0)} onClick={add} title={start != null ? 'Starts at the shot\'s start, from the camera there' : 'Starts from the camera as it is now, at the playhead'}>
+          Add {m.label.toLowerCase()} {start != null ? 'across the shot' : 'at playhead'}
         </button>
         <button className="btn solid" disabled={!last} onClick={preview} title="Play the last move from its start">
           ▶ Preview
         </button>
       </div>
+    </>
+  );
+  return bare ? (
+    body
+  ) : (
+    <Panel title={title} help={help}>
+      {body}
     </Panel>
   );
 }

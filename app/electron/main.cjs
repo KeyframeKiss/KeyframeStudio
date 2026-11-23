@@ -219,6 +219,16 @@ function createWindow() {
     const r = await dialog.showOpenDialog(win, { title: 'Choose a WAV file', filters: [{ name: 'WAV audio', extensions: ['wav'] }], properties: ['openFile'] });
     return r.canceled ? null : r.filePaths[0] ?? null;
   });
+  // save a picture the window made (the storyboard): the user picks where; only PNG data is written
+  ipcMain.handle('dialog:savePng', async (_e, name, dataUrl) => {
+    const m = typeof dataUrl === 'string' && /^data:image\/png;base64,([A-Za-z0-9+/=]+)$/.exec(dataUrl);
+    if (!m) throw new Error('Not a PNG picture');
+    const safe = String(name || 'Storyboard').replace(/[<>:"/\\|?*\u0000-\u001f]/g, '').slice(0, 120) || 'Storyboard';
+    const r = await dialog.showSaveDialog(win, { title: 'Save the storyboard', defaultPath: path.join(app.getPath('pictures'), safe + '.png'), filters: [{ name: 'PNG picture', extensions: ['png'] }] });
+    if (r.canceled || !r.filePath) return null;
+    fs.writeFileSync(r.filePath, Buffer.from(m[1], 'base64'));
+    return r.filePath;
+  });
   ipcMain.handle('dialog:openImage', async () => {
     const r = await dialog.showOpenDialog(win, { title: 'Choose an image', filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg'] }], properties: ['openFile'] });
     return r.canceled ? null : r.filePaths[0] ?? null;

@@ -18,6 +18,14 @@ namespace StudioEX.Bridge.Api
     {
         public static CameraTools Instance;
 
+        /// <summary>A shot's frame guide (its picture shape) — the app hears about it to update its panel.</summary>
+        internal static void SetAspect(float aspect)
+        {
+            if (Instance == null || Mathf.Abs(Instance._aspect - aspect) < 1e-4f) return;
+            Instance._aspect = Mathf.Max(0f, aspect);
+            StudioBridgePlugin.Instance?.Broadcast("camtools.changed", null);
+        }
+
         private const string RealPovGuid = "keelhauled.realpov";
         private const string LockOnGuid = "keelhauled.lockonplugin";
 

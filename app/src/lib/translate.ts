@@ -84,6 +84,7 @@ declare global {
       };
       appInfo?(): Promise<{ version: string; electron: string; chrome: string; node: string; os: string; logFile: string; home: string }>;
       checkUpdate?(): Promise<UpdateInfo>;
+      savePng?(name: string, dataUrl: string): Promise<string | null>;
     };
   }
 }
