@@ -80,6 +80,42 @@ namespace StudioEX.Bridge.Api
             };
         }
 
+        /// <summary>
+        /// How long one pass of the current state takes at speed 1, in seconds. From the clip itself: with Studio's own
+        /// playback stopped (speed 0, as when the timeline drives it) the state reports an endless length.
+        /// </summary>
+        private static float ClipLength(Animator animator, AnimatorStateInfo st)
+        {
+            float clipLen = 0f;
+            try { foreach (var ci in animator.GetCurrentAnimatorClipInfo(0)) if (ci.clip != null) clipLen = Mathf.Max(clipLen, ci.clip.length); }
+            catch { }
+            float stateSpeed = Mathf.Abs(st.speed * st.speedMultiplier);
+            if (clipLen > 1e-3f) return clipLen / (stateSpeed > 1e-3f ? stateSpeed : 1f);
+            float len = st.length * Mathf.Max(animator.speed, 0f);
+            return len > 1e-3f && len < 1e5f ? len : 1f;
+        }
+
+        /// <summary>
+        /// The timeline got longer: a clip that ran to the old end runs on to the new one (its Animation Time end key
+        /// moves out, at the same pace) instead of stopping there.
+        /// </summary>
+        internal static void StretchClips(float oldEnd, float newEnd)
+        {
+            if (newEnd <= oldEnd + 1e-4f) return;
+            foreach (var ip in Interpolables.Values.Where(x => x.id == "charAnimationTime" && x.keyframes.Count >= 2).ToList())
+            {
+                int n = ip.keyframes.Count;
+                float tl = ip.keyframes.Keys[n - 1], tp = ip.keyframes.Keys[n - 2];
+                var last = ip.keyframes.Values[n - 1];
+                var prev = ip.keyframes.Values[n - 2];
+                if (Mathf.Abs(tl - oldEnd) > 2e-3f || IsHold(prev.curve) || tl - tp < 1e-4f) continue;
+                if (!(last.value is float vl) || !(prev.value is float vp)) continue;
+                float v = vp + (vl - vp) * (newEnd - tp) / (tl - tp);
+                ip.keyframes.Remove(tl);
+                ip.keyframes[newEnd] = new TLKeyframe(v, ip, last.curve);
+            }
+        }
+
         /// <summary>The character's track of this model, made if it isn't there (recorded for undo either way).</summary>
         private static Interpolable EnsureCharTrack(OCIChar c, string model)
         {
@@ -99,7 +135,7 @@ namespace StudioEX.Bridge.Api
             float t0 = Mathf.Clamp(a.Has("t") ? a.GetFloat("t") : TL.playbackTime, 0f, TL.duration);
             // baked keys run on past this moment: they'd keep the old motion over the new clip, so they're re-baked
             // from here (from the new clip) in the same step
-            var baked = BakedAfter(c, t0);
+            var baked = Baked(c);
             if (baked != null) CheckCanStep();
             Dictionary<string, object> r;
             UndoStack.BeginGroup();
@@ -108,10 +144,15 @@ namespace StudioEX.Bridge.Api
                 r = PutOnTimeline(c, t0);
                 if (baked != null)
                 {
-                    // from a frame before: the old motion is kept right up to the switch (not eased into the new one)
-                    float from = Mathf.Max(0f, t0 - 1f / Mathf.Clamp((int)F_fps.GetValue(Ready), 1, 240));
-                    var rb = BakeRange(c, from, baked.Value.Value, baked.Value.Key, 0.5f, true, (string)r["name"]);
-                    r["rebaked"] = new Dictionary<string, object> { { "t0", Math.Round(t0, 4) }, { "t1", rb["t1"] }, { "keys", rb["keys"] }, { "parts", rb["parts"] } };
+                    // the baked keys would hold the old motion over the new clip (FK can't switch off part-way), so
+                    // re-bake: from the new clip (a frame before, so the old motion holds right up to the switch), or
+                    // from where the bake ended if that's earlier (the timeline grew); to the end of the new clip
+                    float frame = 1f / Mathf.Clamp((int)F_fps.GetValue(Ready), 1, 240);
+                    float end = baked.Value.Value;
+                    float from = end < t0 - 1e-4f ? end : Mathf.Max(0f, t0 - frame);
+                    float to = Mathf.Max(end, Convert.ToSingle(r["t1"]));
+                    var rb = BakeRange(c, from, to, baked.Value.Key, 0.5f, true, (string)r["name"]);
+                    r["rebaked"] = new Dictionary<string, object> { { "t0", Math.Round(end < t0 - 1e-4f ? end : t0, 4) }, { "t1", rb["t1"] }, { "keys", rb["keys"] }, { "parts", rb["parts"] } };
                 }
             }
             finally { UndoStack.EndGroup("Clip on the timeline"); }
@@ -131,7 +172,7 @@ namespace StudioEX.Bridge.Api
             float frame = 1f / fps;
             var animator = c.charAnimeCtrl.animator;
             var st = animator.GetCurrentAnimatorStateInfo(0);
-            float len = st.length > 1e-3f ? st.length : 1f;
+            float len = ClipLength(animator, st);
             float speed = c.animeSpeed > 1e-3f ? c.animeSpeed : 1f;
             var ai = c.oiCharInfo.animeInfo;
 
@@ -321,9 +362,9 @@ namespace StudioEX.Bridge.Api
             var s = Ready;
             int fps = Mathf.Clamp((int)F_fps.GetValue(s), 1, 240);
             if (t1 - t0 < 1f / fps - 1e-4f) throw new BridgeException("Make the range at least a frame long");
-            float rate = Mathf.Min(fps, 30);
+            float rate = Mathf.Min(fps, 60); // every frame (fast moves like a run bend a lot between frames)
             int n = Mathf.CeilToInt((t1 - t0) * rate);
-            if (n > 3600) throw new BridgeException("That range is too long to bake in one go — bake it in a few shorter parts");
+            if (n > 7200) throw new BridgeException("That range is too long to bake in one go — bake it in a few shorter parts");
             var times = new List<float>();
             for (int i = 0; i <= n; i++) times.Add(Mathf.Min(t1, t0 + i / rate));
             if (t1 - times[times.Count - 1] > 1e-4f) times.Add(t1);
@@ -417,17 +458,17 @@ namespace StudioEX.Bridge.Api
         }
 
         /// <summary>
-        /// The character's baked bone keys after t (FK rotation tracks filed in a "(baked)" folder, keyed after t): which
-        /// parts they cover and how far they reach. Null when there are none.
+        /// The character's baked bone keys (FK rotation tracks filed in a "(baked)" folder): which parts they cover and
+        /// how far they reach. Null when there are none.
         /// </summary>
-        private static KeyValuePair<List<string>, float>? BakedAfter(OCIChar c, float t)
+        private static KeyValuePair<List<string>, float>? Baked(OCIChar c)
         {
             var parts = new HashSet<string>();
             float end = -1f;
             foreach (var ip in Interpolables.Values)
             {
                 if (ip.oci != c || ip.id != "guideObjectRot" || !ip.enabled || !(ip.parameter is GuideObject g)) continue;
-                if (!ip.keyframes.Keys.Any(k => k > t + 1e-4f)) continue;
+                if (ip.keyframes.Count == 0) continue;
                 var folder = (LeafNode(ip) as Timeline.INode)?.parent;
                 var fname = folder != null ? GroupType.GetField("name")?.GetValue(GroupObj(folder)) as string : null;
                 if (fname == null || !fname.EndsWith("(baked)")) continue;
@@ -438,7 +479,7 @@ namespace StudioEX.Bridge.Api
                     if (kv.Value.Any(bg => ViewportGizmos.FkPart(bg) == part)) parts.Add(kv.Key);
                 end = Mathf.Max(end, ip.keyframes.Keys.Last());
             }
-            if (parts.Count == 0 || end <= t + 1e-4f) return null;
+            if (parts.Count == 0) return null;
             return new KeyValuePair<List<string>, float>(BakeParts.Keys.Where(parts.Contains).ToList(), end);
         }
     }

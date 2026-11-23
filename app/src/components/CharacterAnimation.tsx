@@ -10,6 +10,8 @@ interface Anime {
   nameEn?: string;
   speed: number;
   group: number;
+  category: number;
+  no: number;
 }
 
 /**
@@ -65,6 +67,9 @@ export function CharacterAnimationPanel({ id }: { id: number }) {
   const off = status !== 'open' || !tl;
   const driven = !!info?.driven;
   const segs = info?.segments ?? [];
+  // the clip picked last isn't the one the timeline has at the playhead: it only shows until the next seek / play
+  const atHead = segs.filter((g) => g.t0 <= playhead + 1e-3).pop();
+  const notKeyed = driven && !!anime && !!atHead && (atHead.group !== anime.group || atHead.category !== anime.category || atHead.no !== anime.no);
   const valid = t1 - t0 >= 1 / fps - 1e-6;
   const name = anime ? displayName(anime) : '…';
 
@@ -92,7 +97,13 @@ export function CharacterAnimationPanel({ id }: { id: number }) {
         <div className="char-anim-name" title={anime?.name}>
           {name}
           <span className="char-anim-state">
-            {driven ? 'Plays with the timeline' : anime && anime.speed > 0.001 ? 'Plays on its own — not tied to the timeline' : 'Stopped'}
+            {notKeyed
+              ? `Not on the timeline yet (it has “${atHead.name}” here) — put it on to use it from the playhead`
+              : driven
+                ? 'Plays with the timeline'
+                : anime && anime.speed > 0.001
+                  ? 'Plays on its own — not tied to the timeline'
+                  : 'Stopped'}
           </span>
         </div>
         <button className="btn small solid" disabled={off} onClick={() => openAnimations([id])} title="Pick another Studio animation for this character">

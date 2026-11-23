@@ -664,7 +664,9 @@ namespace StudioEX.Bridge.Api
             if (a.Has("duration"))
             {
                 float d = Mathf.Max(0.01f, a.GetFloat("duration"));
+                float old = TL.duration;
                 F_duration.SetValue(s, d);
+                StretchClips(old, d); // clips that ran to the end run on to the new end
                 RefreshView();
             }
             if (a.Has("fps"))

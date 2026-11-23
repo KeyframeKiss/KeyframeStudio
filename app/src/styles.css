@@ -8359,6 +8359,7 @@ a.btn {
 }
 .char-anim-state {
   display: block;
+  white-space: normal;
   font-weight: 400;
   font-size: 11px;
   color: var(--text-2);

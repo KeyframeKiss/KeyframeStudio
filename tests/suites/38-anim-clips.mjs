@@ -86,6 +86,8 @@ export default async function (t) {
     await ok('anim.toTimeline', { id, t: 2 });
     const info = await ok('anim.timeline', { id });
     const seg = info.segments;
+    const tv = Object.values(await ok('timeline.keyValues', { tracks: [info.tracks.time] }))[0];
+    check('the second clip runs (picked with playback stopped, its length still read right)', tv[tv.length - 1][1].value > 0.2, JSON.stringify(tv));
     check('two stretches: 0–2, 2–4', seg.length === 2 && near(seg[0].t1, 2, 1e-3) && near(seg[1].t0, 2, 1e-3) && near(seg[1].t1, 4, 1e-3), JSON.stringify(seg));
     // the same moments as before, up to just before the second clip starts at 2 s
     const cut = (r) => ({ bones: Object.fromEntries(Object.entries(r.bones).map(([k, v]) => [k, v.filter((_, i) => r.times[i] < 1.95)])) });
@@ -189,6 +191,8 @@ export default async function (t) {
     await ok('timeline.seek', { t: 0.5 });
     await sleep(300);
     const ref = await sample(0, 4);
+    const runTravel = Math.max(...['cf_j_foot_L', 'cf_j_hand_L'].map((b) => travel(ref.bones[b].filter((_, i) => ref.times[i] > 2.05))));
+    check('the run moves (not stuck on its first frame)', runTravel > 0.1, runTravel.toFixed(3));
     await ok('undo');
     await ok('undo');
     await sleep(300);
@@ -206,5 +210,40 @@ export default async function (t) {
     await ok('undo'); // the run (and its re-bake)
     await ok('undo'); // the clip change
     await ok('undo'); // the bake
+  });
+
+  await t.step('baked, then the timeline made longer, then a run after the old end: the gap and the run are baked', async () => {
+    const run = cat.find((g) => g.id === 0)?.categories.find((c) => c.id === 3)?.clips.find((x) => x.no === 3) ? { g: 0, c: 3, no: 3 } : candidates.find((c) => c.no !== clip.no || c.c !== clip.c);
+    const scene = async (bake) => {
+      if (bake) await ok('anim.bake', { id, t0: 0, t1: 4 });
+      await ok('timeline.setSettings', { duration: 7 });
+      await ok('chara.loadAnime', { ids: [id], group: run.g, category: run.c, no: run.no });
+      return ok('anim.toTimeline', { id, t: 5 });
+    };
+    // the clips alone
+    await scene(false);
+    await ok('timeline.seek', { t: 0.5 });
+    await sleep(300);
+    const ref = await sample(3, 7);
+    const walkOn = travel(ref.bones.cf_j_foot_L.filter((_, i) => ref.times[i] > 4.05 && ref.times[i] < 4.95));
+    check('a longer timeline: the walk carries on past the old end', walkOn > 0.05, walkOn.toFixed(3));
+    await ok('undo');
+    await ok('undo');
+    await ok('timeline.setSettings', { duration: 4 });
+    await sleep(300);
+    // baked first
+    const r = await scene(true);
+    check('re-baked from where the bake ended to the end of the run', r.rebaked && Math.abs(r.rebaked.t0 - 4) < 1e-3 && Math.abs(r.rebaked.t1 - 7) < 1e-3, JSON.stringify(r.rebaked));
+    await ok('timeline.seek', { t: 0.5 });
+    await sleep(300);
+    const got = await sample(3, 7);
+    const h = Math.max(...ref.bones.cf_j_head.map((p, i) => dist(p, ref.bones.cf_j_foot_L[i])));
+    const w = worst(ref, got);
+    t.metric('longer timeline, walk then run: worst bone off', w.toFixed(4), 'units');
+    check('the walk past the old end and the run follow the clips (within 2% of body height)', w < 0.02 * h, `${w.toFixed(4)} vs ${(0.02 * h).toFixed(4)} at ${where}`);
+    await ok('undo');
+    await ok('undo');
+    await ok('undo');
+    await ok('timeline.setSettings', { duration: 4 });
   });
 }
