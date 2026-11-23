@@ -30,6 +30,10 @@ namespace StudioEX.Bridge.Api
         private static bool _liveCuts;
         private static string _liveId; // the shot live cuts last switched to
         private static readonly string[] Statuses = { "idea", "blocked", "framed", "final" };
+        /// <summary>still: its own camera · keys: its Timeline camera keys · pov: through a character's eyes · follow: keeps a body part in view</summary>
+        private static readonly string[] Modes = { "still", "keys", "pov", "follow" };
+        /// <summary>Angles: named camera setups to reuse across shots ({id, name, cam, thumb, slot?}).</summary>
+        private static List<Dictionary<string, object>> _angles = new List<Dictionary<string, object>>();
         internal static List<Dictionary<string, object>> All => _shots;
         private static Coroutine _queue;
         private static readonly Dictionary<string, object> QueueState = new Dictionary<string, object> { { "running", false } };
@@ -42,14 +46,14 @@ namespace StudioEX.Bridge.Api
             r.Add("shots.state", a => State());
             r.Add("shots.set", a =>
             {
-                var before = Copy(_shots);
+                var before = Snap();
                 SetAll(a.GetList("shots"));
                 Changed(before, a.GetString("label") ?? "Edit shots");
                 return _shots;
             });
             r.Add("shots.captureCamera", a =>
             {
-                var before = Copy(_shots);
+                var before = Snap();
                 var result = CaptureCamera(a);
                 Find(a.GetString("id"))["camMode"] = "still";
                 Changed(before, "Set shot camera");
@@ -60,11 +64,18 @@ namespace StudioEX.Bridge.Api
             r.Add("shots.view", a =>
             {
                 var sh = Find(a.GetString("id"));
-                ApplyCamera(sh);
+                ApplyMode(sh);
+                if (sh.GetString("camMode") == "still") ApplyCamera(sh);
                 ApplyAspect(sh);
                 _liveId = sh.GetString("id");
                 return true;
             });
+            r.Add("shots.fromAngle", FromAngle);
+            r.Add("angles.add", AngleAdd);
+            r.Add("angles.update", AngleUpdate);
+            r.Add("angles.set", AnglesSet);
+            r.Add("angles.view", a => ApplyCamera(FindAngle(a.GetString("id"))));
+            r.Add("angles.import", AnglesImport);
             r.Add("shots.setLiveCuts", a =>
             {
                 _liveCuts = a.GetBool("on");
@@ -86,11 +97,12 @@ namespace StudioEX.Bridge.Api
         public static void Clear()
         {
             _shots = new List<Dictionary<string, object>>();
+            _angles = new List<Dictionary<string, object>>();
             _liveCuts = false;
             _liveId = null;
         }
 
-        private static Dictionary<string, object> State() => new Dictionary<string, object> { { "shots", _shots }, { "liveCuts", _liveCuts } };
+        private static Dictionary<string, object> State() => new Dictionary<string, object> { { "shots", _shots }, { "liveCuts", _liveCuts }, { "angles", _angles } };
 
         private static void Broadcast() => StudioBridgePlugin.Instance?.Broadcast("shots.changed", null);
 
@@ -98,23 +110,32 @@ namespace StudioEX.Bridge.Api
         private static List<Dictionary<string, object>> Copy(List<Dictionary<string, object>> l) =>
             (Json.Parse(Json.Serialize(l)) as List<object> ?? new List<object>()).OfType<Dictionary<string, object>>().ToList();
 
-        /// <summary>After a change: one undo step back to `before`, and the app hears about it.</summary>
-        private static void Changed(List<Dictionary<string, object>> before, string label)
+        /// <summary>The shots and angles as they are, for undo.</summary>
+        private sealed class Snapshot
         {
-            if (Json.Serialize(before) != Json.Serialize(_shots)) UndoStack.Push(new ShotsUndo(before, label));
+            public List<Dictionary<string, object>> Shots, Angles;
+            public string Sig => Json.Serialize(Shots) + "|" + Json.Serialize(Angles);
+        }
+        private static Snapshot Snap() => new Snapshot { Shots = Copy(_shots), Angles = Copy(_angles) };
+
+        /// <summary>After a change: one undo step back to `before`, and the app hears about it.</summary>
+        private static void Changed(Snapshot before, string label)
+        {
+            if (before.Sig != Snap().Sig) UndoStack.Push(new ShotsUndo(before, label));
             Broadcast();
         }
 
         private sealed class ShotsUndo : IUndoEntry
         {
-            private readonly List<Dictionary<string, object>> _list;
-            public ShotsUndo(List<Dictionary<string, object>> list, string label) { _list = list; Label = label; }
+            private readonly Snapshot _was;
+            public ShotsUndo(Snapshot was, string label) { _was = was; Label = label; }
             public string Label { get; }
             public bool Absorbs(IUndoEntry newer) => false;
             public IUndoEntry Restore()
             {
-                var inverse = new ShotsUndo(Copy(_shots), Label);
-                _shots = Copy(_list);
+                var inverse = new ShotsUndo(Snap(), Label);
+                _shots = Copy(_was.Shots);
+                _angles = Copy(_was.Angles);
                 _liveId = null;
                 Broadcast();
                 return inverse;
@@ -135,8 +156,11 @@ namespace StudioEX.Bridge.Api
                     { "name", (o.GetString("name") ?? "Shot").Trim() }, { "start", (double)s }, { "end", (double)e },
                     { "notes", o.GetString("notes") ?? "" },
                     { "status", Array.IndexOf(Statuses, o.GetString("status")) >= 0 ? o.GetString("status") : "idea" },
-                    { "camMode", o.GetString("camMode") == "keys" ? "keys" : "still" },
+                    { "camMode", Array.IndexOf(Modes, o.GetString("camMode")) >= 0 ? o.GetString("camMode") : "still" },
                 };
+                if (o.Has("who")) shot["who"] = o.GetInt("who"); // the character a first-person / follow shot is about
+                if (!string.IsNullOrEmpty(o.GetString("bone"))) shot["bone"] = o.GetString("bone");
+                if (!string.IsNullOrEmpty(o.GetString("angle"))) shot["angle"] = o.GetString("angle");
                 if (o.Has("aspect") && o.GetFloat("aspect") > 0f) shot["aspect"] = (double)Mathf.Clamp(o.GetFloat("aspect"), 0.2f, 5f);
                 // camera and thumbnail are kept from the existing shot unless given
                 var old = _shots.FirstOrDefault(x => x.GetString("id") == shot.GetString("id"));
@@ -193,13 +217,181 @@ namespace StudioEX.Bridge.Api
             if (i < 0 || i >= s.sceneInfo.cameraData.Length) throw new BridgeException("Saved views are 1-10");
             var d = s.sceneInfo.cameraData[i];
             if (!CameraApi.Used(d, s.cameraCtrl.ExportResetData())) throw new BridgeException("View " + (i + 1) + " is empty — save a view there first");
-            var before = Copy(_shots);
+            var before = Snap();
             shot["cam"] = CamOf(d, d.parse);
             shot["camMode"] = "still";
             var thumb = ThumbThrough(shot);
             if (thumb != null) shot["thumb"] = thumb;
             Changed(before, "Shot camera from view " + (i + 1));
             return _shots;
+        }
+
+        // ---------------- angles ----------------
+
+        private static Dictionary<string, object> FindAngle(string id) =>
+            _angles.FirstOrDefault(x => x.GetString("id") == id) ?? throw new BridgeException("Angle not found");
+
+        private static Dictionary<string, object> CamNow()
+        {
+            var cc = Singleton<Studio.Studio>.Instance.cameraCtrl;
+            return CamOf(cc.Export(), cc.fieldOfView);
+        }
+
+        /// <summary>A saved view in Studio nobody (no angle) uses yet, or -1.</summary>
+        private static int FreeSlot()
+        {
+            var s = Singleton<Studio.Studio>.Instance;
+            var reset = s.cameraCtrl.ExportResetData();
+            for (int i = 0; i < s.sceneInfo.cameraData.Length; i++)
+                if (!CameraApi.Used(s.sceneInfo.cameraData[i], reset) && !_angles.Any(x => x.Has("slot") && x.GetInt("slot") == i)) return i;
+            return -1;
+        }
+
+        /// <summary>Keep the angle's saved view in Studio the same as the angle (Studio's own view keys keep working).</summary>
+        private static void SyncSlot(Dictionary<string, object> angle)
+        {
+            if (!angle.Has("slot")) return;
+            int i = angle.GetInt("slot");
+            var s = Singleton<Studio.Studio>.Instance;
+            if (i < 0 || i >= s.sceneInfo.cameraData.Length) return;
+            var cc = s.cameraCtrl;
+            var keep = cc.Export();
+            float fov = cc.fieldOfView;
+            try
+            {
+                ApplyCamera(angle);
+                s.sceneInfo.cameraData[i].Copy(cc.Export());
+            }
+            finally
+            {
+                cc.Import(keep);
+                cc.fieldOfView = fov;
+            }
+            if (angle.GetString("thumb") is string t) CameraApi.SetSlotThumb(i, t);
+        }
+
+        /// <summary>args: {name?} — a new angle from Studio's camera as it is now (also kept in a free saved view).</summary>
+        private static object AngleAdd(Dictionary<string, object> a)
+        {
+            var before = Snap();
+            int n = _angles.Count + 1;
+            while (_angles.Any(x => x.GetString("name") == "Angle " + n)) n++;
+            var angle = new Dictionary<string, object>
+            {
+                { "id", Guid.NewGuid().ToString("N").Substring(0, 8) },
+                { "name", string.IsNullOrEmpty(a.GetString("name")) ? "Angle " + n : a.GetString("name").Trim() },
+                { "cam", CamNow() },
+            };
+            var thumb = CameraApi.Snapshot(320);
+            if (thumb != null) angle["thumb"] = thumb;
+            int slot = FreeSlot();
+            if (slot >= 0) { angle["slot"] = slot; SyncSlot(angle); }
+            _angles.Add(angle);
+            Changed(before, "Add angle");
+            return State();
+        }
+
+        /// <summary>args: {id} — the angle takes Studio's camera as it is now. Shots using it are left as they are.</summary>
+        private static object AngleUpdate(Dictionary<string, object> a)
+        {
+            var angle = FindAngle(a.GetString("id"));
+            var before = Snap();
+            angle["cam"] = CamNow();
+            var thumb = CameraApi.Snapshot(320);
+            if (thumb != null) angle["thumb"] = thumb;
+            SyncSlot(angle);
+            Changed(before, "Update angle");
+            return State();
+        }
+
+        /// <summary>args: {angles:[{id, name}], label?} — rename, reorder or remove angles (their cameras are kept by id).</summary>
+        private static object AnglesSet(Dictionary<string, object> a)
+        {
+            var before = Snap();
+            var next = new List<Dictionary<string, object>>();
+            foreach (var o in a.GetList("angles").OfType<Dictionary<string, object>>())
+            {
+                var old = _angles.FirstOrDefault(x => x.GetString("id") == o.GetString("id"));
+                if (old == null) continue;
+                var copy = new Dictionary<string, object>(old);
+                if (!string.IsNullOrEmpty(o.GetString("name"))) copy["name"] = o.GetString("name").Trim();
+                next.Add(copy);
+            }
+            _angles = next;
+            Changed(before, a.GetString("label") ?? "Edit angles");
+            return State();
+        }
+
+        /// <summary>Studio's saved views that no angle has yet, as angles (named "View N").</summary>
+        private static object AnglesImport(Dictionary<string, object> a)
+        {
+            var s = Singleton<Studio.Studio>.Instance;
+            var reset = s.cameraCtrl.ExportResetData();
+            var before = Snap();
+            int added = 0;
+            for (int i = 0; i < s.sceneInfo.cameraData.Length; i++)
+            {
+                var d = s.sceneInfo.cameraData[i];
+                if (!CameraApi.Used(d, reset) || _angles.Any(x => x.Has("slot") && x.GetInt("slot") == i)) continue;
+                var angle = new Dictionary<string, object>
+                {
+                    { "id", Guid.NewGuid().ToString("N").Substring(0, 8) }, { "name", "View " + (i + 1) }, { "cam", CamOf(d, d.parse) }, { "slot", i },
+                };
+                var thumb = ThumbThrough(angle);
+                if (thumb != null) angle["thumb"] = thumb;
+                _angles.Add(angle);
+                added++;
+            }
+            Changed(before, "Import saved views");
+            return added;
+        }
+
+        /// <summary>args: {id, angle} — the shot uses the angle's camera (a still camera, with the angle's picture).</summary>
+        private static object FromAngle(Dictionary<string, object> a)
+        {
+            var shot = Find(a.GetString("id"));
+            var angle = FindAngle(a.GetString("angle"));
+            var before = Snap();
+            shot["cam"] = Json.Parse(Json.Serialize(angle.GetObject("cam")));
+            shot["camMode"] = "still";
+            shot["angle"] = angle.GetString("id");
+            var thumb = angle.GetString("thumb") ?? ThumbThrough(shot);
+            if (thumb != null) shot["thumb"] = thumb;
+            Changed(before, "Shot angle: " + angle.GetString("name"));
+            return _shots;
+        }
+
+        // ---------------- camera types ----------------
+
+        /// <summary>
+        /// First person / follow shots switch Studio's camera mode for the character they're about; any other shot
+        /// switches it back off (only when some shot uses one — otherwise your own camera mode is left alone).
+        /// </summary>
+        private static void ApplyMode(Dictionary<string, object> shot)
+        {
+            string m = shot.GetString("camMode");
+            if (m == "pov" || m == "follow")
+            {
+                if (m == "follow") ApplyCamera(shot); // start from the shot's framing, then keep the body part in view
+                CameraTools.ShotMode(m, shot.Has("who") ? shot.GetInt("who") : -1, shot.GetString("bone"));
+            }
+            else if (_shots.Any(s => s.GetString("camMode") == "pov" || s.GetString("camMode") == "follow")) CameraTools.ShotMode(null, -1, null);
+        }
+
+        /// <summary>For the monitor: where the playhead's shot looks from, when it's a still shot with a camera.</summary>
+        internal static bool ProgramCamera(out Vector3 pos, out Quaternion rot, out float fov)
+        {
+            pos = Vector3.zero;
+            rot = Quaternion.identity;
+            fov = 0f;
+            if (_shots.Count == 0 || !TimelineApi.Available) return false;
+            var shot = ShotAt(TimelineApi.PlaybackTime());
+            var cam = shot?.GetString("camMode") == "still" ? shot.GetObject("cam") : null;
+            if (cam == null) return false;
+            rot = Quaternion.Euler(V(cam.GetList("rot")));
+            pos = V(cam.GetList("pos")) + rot * V(cam.GetList("dist"));
+            fov = cam.GetFloat("fov", 23f);
+            return true;
         }
 
         /// <summary>
@@ -294,8 +486,8 @@ namespace StudioEX.Bridge.Api
                 bool entered = id != _liveId;
                 _liveId = id;
                 if (shot == null) return;
-                if (entered) ApplyAspect(shot);
-                if (shot.GetString("camMode") == "keys") return;
+                if (entered) { ApplyAspect(shot); ApplyMode(shot); }
+                if (shot.GetString("camMode") != "still") return; // camera keys, first person or follow drive it
                 if (entered || TimelineApi.Playing())
                 {
                     ApplyCamera(shot);
@@ -496,7 +688,7 @@ namespace StudioEX.Bridge.Api
         {
             protected override void OnSceneSave()
             {
-                SetExtendedData(_shots.Count == 0 ? null : new PluginData { version = 1, data = new Dictionary<string, object> { { "shots", Json.Serialize(_shots) }, { "liveCuts", _liveCuts } } });
+                SetExtendedData(_shots.Count == 0 && _angles.Count == 0 ? null : new PluginData { version = 1, data = new Dictionary<string, object> { { "shots", Json.Serialize(_shots) }, { "liveCuts", _liveCuts }, { "angles", Json.Serialize(_angles) } } });
             }
 
             protected override void OnSceneLoad(SceneOperationKind operation, ReadOnlyDictionary<int, ObjectCtrlInfo> loadedItems)
@@ -509,6 +701,8 @@ namespace StudioEX.Bridge.Api
                 {
                     _shots = (Json.Parse(json) as List<object> ?? new List<object>()).OfType<Dictionary<string, object>>().ToList();
                     _liveCuts = d.data.TryGetValue("liveCuts", out var lc) && lc is bool on && on;
+                    if (d.data.TryGetValue("angles", out var aj) && aj is string ajson)
+                        _angles = (Json.Parse(ajson) as List<object> ?? new List<object>()).OfType<Dictionary<string, object>>().ToList();
                 }
                 catch (Exception e) { StudioBridgePlugin.Logger.LogWarning("Scene shots not loaded: " + e.Message); }
                 Broadcast();

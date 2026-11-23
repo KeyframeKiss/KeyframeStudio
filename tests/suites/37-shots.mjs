@@ -1,8 +1,8 @@
-export const name = 'Shots: undo, live cuts, still vs camera-key shots, saved views, pictures, frame guides, baked cuts';
+export const name = 'Shots: undo, live cuts, camera types, angles, the monitor, pictures, frame guides, looping, baked cuts';
 
 export default async function (t) {
   const { ok, req, check, sleep, near, studio } = t;
-  await t.loadSample();
+  const { chara } = await t.loadSample();
   const fovNow = async () => (await ok('camera.get')).fov;
   const state = () => ok('shots.state');
   const shot = async (id) => (await state()).shots.find((s) => s.id === id);
@@ -10,7 +10,9 @@ export default async function (t) {
   t.defer(async () => {
     await req('shots.setLiveCuts', { on: false });
     await req('shots.set', { shots: [] });
-    await req('camtools.set', { guides: { aspect: 0 } });
+    await req('camtools.set', { guides: { aspect: 0 }, pov: { on: false }, follow: { on: false } });
+    await req('angles.set', { angles: [] });
+    await req('preview.stop');
   });
 
   await ok('timeline.stop');
@@ -138,6 +140,76 @@ export default async function (t) {
     const past = (await ok('timeline.state')).time;
     await ok('timeline.pause');
     check('cleared: it plays on past the shot', past > 2.05 || past < 1, past.toFixed(3));
+  });
+
+  await t.step('angles: reusable camera setups', async () => {
+    await ok('camera.setFov', { fov: 27 });
+    await sleep(200);
+    const r = await ok('angles.add', {});
+    const a = r.angles[0];
+    check('an angle from Studio’s view, with a picture', r.angles.length === 1 && near(a.cam.fov, 27, 0.01) && a.thumb?.startsWith('data:image'), JSON.stringify({ n: r.angles.length, fov: a?.cam?.fov }));
+    const cams = await ok('camera.get');
+    if (a.slot != null) check('…also kept in a saved view of Studio’s', cams.slots[a.slot].used);
+    await ok('angles.set', { angles: [{ id: a.id, name: 'Wide' }], label: 'Rename angle' });
+    check('renamed', (await state()).angles[0].name === 'Wide');
+    await ok('undo');
+    check('undo puts the name back', (await state()).angles[0].name !== 'Wide');
+    await ok('shots.fromAngle', { id: 'B', angle: a.id });
+    const b = await shot('B');
+    check('a shot takes the angle’s camera', near(b.cam.fov, 27, 0.01) && b.angle === a.id && b.camMode === 'still');
+    await ok('camera.setFov', { fov: 35 });
+    await sleep(200);
+    await ok('angles.update', { id: a.id });
+    check('updating the angle…', near((await state()).angles[0].cam.fov, 35, 0.01));
+    check('…leaves shots that used it as they were', near((await shot('B')).cam.fov, 27, 0.01));
+    const n = await ok('angles.import', {});
+    check('Studio’s other saved views come in as angles', n >= 1 && (await state()).angles.some((x) => /^View \d+$/.test(x.name)), String(n));
+    await ok('angles.set', { angles: [], label: 'Delete angles' });
+    check('deleting angles keeps the shots’ cameras', (await state()).angles.length === 0 && near((await shot('B')).cam.fov, 27, 0.01));
+    await ok('undo');
+    check('…and undo brings them back', (await state()).angles.length >= 2);
+  });
+
+  await t.step('camera types: first person and follow switch at the cuts', async () => {
+    if (!chara) return t.say('no character in the sample: skipped');
+    await ok('shots.setLiveCuts', { on: true });
+    const s0 = await state();
+    await ok('shots.set', { shots: s0.shots.map((x) => (x.id === 'B' ? { ...x, camMode: 'pov', who: chara.id } : x)), label: 'Shot camera: first person' });
+    await ok('timeline.seek', { t: 0.5 });
+    await sleep(400);
+    await ok('timeline.seek', { t: 3 });
+    await sleep(500);
+    let ct = await ok('camtools.get');
+    check('entering a first-person shot looks through the character', ct.pov.on && ct.pov.id === chara.id, JSON.stringify(ct.pov));
+    await ok('timeline.seek', { t: 0.5 });
+    await sleep(500);
+    ct = await ok('camtools.get');
+    check('the next still shot switches back', !ct.pov.on && !ct.follow.on);
+    const s1 = await state();
+    await ok('shots.set', { shots: s1.shots.map((x) => (x.id === 'B' ? { ...x, camMode: 'follow', who: chara.id, bone: 'hips' } : x)), label: 'Shot camera: follow' });
+    await ok('timeline.seek', { t: 3 });
+    await sleep(500);
+    ct = await ok('camtools.get');
+    check('a follow shot keeps its body part in view', ct.follow.on && ct.follow.id === chara.id && ct.follow.bone === 'hips', JSON.stringify(ct.follow));
+    await ok('timeline.seek', { t: 0.5 });
+    await sleep(500);
+    check('…and lets go at the next cut', !(await ok('camtools.get')).follow.on);
+    await ok('undo');
+    await ok('undo');
+  });
+
+  await t.step('the monitor renders the shot’s camera without moving Studio’s', async () => {
+    await ok('shots.setLiveCuts', { on: false });
+    await ok('timeline.seek', { t: 0.5 });
+    await sleep(300);
+    await ok('camera.setFov', { fov: 33 });
+    const st = await ok('preview.start', { width: 320, height: 180, matchScreen: true, fps: 10, format: 'raw', delayed: true, program: true });
+    check('the stream starts', st.on === true);
+    await sleep(1500);
+    const stats = await ok('preview.stats');
+    check('frames are going out', stats.frames > 3, String(stats.frames));
+    check('Studio’s camera stays where you put it', near(await fovNow(), 33, 0.05), String(await fovNow()));
+    await ok('preview.stop');
   });
 
   await t.step('bake cuts', async () => {

@@ -14,6 +14,15 @@ export const parseKeyId = (id: KeyId): KeyRef => {
 };
 
 export type ShotStatus = 'idea' | 'blocked' | 'framed' | 'final';
+export type ShotCamMode = 'still' | 'keys' | 'pov' | 'follow';
+/** A named camera setup to reuse across shots (kept with the scene; mirrored in one of Studio's saved views). */
+export interface Angle {
+  id: string;
+  name: string;
+  cam: { pos: number[]; rot: number[]; dist: number[]; fov: number };
+  thumb?: string;
+  slot?: number;
+}
 export interface Shot {
   id: string;
   name: string;
@@ -22,8 +31,14 @@ export interface Shot {
   notes: string;
   /** how far along it is (a planning tag) */
   status?: ShotStatus;
-  /** still: its own camera (live cuts switch to it); keys: the camera follows its Timeline keys */
-  camMode?: 'still' | 'keys';
+  /** still: its own camera (live cuts switch to it) · keys: its Timeline camera keys · pov: through a character's eyes · follow: keeps a body part in view */
+  camMode?: ShotCamMode;
+  /** the character a first-person / follow shot is about (scene object id) */
+  who?: number;
+  /** the body part a follow shot keeps in view */
+  bone?: string;
+  /** the angle its still camera came from */
+  angle?: string;
   /** its frame guide (picture shape), 0 / missing = leave the guides alone */
   aspect?: number;
   cam?: { pos: number[]; rot: number[]; dist: number[]; fov: number };
@@ -113,6 +128,8 @@ export interface AppState {
   selShotId: string | null;
   /** Studio's camera switches to each shot's camera while the timeline plays */
   liveCuts: boolean;
+  /** the scene's angles (camera setups to reuse) */
+  angles: Angle[];
   workingShotId: string | null;
   frameFullTimeline: boolean;
   loopShot: boolean;
@@ -215,7 +232,7 @@ export const useStore = create<AppState>(() => ({
   audioListen: null,
   audioDelay: { output: 0, mixer: 0 },
   miniMode: false,
-  shots: [], selShotId: null, liveCuts: false, workingShotId: null, frameFullTimeline: false, loopShot: false, renderShotIds: null, sceneName: null, sceneFilter: 'all',
+  shots: [], selShotId: null, liveCuts: false, angles: [], workingShotId: null, frameFullTimeline: false, loopShot: false, renderShotIds: null, sceneName: null, sceneFilter: 'all',
   groupMode: (lsGet('studioex.groupMode') as 'objects' | 'folders') || 'objects',
   settingsOpen: false,
   workspace: WORKSPACES.includes(lsGet('studioex.workspace') as Workspace) && lsGet('studioex.workspace') !== 'settings' ? (lsGet('studioex.workspace') as Workspace) : 'animate',
@@ -250,8 +267,8 @@ export async function saveSceneFile() {
 /** Re-read the scene's shots (and whether live cuts are on). */
 export async function refreshShots() {
   if (get().hello?.commands.includes('shots.state')) {
-    const r = await bridge.request<{ shots: Shot[]; liveCuts: boolean }>('shots.state').catch(() => null);
-    set({ shots: r?.shots ?? [], liveCuts: !!r?.liveCuts });
+    const r = await bridge.request<{ shots: Shot[]; liveCuts: boolean; angles?: Angle[] }>('shots.state').catch(() => null);
+    set({ shots: r?.shots ?? [], liveCuts: !!r?.liveCuts, angles: r?.angles ?? [] });
   } else {
     const s = await bridge.request<Shot[]>('shots.get').catch(() => null);
     set({ shots: s ?? [] });
@@ -712,7 +729,7 @@ export function initBridge() {
   });
   bridge.on('scene.file', (name) => set({ sceneName: typeof name === 'string' ? name : null }));
   bridge.on('scene.reset', () => {
-    set({ workingShotId: null, frameFullTimeline: false, loopShot: false, renderShotIds: null, sceneName: null, shots: [], selShotId: null, liveCuts: false });
+    set({ workingShotId: null, frameFullTimeline: false, loopShot: false, renderShotIds: null, sceneName: null, shots: [], selShotId: null, liveCuts: false, angles: [] });
     set({ selKeys: new Set(), selTracks: new Set(), clipboard: null });
     window.setTimeout(() => {
       refreshAudio(); // a loaded scene may bring its own audio and shots

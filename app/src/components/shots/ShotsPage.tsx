@@ -4,7 +4,9 @@ import { byStart, covered, fixOverlaps, problems } from '../../lib/shots';
 import { ContextMenu, type MenuItem } from '../ContextMenu';
 import { Help } from '../Help';
 import { Icon } from '../Icon';
-import { CameraSide } from '../CameraPanel';
+import { useCamLoader } from '../CameraPanel';
+import { Monitor } from './Monitor';
+import { AnglesBin } from './AnglesBin';
 import { ShotTrack } from './ShotTrack';
 import { ShotInspector } from './ShotInspector';
 import { Storyboard, storyboardImage } from './Storyboard';
@@ -32,6 +34,7 @@ export function ShotsPage() {
     }
   });
   const [more, setMore] = useState<{ x: number; y: number } | null>(null);
+  useCamLoader();
 
   useEffect(() => {
     if (status === 'open') void refreshShots();
@@ -136,7 +139,7 @@ export function ShotsPage() {
         ) : (
           shots.length > 0 && (
             <div className="sq-nopick">
-              Pick a shot to edit it. <span>Drag shots to move them, drag an edge to trim, drag past a neighbour to swap. Double-click a shot to look through it; drop a saved view on a shot to give it that camera.</span>
+              Pick a shot to edit it. <span>Drag shots to move them, drag an edge to trim, drag past a neighbour to swap. Double-click a shot to look through it; drag an angle onto a shot to give it that camera, or onto the empty track for a new shot.</span>
             </div>
           )
         )}
@@ -144,17 +147,18 @@ export function ShotsPage() {
           <div className="sq-start">
             <b>Plan the edit</b>
             <ol>
-              <li>Frame a view in Studio and put the playhead where the shot starts.</li>
               <li>
-                Press <b>+ Shot at playhead</b>. Repeat for each camera angle.
+                Frame a view in Studio and keep it as an angle (<b>Angles › + From Studio’s view</b>). Make one for each camera position.
               </li>
+              <li>Drag an angle onto the track where the shot should be — or put the playhead there and press <b>+ Shot at playhead</b>.</li>
               <li>Press play: with live cuts, Studio switches cameras at every cut.</li>
             </ol>
           </div>
         )}
       </div>
       <aside className="sq-side">
-        <CameraSide />
+        <Monitor />
+        <AnglesBin />
       </aside>
       {more && <ContextMenu x={more.x} y={more.y} items={moreItems} onClose={() => setMore(null)} />}
     </div>

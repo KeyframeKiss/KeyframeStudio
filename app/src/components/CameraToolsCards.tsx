@@ -16,7 +16,7 @@ interface Tools {
 }
 type Patch = Partial<{ [K in keyof Tools]: Partial<Tools[K]> }>;
 
-const BONE_LABEL: Record<string, string> = { head: 'Head', eyes: 'Eyes', chest: 'Chest', hips: 'Hips', handL: 'Left hand', handR: 'Right hand', feet: 'Feet' };
+export const BONE_LABEL: Record<string, string> = { head: 'Head', eyes: 'Eyes', chest: 'Chest', hips: 'Hips', handL: 'Left hand', handR: 'Right hand', feet: 'Feet' };
 // guide colours that read well on light or dark scenes
 const GUIDE_COLORS: { label: string; c: [number, number, number] }[] = [
   { label: 'White', c: [1, 1, 1] },
@@ -56,7 +56,7 @@ interface CamToolsState {
   aspectPick: string;
   who: number | null;
 }
-const useCamTools = create<CamToolsState>(() => ({ t: null, renderAspect: 0, aspectPick: 'Off', who: null }));
+export const useCamTools = create<CamToolsState>(() => ({ t: null, renderAspect: 0, aspectPick: 'Off', who: null }));
 let pending: Record<string, Record<string, unknown>> = {};
 let frame = 0;
 let inflight = 0;
@@ -114,7 +114,7 @@ export function setCamTools(patch: Patch) {
   });
 }
 
-function useLoadedCamTools() {
+export function useLoadedCamTools() {
   const status = useStore((s) => s.status);
   useEffect(() => {
     if (status === 'open') loadCamTools();

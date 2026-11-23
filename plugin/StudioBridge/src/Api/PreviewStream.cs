@@ -36,6 +36,7 @@ namespace StudioEX.Bridge.Api
         private bool _raw;      // send raw RGB24 instead of JPEG (no encode on Studio's main thread)
         private bool _delayed;  // read back one game frame after rendering (GPU has finished: shorter stall)
         private bool _pendingRead;
+        private bool _program;  // render through the playhead's shot camera (the monitor), Studio's view untouched
         private double _captureMs;
         private int _captureSeq;
 
@@ -61,7 +62,11 @@ namespace StudioEX.Bridge.Api
             {
                 Instance._raw = a.GetString("format") == "raw";
                 Instance._delayed = a.GetBool("delayed", true);
-                return Instance.Start(a.GetInt("width", 1280), a.GetInt("height", 720), a.GetFloat("fps", 30f), a.GetInt("quality", 75));
+                Instance._program = a.GetBool("program");
+                int w = a.GetInt("width", 1280), h = a.GetInt("height", 720);
+                // the shape of Studio's window (what renders), even width and height for the encoder
+                if (a.GetBool("matchScreen") && Screen.width > 0) h = Mathf.Max(90, Mathf.RoundToInt(w * (float)Screen.height / Screen.width / 2f) * 2);
+                return Instance.Start(w, h, a.GetFloat("fps", 30f), a.GetInt("quality", 75));
             });
             r.Add("preview.stop", a => { Instance.Stop(); return true; });
             r.Add("preview.stats", a => Instance.Stats());
@@ -174,12 +179,32 @@ namespace StudioEX.Bridge.Api
             // 1) render Studio's camera again into our texture (image effects included)
             _sw.Reset(); _sw.Start();
             var prevTarget = cam.targetTexture;
+            var keepPos = cam.transform.position;
+            var keepRot = cam.transform.rotation;
+            float keepFov = cam.fieldOfView;
+            bool moved = false;
             try
             {
+                if (_program && ShotApi.ProgramCamera(out var p, out var r, out var f))
+                {
+                    cam.transform.position = p;
+                    cam.transform.rotation = r;
+                    cam.fieldOfView = f;
+                    moved = true;
+                }
                 cam.targetTexture = _rt;
                 cam.Render();
             }
-            finally { cam.targetTexture = prevTarget; }
+            finally
+            {
+                cam.targetTexture = prevTarget;
+                if (moved)
+                {
+                    cam.transform.position = keepPos;
+                    cam.transform.rotation = keepRot;
+                    cam.fieldOfView = keepFov;
+                }
+            }
             _renderMs = Ema(_renderMs, _sw.Elapsed.TotalMilliseconds);
             return true;
         }

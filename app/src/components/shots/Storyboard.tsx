@@ -2,8 +2,8 @@ import { useState } from 'react';
 import { saveShots, toast, useStore, type Shot } from '../../state/store';
 import { byStart, reorder } from '../../lib/shots';
 import { ContextMenu } from '../ContextMenu';
-import { VIEW_DRAG } from '../CameraPanel';
-import { fromView, lookThrough, selectShot, shotMenu, STATUSES } from './actions';
+import { ANGLE_DRAG } from '../CameraPanel';
+import { camLabel, fromAngle, lookThrough, selectShot, shotMenu, STATUSES } from './actions';
 
 const SHOT_DRAG = 'application/x-kf-shot';
 
@@ -20,8 +20,8 @@ export function Storyboard() {
     e.preventDefault();
     const where = over;
     setOver(null);
-    const view = e.dataTransfer.getData(VIEW_DRAG);
-    if (view !== '') return fromView(target.id, Number(view));
+    const angle = e.dataTransfer.getData(ANGLE_DRAG);
+    if (angle) return fromAngle(target.id, angle);
     const id = e.dataTransfer.getData(SHOT_DRAG);
     if (!id || id === target.id) return;
     const order = sorted.map((s) => s.id).filter((x) => x !== id);
@@ -51,7 +51,7 @@ export function Storyboard() {
               selectShot(s.id);
             }}
             onDragOver={(e) => {
-              const view = e.dataTransfer.types.includes(VIEW_DRAG);
+              const view = e.dataTransfer.types.includes(ANGLE_DRAG);
               if (!view && !e.dataTransfer.types.includes(SHOT_DRAG)) return;
               e.preventDefault();
               const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
@@ -73,14 +73,14 @@ export function Storyboard() {
             title="Click to pick · double-click to look through · drag to reorder · right-click for more"
           >
             <div className="sq-card-img">
-              {s.thumb ? <img src={s.thumb} alt="" draggable={false} /> : <span>{s.camMode === 'keys' ? 'Camera keys' : 'No camera yet'}</span>}
+              {s.thumb && (s.camMode ?? 'still') === 'still' ? <img src={s.thumb} alt="" draggable={false} /> : <span>{camLabel(s) || 'No camera yet'}</span>}
               <i>{i + 1}</i>
               <em className={`sq-chip st-${st.id}`}>{st.label}</em>
             </div>
             <div className="sq-card-text">
               <b>{s.name}</b>
               <small>
-                {s.start.toFixed(2)}–{s.end.toFixed(2)} s · {(s.end - s.start).toFixed(2)} s
+                {s.start.toFixed(2)}–{s.end.toFixed(2)} s · {(s.end - s.start).toFixed(2)} s{camLabel(s) && (s.camMode ?? 'still') === 'still' ? ` · ${camLabel(s)}` : ''}
               </small>
               {s.notes && <p>{s.notes}</p>}
             </div>

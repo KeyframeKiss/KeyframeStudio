@@ -18,6 +18,38 @@ namespace StudioEX.Bridge.Api
     {
         public static CameraTools Instance;
 
+        /// <summary>
+        /// A shot's camera type (live cuts, look through): "pov" through character `id`'s eyes, "follow" keeping its
+        /// `bone` in view, anything else turns both off. Only changes what differs; the app hears about it.
+        /// </summary>
+        internal static void ShotMode(string mode, int id, string bone)
+        {
+            var t = Instance;
+            if (t == null) return;
+            bool changed = false;
+            try
+            {
+                if (mode == "pov")
+                {
+                    if (!t._pov || t._povId != id) { t.PovOn(id); changed = true; }
+                }
+                else if (mode == "follow")
+                {
+                    bool newBone = !string.IsNullOrEmpty(bone) && Bones.ContainsKey(bone) && bone != t._followBone;
+                    if (newBone) t._followBone = bone;
+                    if (!t._follow || t._followId != id || newBone) { t.FollowOn(id); changed = true; }
+                }
+                else if (t._pov || t._follow)
+                {
+                    t.PovOff();
+                    t.FollowOff();
+                    changed = true;
+                }
+            }
+            catch (Exception e) { StudioBridgePlugin.Logger.LogWarning("Shot camera (" + mode + "): " + e.Message); }
+            if (changed) StudioBridgePlugin.Instance?.Broadcast("camtools.changed", null);
+        }
+
         /// <summary>A shot's frame guide (its picture shape) — the app hears about it to update its panel.</summary>
         internal static void SetAspect(float aspect)
         {

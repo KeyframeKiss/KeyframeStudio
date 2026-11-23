@@ -1,6 +1,6 @@
 // What you can do to shots — shared by the shot track, the storyboard, the inspector, the timeline ruler and the
 // right-click menus, so each action behaves (and is named) the same everywhere.
-import { call, liveTime, renderShots, saveShots, seekNow, setLiveCuts, showTab, toast, togglePlay, useStore, type Shot } from '../../state/store';
+import { call, displayName, liveTime, renderShots, saveShots, seekNow, setLiveCuts, showTab, toast, togglePlay, useStore, type Shot } from '../../state/store';
 import { duplicateShot, newShotAt, newShotId, splitShot, swapWith } from '../../lib/shots';
 import type { MenuItem } from '../ContextMenu';
 
@@ -81,11 +81,43 @@ export async function useCurrentView(id: string) {
   }
 }
 
-export async function fromView(id: string, slot: number) {
-  const r = await call<Shot[]>('shots.fromView', { id, slot });
+export async function fromAngle(id: string, angle: string) {
+  const r = await call<Shot[]>('shots.fromAngle', { id, angle });
   if (r) {
     useStore.setState({ shots: r });
-    toast(`The shot now uses saved view ${slot + 1}`);
+    toast(`The shot now uses the angle “${st().angles.find((a) => a.id === angle)?.name ?? 'angle'}”`);
+  }
+}
+
+/** A new shot at `t` (until the next shot, or 3 s) that uses an angle's camera. */
+export async function addShotWithAngle(t: number, angle: string) {
+  const { shots } = st();
+  const r = newShotAt(shots, Math.round(t * 100) / 100, duration());
+  if (!r) return toast('No room for a shot there — drop it on a gap, or make the timeline longer');
+  const a = st().angles.find((x) => x.id === angle);
+  const id = newShotId();
+  const first = shots.length === 0;
+  if (!(await saveShots([...shots, { id, name: a?.name ?? `Shot ${shots.length + 1}`, ...r, notes: '', status: 'idea', camMode: 'still' }], 'Add shot'))) return;
+  await fromAngle(id, angle);
+  selectShot(id);
+  if (first && !st().liveCuts) await setLiveCuts(true);
+}
+
+/** How a shot's camera works, in a few words (for the track, storyboard and monitor). */
+export function camLabel(s: Shot): string {
+  const who = s.who != null ? st().nodes[s.who] : null;
+  const name = who ? displayName(who) : 'a character';
+  switch (s.camMode) {
+    case 'keys':
+      return 'Camera keys';
+    case 'pov':
+      return `First person · ${name}`;
+    case 'follow':
+      return `Follow · ${name}`;
+    default: {
+      const a = s.angle ? st().angles.find((x) => x.id === s.angle) : null;
+      return a ? a.name : s.cam ? '' : 'No camera';
+    }
   }
 }
 

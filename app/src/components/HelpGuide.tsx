@@ -99,8 +99,9 @@ const SECTIONS: Section[] = [
           Studio.
         </li>
         <li>
-          <b>Plan with shots.</b> In Shoot › Shots &amp; camera, add a shot for each camera angle and drag them into place. With{' '}
-          <b>Live cuts</b> on, playing switches cameras at every cut, so you see the edit before you render.
+          <b>Plan with shots.</b> In Shoot › Shots &amp; camera, keep each camera position as an <b>angle</b>, then drag angles onto the
+          track to lay out the shots. With <b>Live cuts</b> on, playing switches cameras at every cut, and the <b>monitor</b> shows the
+          edit — so you see it before you render.
         </li>
         <li>
           <b>Test a render small first.</b> Try a short, small render before the full-size one. Shoot › Render can make

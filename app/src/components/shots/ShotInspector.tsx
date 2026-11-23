@@ -1,20 +1,31 @@
 import { useEffect, useState } from 'react';
-import { call, renderShots, saveShots, seekNow, toast, togglePlay, useStore, type Shot } from '../../state/store';
+import { call, displayName, renderShots, saveShots, seekNow, toast, togglePlay, useStore, type Shot, type ShotCamMode } from '../../state/store';
 import { MIN_SHOT, trimShot, moveShot } from '../../lib/shots';
 import { DragNumber } from '../DragNumber';
 import { Slider } from '../CharacterPanel';
 import { Help } from '../Help';
 import { Icon } from '../Icon';
 import { CameraMoves } from '../CameraMoves';
-import { ASPECTS, setCamTools } from '../CameraToolsCards';
-import { CamKeyList, keyCamera, reloadCam, useCam, VIEW_DRAG } from '../CameraPanel';
-import { canRender, deleteShot, duplicate, fromView, lookThrough, patchShot, playShot, splitAtPlayhead, STATUSES, useCurrentView, workOn } from './actions';
+import { ASPECTS, BONE_LABEL, setCamTools } from '../CameraToolsCards';
+import { ANGLE_DRAG, CamKeyList, keyCamera, reloadCam, useCam } from '../CameraPanel';
+import { canRender, deleteShot, duplicate, fromAngle, lookThrough, patchShot, playShot, splitAtPlayhead, STATUSES, useCurrentView, workOn } from './actions';
+
+const MODES: { id: ShotCamMode; label: string; hint: string }[] = [
+  { id: 'still', label: 'Still', hint: 'Its own camera: Studio’s view or an angle. Live cuts switch to it as the shot starts.' },
+  { id: 'keys', label: 'Keys', hint: 'The camera moves inside the shot by its camera keys (key it, or add a camera move across the shot).' },
+  { id: 'pov', label: 'First person', hint: 'Through a character’s eyes, turning with the head. Live cuts switch to it for this shot.' },
+  { id: 'follow', label: 'Follow', hint: 'Starts from the shot’s camera and keeps a body part in view as it moves.' },
+];
+const BONES = ['head', 'eyes', 'chest', 'hips', 'handL', 'handR', 'feet'];
 
 /** Shoot › Shots: everything about the picked shot — its picture, name, status, timing, camera, frame and notes. */
 export function ShotInspector({ shot, index }: { shot: Shot; index: number }) {
   const duration = useStore((s) => s.tl?.duration ?? 10);
   const fps = useStore((s) => s.tl?.fps ?? 30);
   const shots = useStore((s) => s.shots);
+  const angles = useStore((s) => s.angles);
+  const nodes = useStore((s) => s.nodes);
+  const selection = useStore((s) => s.studioSelection);
   const loop = useStore((s) => s.loopShot && s.workingShotId === shot.id);
   const playing = useStore((s) => !!s.tl?.playing);
   const { st, keys } = useCam();
@@ -36,9 +47,14 @@ export function ShotInspector({ shot, index }: { shot: Shot; index: number }) {
   const setLength = (v: number) => saveShots(trimShot(shots, shot.id, 'end', shot.start + Math.max(MIN_SHOT, v), duration), 'Trim shot');
   const moveTo = (v: number) => saveShots(moveShot(shots, shot.id, v, duration), 'Move shot');
 
-  const setMode = async (m: 'still' | 'keys') => {
+  const charas = Object.values(nodes).filter((n) => n.type === 'Char');
+  const setMode = async (m: ShotCamMode) => {
     if (m === mode) return;
-    if (!(await patchShot(shot.id, { camMode: m }, m === 'keys' ? 'Shot camera: keys' : 'Shot camera: still'))) return;
+    // first person / follow are about a character: the picked one, else the one picked in Studio, else the first
+    const who = m === 'pov' || m === 'follow' ? (shot.who != null && nodes[shot.who] ? shot.who : (selection.find((id) => nodes[id]?.type === 'Char') ?? charas[0]?.id)) : shot.who;
+    if ((m === 'pov' || m === 'follow') && who == null) return toast('Add a character to the scene first', 'error');
+    if (!(await patchShot(shot.id, { camMode: m, who, bone: m === 'follow' ? shot.bone ?? 'head' : shot.bone }, `Shot camera: ${MODES.find((x) => x.id === m)!.label.toLowerCase()}`))) return;
+    if (m === 'pov' || m === 'follow') await call('shots.view', { id: shot.id }); // see it now
     if (m === 'keys' && shot.cam && inKeys.length === 0 && st?.timeline) {
       // start the shot's camera keys from its still camera, so nothing jumps
       await seekNow(shot.start);
@@ -68,19 +84,19 @@ export function ShotInspector({ shot, index }: { shot: Shot; index: number }) {
       <div
         className={`sq-insp-pic ${drop ? 'drop' : ''}`}
         onDragOver={(e) => {
-          if (!e.dataTransfer.types.includes(VIEW_DRAG)) return;
+          if (!e.dataTransfer.types.includes(ANGLE_DRAG)) return;
           e.preventDefault();
           setDrop(true);
         }}
         onDragLeave={() => setDrop(false)}
         onDrop={(e) => {
           setDrop(false);
-          const v = e.dataTransfer.getData(VIEW_DRAG);
-          if (v !== '') void fromView(shot.id, Number(v));
+          const a = e.dataTransfer.getData(ANGLE_DRAG);
+          if (a) void fromAngle(shot.id, a);
         }}
       >
         <button className="sq-insp-img" onClick={() => lookThrough(shot.id)} title={mode === 'keys' ? 'Go to the shot’s start' : 'Look through this shot’s camera'}>
-          {shot.thumb ? <img src={shot.thumb} alt="" draggable={false} /> : <span>{mode === 'keys' ? 'Camera keys' : 'No camera yet'}</span>}
+          {shot.thumb && (mode === 'still' || mode === 'keys') ? <img src={shot.thumb} alt="" draggable={false} /> : <span>{MODES.find((x) => x.id === mode)!.label === 'Still' ? 'No camera yet — drop an angle here' : MODES.find((x) => x.id === mode)!.label}</span>}
           <i>{index + 1}</i>
         </button>
         <div className="sq-insp-pic-actions">
@@ -92,7 +108,7 @@ export function ShotInspector({ shot, index }: { shot: Shot; index: number }) {
           </button>
           <button
             className="btn small solid"
-            disabled={mode === 'keys' || !shot.cam}
+            disabled={mode !== 'still' || !shot.cam}
             onClick={() => call<number>('shots.thumbs', { ids: [shot.id] })}
             title="Take its picture again (after changing the scene)"
           >
@@ -162,34 +178,62 @@ export function ShotInspector({ shot, index }: { shot: Shot; index: number }) {
           <div className="sq-insp-block">
             <div className="sq-insp-h">
               Camera
-              <Help text="Still: the shot has its own camera; with live cuts on, Studio switches to it as the shot starts. Camera keys: the camera moves inside the shot by its keys (key it, or add a camera move across the shot)." />
+              <Help text="How this shot's camera works. Still: its own camera (Studio's view or an angle). Keys: it moves by camera keys. First person: through a character's eyes. Follow: keeps a body part in view. Live cuts switch to it as the shot starts." />
             </div>
-            <div className="seg sq-mode">
-              <button className={mode === 'still' ? 'on' : ''} onClick={() => setMode('still')}>
-                Still camera
-              </button>
-              <button className={mode === 'keys' ? 'on' : ''} onClick={() => setMode('keys')} disabled={!st?.timeline}>
-                Camera keys
-              </button>
+            <div className="seg sq-mode" role="radiogroup" aria-label="Camera type">
+              {MODES.map((m) => (
+                <button key={m.id} role="radio" aria-checked={mode === m.id} className={mode === m.id ? 'on' : ''} title={m.hint} disabled={m.id === 'keys' && !st?.timeline} onClick={() => setMode(m.id)}>
+                  {m.label}
+                </button>
+              ))}
             </div>
-            {mode === 'still' ? (
+            {mode === 'pov' || mode === 'follow' ? (
+              <>
+                <div className="sq-field">
+                  <span>Character</span>
+                  <select className="input" value={shot.who ?? ''} onChange={(e) => patchShot(shot.id, { who: Number(e.target.value) }, 'Shot character').then(() => call('shots.view', { id: shot.id }))}>
+                    {charas.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {displayName(c)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                {mode === 'follow' && (
+                  <div className="sq-field">
+                    <span>Keep in view</span>
+                    <div className="ct-chips" style={{ margin: 0 }}>
+                      {BONES.map((b) => (
+                        <button key={b} className={`btn chip ${(shot.bone ?? 'head') === b ? 'on' : ''}`} onClick={() => patchShot(shot.id, { bone: b }, 'Shot follows').then(() => call('shots.view', { id: shot.id }))}>
+                          {BONE_LABEL[b] ?? b}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                <div className="sq-tip">{mode === 'pov' ? 'With live cuts on, Studio looks through the character’s eyes for this shot, and back out at the next cut.' : 'It starts from the shot’s camera (Use current view sets it) and keeps the body part in view while you orbit.'}</div>
+              </>
+            ) : mode === 'still' ? (
               <>
                 <div className="sq-field">
                   <span>Lens</span>
                   <Slider value={fov} min={10} max={90} step={0.5} onChange={(v) => (setFov(v), commitFovDebounced(v, commitFov))} />
                 </div>
-                <div className="sq-field">
-                  <span>From view</span>
-                  <div className="sq-views">
-                    {(st?.slots ?? []).map((v) => (
-                      <button key={v.index} className="sq-view" disabled={!v.used} onClick={() => fromView(shot.id, v.index)} title={v.used ? `Use saved view ${v.index + 1}` : `View ${v.index + 1} is empty`}>
-                        {v.thumb && v.used ? <img src={v.thumb} alt="" /> : null}
-                        <i>{v.index + 1}</i>
-                      </button>
-                    ))}
-                  </div>
+                <div className="sq-field top">
+                  <span>Angle</span>
+                  {angles.length ? (
+                    <div className="sq-angles">
+                      {angles.map((a) => (
+                        <button key={a.id} className={`sq-angle ${shot.angle === a.id ? 'on' : ''}`} onClick={() => fromAngle(shot.id, a.id)} title={`Use the angle “${a.name}”`}>
+                          {a.thumb ? <img src={a.thumb} alt="" draggable={false} /> : null}
+                          <span>{a.name}</span>
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="sq-tip">Keep framings as angles (Angles, on the right) to reuse them across shots.</div>
+                  )}
                 </div>
-                <div className="sq-tip">Tip: drag a saved view from the right onto any shot.</div>
               </>
             ) : (
               <>

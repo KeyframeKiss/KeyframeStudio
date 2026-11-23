@@ -4,8 +4,8 @@ import { byStart, moveShot, problems, snapTime, swapWith, touching, trimShot } f
 import { ContextMenu } from '../ContextMenu';
 import { Icon } from '../Icon';
 import { useAnimationFrame } from '../useAnimationFrame';
-import { VIEW_DRAG } from '../CameraPanel';
-import { addShotAt, deleteShot, duplicate, fromView, lookThrough, selectShot, shotMenu, splitAtPlayhead, swap } from './actions';
+import { ANGLE_DRAG, useCam } from '../CameraPanel';
+import { addShotAt, addShotWithAngle, camLabel, deleteShot, duplicate, fromAngle, lookThrough, selectShot, shotMenu, splitAtPlayhead, swap } from './actions';
 
 const EDGE = 7; // px: grab a shot's edge to trim it
 const SNAP_PX = 8;
@@ -30,6 +30,10 @@ export function ShotTrack() {
   const [menu, setMenu] = useState<{ x: number; y: number; id: string } | null>(null);
   const [dropOn, setDropOn] = useState<string | null>(null);
   const [hint, setHint] = useState<{ x: number; text: string } | null>(null);
+  const [laneDrop, setLaneDrop] = useState<number | null>(null);
+  const camKeys = useCam((s) => s.keys);
+  useStore((s) => s.angles); // labels name the angle a shot uses
+  useStore((s) => s.showEnglish);
 
   useLayoutEffect(() => {
     const el = wrap.current;
@@ -58,7 +62,11 @@ export function ShotTrack() {
     const right = xOf(s.end);
     const kind = right - left > EDGE * 3 && x - left < EDGE ? 'start' : right - left > EDGE * 3 && right - x < EDGE ? 'end' : 'move';
     drag.current = { id: s.id, kind, x0: x, orig: shots, moved: false, label: kind === 'move' ? 'Move shot' : 'Trim shot' };
-    wrap.current?.setPointerCapture(e.pointerId);
+    try {
+      wrap.current?.setPointerCapture(e.pointerId);
+    } catch {
+      /* not a live pointer (pen lifted already): the drag still works while over the track */
+    }
   };
 
   const onMove = (e: React.PointerEvent) => {
@@ -195,7 +203,24 @@ export function ShotTrack() {
             </span>
           ))}
         </div>
-        <div className="sq-lane">
+        <div
+          className={`sq-lane ${laneDrop != null ? 'drop' : ''}`}
+          onDragOver={(e) => {
+            if (!e.dataTransfer.types.includes(ANGLE_DRAG) || (e.target as HTMLElement).closest('.sq-shot')) return;
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'copy';
+            setLaneDrop(localX(e));
+          }}
+          onDragLeave={(e) => !(e.currentTarget as HTMLElement).contains(e.relatedTarget as Node) && setLaneDrop(null)}
+          onDrop={(e) => {
+            const a = e.dataTransfer.getData(ANGLE_DRAG);
+            setLaneDrop(null);
+            if (!a || (e.target as HTMLElement).closest('.sq-shot')) return;
+            e.preventDefault();
+            void addShotWithAngle(snapTime(tOf(localX(e)), fps), a);
+          }}
+        >
+          {laneDrop != null && <div className="sq-lane-drop" style={{ left: laneDrop }} />}
           {issues
             .filter((p) => p.kind === 'gap')
             .map((p) => (
@@ -220,34 +245,41 @@ export function ShotTrack() {
                   setMenu({ x: e.clientX, y: e.clientY, id: s.id });
                 }}
                 onDragOver={(e) => {
-                  if (!e.dataTransfer.types.includes(VIEW_DRAG)) return;
+                  if (!e.dataTransfer.types.includes(ANGLE_DRAG)) return;
                   e.preventDefault();
+                  e.stopPropagation();
                   e.dataTransfer.dropEffect = 'copy';
                   setDropOn(s.id);
+                  setLaneDrop(null);
                 }}
                 onDragLeave={() => setDropOn((x) => (x === s.id ? null : x))}
                 onDrop={(e) => {
-                  const v = e.dataTransfer.getData(VIEW_DRAG);
+                  const a = e.dataTransfer.getData(ANGLE_DRAG);
                   setDropOn(null);
-                  if (v === '') return;
+                  if (!a) return;
                   e.preventDefault();
+                  e.stopPropagation();
                   selectShot(s.id);
-                  void fromView(s.id, Number(v));
+                  void fromAngle(s.id, a);
                 }}
                 title={`${i + 1}. ${s.name} · ${s.start.toFixed(2)}–${s.end.toFixed(2)} s (${(s.end - s.start).toFixed(2)} s)${s.notes ? `\n${s.notes}` : ''}\nDrag to move · drag an edge to trim · double-click to look through · right-click for more`}
               >
-                {s.thumb && <img className="sq-shot-img" src={s.thumb} alt="" draggable={false} />}
+                {s.thumb && (s.camMode ?? 'still') === 'still' && <img className="sq-shot-img" src={s.thumb} alt="" draggable={false} />}
                 <span className="sq-shot-shade" />
                 <span className="sq-shot-n">{i + 1}</span>
                 {!narrow && (
                   <span className="sq-shot-text">
                     <b>{s.name}</b>
                     <small>
-                      {(s.end - s.start).toFixed(2)} s{s.camMode === 'keys' ? ' · camera keys' : !s.cam ? ' · no camera' : ''}
+                      {(s.end - s.start).toFixed(2)} s{camLabel(s) ? ` · ${camLabel(s)}` : ''}
                     </small>
                   </span>
                 )}
-                {s.camMode === 'keys' && !narrow && <Icon name="key" size={11} />}
+                {(s.camMode === 'pov' || s.camMode === 'follow') && !narrow && <Icon name={s.camMode === 'pov' ? 'eye' : 'target'} size={11} />}
+                {s.camMode === 'keys' &&
+                  camKeys
+                    .filter((k) => k.t >= s.start - 1e-4 && k.t < s.end - 1e-4)
+                    .map((k) => <span key={k.t} className={`sq-key ${k.cut ? 'cut' : ''}`} style={{ left: xOf(k.t) - left }} title={`Camera key ${k.t.toFixed(2)} s${k.cut ? ' (cut)' : ''}`} />)}
                 <span className="sq-edge l" />
                 <span className="sq-edge r" />
               </div>
