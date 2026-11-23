@@ -144,6 +144,7 @@ namespace StudioEX.Bridge
             StudioUiApi.Tick(ClientCount);
             CameraTools.Instance?.Tick(ClientCount);
             FxApi.Tick();
+            TimelineApi.LoopTick(ClientCount);
             // Handle a bounded number of requests per frame to keep Studio responsive. While ghosts are
             // baking the playhead is temporarily elsewhere: hold requests for those few frames.
             for (int n = 0; n < 64 && !ViewportTools.Busy; n++)

@@ -279,6 +279,7 @@ namespace StudioEX.Bridge.Api
         {
             if (!_liveCuts || _shots.Count == 0 || !TimelineApi.Available) return;
             if (ViewportTools.Busy) return; // sampling / ghost baking jump around on purpose
+            TimelineApi.LoopTick(StudioBridgePlugin.Instance?.ClientCount ?? 0); // a looping shot wraps before its camera is chosen
             var studio = Singleton<Studio.Studio>.Instance;
             if (studio == null || studio.ociCamera != null) return; // looking through a scene camera
             try

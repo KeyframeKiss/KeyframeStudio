@@ -143,6 +143,12 @@ namespace StudioEX.Bridge.Api
         [MethodImpl(MethodImplOptions.NoInlining)]
         private static void ClearHistoryImpl() => TimelineImpl.ClearHistory();
 
+        /// <summary>Every frame: keep playback inside the loop range (a shot), if one is set.</summary>
+        public static void LoopTick(int clients) { if (Available) LoopTickImpl(clients); }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static void LoopTickImpl(int clients) => TimelineImpl.LoopTick(clients);
+
         /// <summary>Cheap state for per-frame ticks. Null when Timeline is unavailable/not loaded.</summary>
         public static Dictionary<string, object> TickState() => Available ? TickStateImpl() : null;
 
@@ -211,6 +217,23 @@ namespace StudioEX.Bridge.Api
 
         public static void ClearHistory() => History.Clear();
 
+        private static float _loopStart = -1f, _loopEnd = -1f;
+
+        /// <summary>
+        /// While playing with a loop range set: past its end (or before its start — Timeline wraps at its own end)
+        /// the playhead goes back to its start. Checked every frame, so the loop is frame-accurate. The range is
+        /// dropped when the app goes away.
+        /// </summary>
+        public static void LoopTick(int clients)
+        {
+            if (_loopEnd < 0f || !IsReady) return;
+            if (clients == 0) { _loopStart = _loopEnd = -1f; return; }
+            if (!TL.isPlaying) return;
+            float t = TL.playbackTime;
+            float end = Mathf.Min(_loopEnd, TL.duration);
+            if (t >= end - 1e-4f || t < _loopStart - 1e-3f) TL.Seek(_loopStart);
+        }
+
         public static void Register(CommandRouter r)
         {
             r.Add("timeline.get", a => Get());
@@ -221,6 +244,14 @@ namespace StudioEX.Bridge.Api
             r.Add("timeline.seek", a => { Seek(a.GetFloat("t")); return State(); });
             r.Add("timeline.setSettings", SetSettings);
             r.Add("timeline.setUiVisible", a => { TL.InterfaceVisible = a.GetBool("visible"); return State(); });
+            // loop a stretch while playing (a shot): {start, end} sets it, {} clears it
+            r.Add("timeline.loopRange", a =>
+            {
+                float s0 = a.GetFloat("start", -1f), s1 = a.GetFloat("end", -1f);
+                if (a.Has("start") && a.Has("end") && s0 >= 0f && s1 - s0 > 0.05f) { _loopStart = s0; _loopEnd = s1; }
+                else _loopStart = _loopEnd = -1f;
+                return new Dictionary<string, object> { { "on", _loopEnd > 0f }, { "start", (double)_loopStart }, { "end", (double)_loopEnd } };
+            });
 
             r.Add("timeline.models", ListModels);
             // a character's bones and IK targets, to animate one directly: {oci} → [{kind, index, label, group, animated}]

@@ -110,6 +110,27 @@ export default async function (t) {
     check('looking through a shot without a frame leaves the guides alone', near((await ok('camtools.get')).guides.aspect, 2.39, 0.01));
   });
 
+  await t.step('looping a shot (frame-accurate, in the bridge)', async () => {
+    const r = await ok('timeline.loopRange', { start: 1, end: 2 });
+    check('loop range set', r.on && near(r.start, 1) && near(r.end, 2));
+    await ok('timeline.seek', { t: 1 });
+    await ok('timeline.play');
+    let lo = Infinity;
+    let hi = -Infinity;
+    for (let i = 0; i < 30; i++) {
+      await sleep(100);
+      const tm = (await ok('timeline.state')).time;
+      lo = Math.min(lo, tm);
+      hi = Math.max(hi, tm);
+    }
+    check('3 s of playing stays inside 1 … 2 s', lo >= 0.99 && hi <= 2.05, `${lo.toFixed(3)} … ${hi.toFixed(3)}`);
+    await ok('timeline.loopRange', {});
+    await sleep(1500);
+    const past = (await ok('timeline.state')).time;
+    await ok('timeline.pause');
+    check('cleared: it plays on past the shot', past > 2.05 || past < 1, past.toFixed(3));
+  });
+
   await t.step('bake cuts', async () => {
     const n = await ok('shots.buildCuts', {});
     check('a cut keyed per still shot', n === 2, String(n));

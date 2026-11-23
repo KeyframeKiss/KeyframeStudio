@@ -260,6 +260,21 @@ export async function refreshShots() {
   if (sel && !get().shots.some((x) => x.id === sel)) set({ selShotId: null });
 }
 
+/** The bridge loops the shot being looped (frame-accurate); sent whenever it, its times or the loop switch change. */
+let sentLoop = '';
+function syncLoopRange() {
+  const s = get();
+  if (s.status !== 'open' || !s.hello?.commands.includes('timeline.loopRange')) return;
+  const shot = s.loopShot ? workingShot(s) : undefined;
+  const want = shot ? `${shot.start}|${shot.end}` : '';
+  if (want === sentLoop) return;
+  sentLoop = want;
+  bridge.request('timeline.loopRange', shot ? { start: shot.start, end: shot.end } : {}).catch(() => (sentLoop = ''));
+}
+useStore.subscribe((s, p) => {
+  if (s.loopShot !== p.loopShot || s.workingShotId !== p.workingShotId || s.shots !== p.shots || s.hello !== p.hello) syncLoopRange();
+});
+
 /** Save the whole shot list (shown at once; one undo step in Studio, named by `label`). */
 export async function saveShots(next: Shot[], label = 'Edit shots') {
   const before = get().shots;
@@ -638,6 +653,7 @@ export function initBridge() {
     if (s !== 'open') {
       import('./studioUi').then((m) => m.useStudioUi.setState({ ui: null }));
       set({ workingShotId: null, frameFullTimeline: false, loopShot: false, renderShotIds: null, sceneName: null });
+      sentLoop = ''; // the bridge drops its loop when the app goes away
       const tl = get().tl;
       if (tl?.playing) set({ tl: { ...tl, playing: false, time: liveTime() } });
     }
@@ -664,7 +680,8 @@ export function initBridge() {
     const tick = d as TimelineState;
     const state = get();
     const shot = workingShot(state);
-    if (state.loopShot && shot && tick.playing && !state.pending &&
+    // older bridges: loop from here (newer ones loop the shot themselves, every frame — see syncLoopRange)
+    if (state.loopShot && shot && tick.playing && !state.hello?.commands.includes('timeline.loopRange') &&
         (tick.time >= Math.min(shot.end, tick.duration) || tick.time < shot.start)) {
       if (shot.start < tick.duration) bridge.send('timeline.seek', { t: shot.start });
     }

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { call, renderShots, saveShots, seekNow, toast, useStore, type Shot } from '../../state/store';
+import { call, renderShots, saveShots, seekNow, toast, togglePlay, useStore, type Shot } from '../../state/store';
 import { MIN_SHOT, trimShot, moveShot } from '../../lib/shots';
 import { DragNumber } from '../DragNumber';
 import { Slider } from '../CharacterPanel';
@@ -16,6 +16,7 @@ export function ShotInspector({ shot, index }: { shot: Shot; index: number }) {
   const fps = useStore((s) => s.tl?.fps ?? 30);
   const shots = useStore((s) => s.shots);
   const loop = useStore((s) => s.loopShot && s.workingShotId === shot.id);
+  const playing = useStore((s) => !!s.tl?.playing);
   const { st, keys } = useCam();
   const [name, setName] = useState(shot.name);
   const [notes, setNotes] = useState(shot.notes);
@@ -137,11 +138,22 @@ export function ShotInspector({ shot, index }: { shot: Shot; index: number }) {
             <DragNumber value={shot.start} step={1 / fps} digits={2} unit=" s" min={0} max={duration} onCommit={moveTo} title="Move the whole shot, keeping its length" />
           </label>
           <div className="sq-play">
-            <button className="btn small solid" onClick={() => playShot(shot.id, false)} title="Play from the shot's start">
-              <Icon name="play" size={12} /> Play
-            </button>
-            <button className={`btn small solid ${loop ? 'on' : ''}`} aria-pressed={loop} onClick={() => (loop ? useStore.setState({ loopShot: false }) : playShot(shot.id, true))} title="Play the shot over and over">
-              Loop
+            {playing ? (
+              <button className="btn small solid" onClick={togglePlay} title="Stop playing (the playhead stays where it is)">
+                <Icon name="stop" size={12} /> Stop
+              </button>
+            ) : (
+              <button className="btn small solid" onClick={() => playShot(shot.id, loop)} title={loop ? 'Play the shot over and over' : "Play from the shot's start"}>
+                <Icon name="play" size={12} /> Play
+              </button>
+            )}
+            <button
+              className={`btn small solid ${loop ? 'on' : ''}`}
+              aria-pressed={loop}
+              onClick={() => (loop ? useStore.setState({ loopShot: false }) : playShot(shot.id, true))}
+              title={loop ? 'Looping this shot — click to play on past its end' : 'Play this shot over and over'}
+            >
+              <Icon name="redo" size={12} /> Loop
             </button>
           </div>
         </div>
