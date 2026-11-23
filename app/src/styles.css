@@ -8341,3 +8341,99 @@ a.btn {
 .sheet-row .group-eye.mixed {
   opacity: 0.5;
 }
+
+/* Animate › Character animation: the clip, its stretches on the timeline, put on / bake */
+.char-anim-clip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.char-anim-name {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.char-anim-state {
+  display: block;
+  font-weight: 400;
+  font-size: 11px;
+  color: var(--text-2);
+}
+.char-anim-segs {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 8px;
+}
+.char-anim-seg {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--bg-2);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+.char-anim-seg:hover {
+  border-color: var(--text-3);
+}
+.char-anim-seg.on {
+  border-color: var(--accent);
+}
+.char-anim-seg .name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.char-anim-seg .sub {
+  color: var(--text-2);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.char-anim {
+  padding-top: 10px;
+}
+.char-anim > :not(.section) {
+  margin-left: 12px;
+  margin-right: 12px;
+}
+.char-anim > .btn.wide {
+  width: calc(100% - 24px);
+  justify-content: center;
+}
+.char-anim-bake {
+  margin-top: 12px;
+  border-top: 1px solid var(--line-soft);
+  border-bottom: none;
+}
+.char-anim-bake .btn.wide {
+  width: 100%;
+  justify-content: center;
+}
+.char-anim-parts {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  margin-bottom: 8px;
+}
+.char-anim-parts > button {
+  justify-content: center;
+}
+.char-anim .cleanup-row .input {
+  width: auto;
+}
+.char-anim-all {
+  width: 100%;
+  justify-content: center;
+  margin-bottom: 8px;
+}

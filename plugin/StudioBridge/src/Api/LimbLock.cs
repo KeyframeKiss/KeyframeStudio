@@ -300,11 +300,11 @@ namespace StudioEX.Bridge.Api
                     var forced = new List<int> { from, to };
                     if (isEnd) { forced.Add(k0); forced.Add(k1); forced.Add(kLo); forced.Add(kHi); }
                     var posKeys = Simplify(forced, from, to, (k, a, b, f) => Vector3.Distance(Vector3.LerpUnclamped(pos[a], pos[b], f), pos[k]) * ss[k].Scale, posTol, times);
-                    written += WriteGuideKeys(c, g, posModel, posKeys, times, from, to, job, k => g.changeAmount.pos = pos[k]);
+                    written += WriteGuideKeys(c, g, posModel, posKeys, times, from, to, !job.Convert, k => g.changeAmount.pos = pos[k]);
                     if (doRot)
                     {
                         var rotKeys = Simplify(forced, from, to, (k, a, b, f) => Quaternion.Angle(Quaternion.SlerpUnclamped(rot[a], rot[b], f), rot[k]), rotTol, times);
-                        written += WriteGuideKeys(c, g, rotModel, rotKeys, times, from, to, job, k => g.changeAmount.rot = rot[k].eulerAngles);
+                        written += WriteGuideKeys(c, g, rotModel, rotKeys, times, from, to, !job.Convert, k => g.changeAmount.rot = rot[k].eulerAngles);
                     }
                 }
             }
@@ -361,7 +361,7 @@ namespace StudioEX.Bridge.Api
         /// Replace a guide object track's keys over [times[from], times[to]] with keys at the given samples (its track
         /// is made if needed). set(k) puts sample k's value on the guide object so the track reads it in its own type.
         /// </summary>
-        private static int WriteGuideKeys(OCIChar c, GuideObject g, Timeline.InterpolableModel model, List<int> keys, List<float> times, int from, int to, LockJob job, Action<int> set)
+        internal static int WriteGuideKeys(OCIChar c, GuideObject g, Timeline.InterpolableModel model, List<int> keys, List<float> times, int from, int to, bool keepEasingAfter, Action<int> set)
         {
             var ip = new Interpolable(c, g, model);
             if (Interpolables.TryGetValue(ip.GetHashCode(), out var already))
@@ -387,7 +387,7 @@ namespace StudioEX.Bridge.Api
             foreach (int k in keys)
             {
                 set(k);
-                var curve = k == to && after != null && !job.Convert ? new AnimationCurve(after.keys) : new AnimationCurve(linear.keys);
+                var curve = k == to && after != null && keepEasingAfter ? new AnimationCurve(after.keys) : new AnimationCurve(linear.keys);
                 ip.keyframes[times[k]] = new TLKeyframe(ip.GetValue(), ip, curve);
             }
             return keys.Count;

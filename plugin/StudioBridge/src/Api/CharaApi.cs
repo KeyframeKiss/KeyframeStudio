@@ -226,7 +226,7 @@ namespace StudioEX.Bridge.Api
             };
         }
 
-        private sealed class CharaUndo : IUndoEntry
+        internal sealed class CharaUndo : IUndoEntry
         {
             private readonly Dictionary<OCIChar, Dictionary<string, object>> _states;
             private readonly string _keys;
@@ -398,7 +398,9 @@ namespace StudioEX.Bridge.Api
             if (targets.Count == 0) throw new BridgeException("Select a character first");
             bool letPlay = a.GetBool("letPlay", true);
             var held = letPlay ? targets.Where(c => c.oiCharInfo.enableFK || c.oiCharInfo.enableIK).ToList() : new List<OCIChar>();
-            var stopped = letPlay ? targets.Where(c => c.animeSpeed <= 0.001f).ToList() : new List<OCIChar>();
+            // a clip the timeline drives stays stopped (the timeline moves it); the others are started so it plays
+            var driven = targets.Where(c => TimelineApi.ClipDriven(c)).ToList();
+            var stopped = letPlay ? targets.Where(c => c.animeSpeed <= 0.001f && !driven.Contains(c)).ToList() : new List<OCIChar>();
             UndoStack.Push(CharaUndo.Capture(targets, held.Count > 0 ? "anime,fk,ik,fkParts,ikParts" : "anime", "Change animation"));
             foreach (var c in targets) c.LoadAnime(g, cat, no);
             foreach (var c in held)
@@ -412,6 +414,7 @@ namespace StudioEX.Bridge.Api
                 { "applied", targets.Count },
                 { "freed", held.Select(c => (object)SceneApi.DisplayName(c)).ToList() },
                 { "started", stopped.Select(c => (object)SceneApi.DisplayName(c)).ToList() },
+                { "driven", driven.Select(c => (object)SceneApi.DisplayName(c)).ToList() },
             };
         }
     }

@@ -94,6 +94,9 @@ namespace StudioEX.Bridge.Api
             Available ? AddModelTrackImpl(modelId, ownerContains, oci, keyAt) : throw new BridgeException("Timeline is not installed");
         [MethodImpl(MethodImplOptions.NoInlining)]
         private static object AddModelTrackImpl(string modelId, string ownerContains, ObjectCtrlInfo oci, float keyAt) => TimelineImpl.AddModelTrack(modelId, ownerContains, oci, keyAt);
+        /// <summary>The character's clip is driven by the timeline (Animation Time keys).</summary>
+        public static bool ClipDriven(OCIChar c) => Available && ClipDrivenImpl(c);
+        [MethodImpl(MethodImplOptions.NoInlining)] private static bool ClipDrivenImpl(OCIChar c) => TimelineImpl.IsReady && TimelineImpl.ClipDriven(c);
         public static bool InterfaceVisible() => Available && InterfaceVisibleImpl();
         [MethodImpl(MethodImplOptions.NoInlining)] private static bool InterfaceVisibleImpl() => TimelineImpl.IsReady && TL.InterfaceVisible;
         public static void SetInterfaceVisible(bool on) { if (Available) SetInterfaceVisibleImpl(on); }
@@ -282,6 +285,7 @@ namespace StudioEX.Bridge.Api
             RegisterCleanup(r);
             RegisterCameraMoves(r);
             RegisterLimbLock(r);
+            RegisterAnimTimeline(r);
             RegisterClips(r);
 
         }

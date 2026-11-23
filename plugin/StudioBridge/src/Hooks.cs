@@ -78,6 +78,16 @@ namespace StudioEX.Bridge
         [HarmonyPostfix, HarmonyPatch(typeof(Studio.FKCtrl), "LateUpdate")]
         private static void FkApplied(Studio.FKCtrl __instance) => ViewportGizmos.AfterFk(__instance);
 
+        // A clip whose controller has to be loaded only becomes the animator's current state at its next update. Timeline
+        // sets "Animation Time" on the current state straight after switching clips, which would land on the new
+        // controller's default state instead — another clip. Making the requested state current at once avoids that.
+        [HarmonyPostfix, HarmonyPatch(typeof(Studio.OCIChar), nameof(Studio.OCIChar.LoadAnime))]
+        private static void AnimeLoaded(Studio.OCIChar __instance)
+        {
+            var an = __instance?.charAnimeCtrl?.animator;
+            if (an != null && an.isActiveAndEnabled && an.runtimeAnimatorController != null) Try(() => an.Update(0f));
+        }
+
         private static void Try(System.Action a)
         {
             try { a(); }

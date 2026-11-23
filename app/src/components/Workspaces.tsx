@@ -12,7 +12,8 @@ import { columns, leftCss, rightCss, setPanelSizes, usePanelSizes } from '../lib
 import { CleanupPanel } from './CleanupPanel';
 import { ClipsPanel } from './ClipsPanel';
 import { AnimationBrowser } from './AnimationBrowser';
-import { applyAnimation } from '../lib/animation';
+import { applyAnimation, putClipOnTimeline } from '../lib/animation';
+import { CharacterAnimationPanel } from './CharacterAnimation';
 import { CharacterPanel } from './CharacterPanel';
 import { DopeSheet } from './DopeSheet';
 import { Icon } from './Icon';
@@ -221,6 +222,20 @@ function AnimateInspector() {
           <Inspector />
         </Group>
       )}
+      {node?.type === 'Char' && (
+        <Group
+          ws="animate"
+          id="charanim"
+          icon="animate"
+          title={
+            <>
+              Character animation <span className="group-sub">{displayName(node)}</span>
+            </>
+          }
+        >
+          <CharacterAnimationPanel id={node.id} />
+        </Group>
+      )}
       <Group ws="animate" id="cleanup" icon="sliders" title="Cleanup" defaultOpen={false}>
         <CleanupPanel />
       </Group>
@@ -354,6 +369,12 @@ function AnimationLibrary() {
         onClose={() => {}}
         onPick={async (g, c, n) => {
           if (await applyAnimation(chars, g, c, n)) setCurrent({ group: g, category: c, no: n });
+        }}
+        onTimeline={async (g, c, n) => {
+          const same = g === current.group && c === current.category && n === current.no;
+          if (!same && !(await applyAnimation(chars, g, c, n))) return;
+          setCurrent({ group: g, category: c, no: n });
+          await putClipOnTimeline(chars);
         }}
       />
     </>

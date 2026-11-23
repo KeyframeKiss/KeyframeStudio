@@ -666,6 +666,8 @@ namespace StudioEX.Bridge.Api
             {
                 var ip = kv.Key;
                 if (!all.ContainsKey(ip.GetHashCode()) || TrackVolatile.Contains(ip)) continue;
+                // where the animator is in its clip: it moves by itself whenever the clip plays, and the key sets it anyway
+                if (ip.id == "charAnimationTime" || ip.id == "itemAnimationTime") continue;
                 if (settledOnly && !Settled(ip)) continue;
                 string now;
                 try { now = ValueString(ip); } catch { continue; }
