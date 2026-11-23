@@ -60,7 +60,7 @@ export function ShotInspector({ shot, index }: { shot: Shot; index: number }) {
 
   const setFrame = async (a: number) => {
     await patchShot(shot.id, { aspect: a }, 'Shot frame');
-    if (a > 0) setCamTools({ guides: { aspect: a } });
+    setCamTools({ guides: { aspect: a } }); // shown in Studio's window now (Off takes the frame away)
   };
 
   return (
@@ -213,7 +213,7 @@ export function ShotInspector({ shot, index }: { shot: Shot; index: number }) {
           <div className="sq-insp-block">
             <div className="sq-insp-h">
               Frame
-              <Help text="The picture shape shown in Studio's window when the shot is on screen (with live cuts, or when you look through it). Off leaves the frame guides as they are." />
+              <Help text="The picture shape shown in Studio's window while this shot is on screen (with live cuts, or when you look through it). Off: no frame." />
             </div>
             <div className="ct-chips sq-frames">
               {ASPECTS.filter((a) => typeof a.v === 'number').map((a) => {

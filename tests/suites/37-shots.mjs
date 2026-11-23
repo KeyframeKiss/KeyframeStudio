@@ -106,8 +106,17 @@ export default async function (t) {
     await sleep(400);
     const g = (await ok('camtools.get')).guides;
     check('entering the shot shows its frame', near(g.aspect, 2.39, 0.01), String(g.aspect));
+    await ok('timeline.seek', { t: 3 });
+    await sleep(400);
+    check('entering a shot set to Off takes the frame away', near((await ok('camtools.get')).guides.aspect, 0, 0.01), String((await ok('camtools.get')).guides.aspect));
+    await ok('camtools.set', { guides: { aspect: 2.39 } });
     await ok('shots.view', { id: 'B' });
-    check('looking through a shot without a frame leaves the guides alone', near((await ok('camtools.get')).guides.aspect, 2.39, 0.01));
+    check('…and so does looking through it', near((await ok('camtools.get')).guides.aspect, 0, 0.01));
+    // no shot uses frames: the guides are yours, shots leave them alone
+    await ok('undo');
+    await ok('camtools.set', { guides: { aspect: 1 } });
+    await ok('shots.view', { id: 'A' });
+    check('without shot frames, your own frame stays', near((await ok('camtools.get')).guides.aspect, 1, 0.01), String((await ok('camtools.get')).guides.aspect));
   });
 
   await t.step('looping a shot (frame-accurate, in the bridge)', async () => {

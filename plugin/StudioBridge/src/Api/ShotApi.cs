@@ -251,10 +251,15 @@ namespace StudioEX.Bridge.Api
             return n;
         }
 
-        /// <summary>The shot's frame guide, if it has one.</summary>
+        /// <summary>
+        /// The shot's frame guide. A shot set to Off shows no frame once any shot uses frames (so a 2.39:1 shot's
+        /// frame doesn't stay up over the next one); when no shot uses frames, your own guide settings are left alone.
+        /// </summary>
         private static void ApplyAspect(Dictionary<string, object> shot)
         {
-            if (shot.Has("aspect") && shot.GetFloat("aspect") > 0f) CameraTools.SetAspect(shot.GetFloat("aspect"));
+            float a = shot.Has("aspect") ? shot.GetFloat("aspect") : 0f;
+            if (a > 0f) CameraTools.SetAspect(a);
+            else if (_shots.Any(s => s.Has("aspect") && s.GetFloat("aspect") > 0f)) CameraTools.SetAspect(0f);
         }
 
         private static Dictionary<string, object> ShotAt(float t)
