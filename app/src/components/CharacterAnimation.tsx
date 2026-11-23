@@ -130,7 +130,7 @@ export function CharacterAnimationPanel({ id }: { id: number }) {
       <div className="section char-anim-bake">
         <h3>
           Bake to bone keys
-          <Help text="Turns the clip's motion over the range into ordinary FK keys you can edit: each bone gets only as many keys as it takes to stay within half a degree of the clip. With the body baked, the hips' bob and travel go on the character's position track and the clip is held still underneath over the range, so the keys carry the whole motion (muting the clip changes nothing). Parts you don't bake hold the clip's first pose there. One undo step." />
+          <Help text="Turns what the clip(s) on the timeline do over the range into ordinary FK keys you can edit: each bone gets only as many keys as it takes to stay within half a degree. The clip keeps playing underneath (it moves the hips: bob, sway, travel), and its tracks go in the baked folder with the keys. A walk that turns into a run bakes as one; putting a new clip on the timeline later re-bakes the keys from there. One undo step." />
         </h3>
         <div className="seg char-anim-parts">
           {BAKE_PARTS.map((p) => (

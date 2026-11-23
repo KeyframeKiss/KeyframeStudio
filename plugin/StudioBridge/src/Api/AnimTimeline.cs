@@ -97,11 +97,26 @@ namespace StudioEX.Bridge.Api
             var c = CharaApi.Chara(a.GetInt("id"));
             if (c.charInfo == null || c.charAnimeCtrl?.animator == null) throw new BridgeException("That character isn't loaded");
             float t0 = Mathf.Clamp(a.Has("t") ? a.GetFloat("t") : TL.playbackTime, 0f, TL.duration);
+            // baked keys run on past this moment: they'd keep the old motion over the new clip, so they're re-baked
+            // from here (from the new clip) in the same step
+            var baked = BakedAfter(c, t0);
+            if (baked != null) CheckCanStep();
             Dictionary<string, object> r;
             UndoStack.BeginGroup();
-            try { r = PutOnTimeline(c, t0); }
+            try
+            {
+                r = PutOnTimeline(c, t0);
+                if (baked != null)
+                {
+                    // from a frame before: the old motion is kept right up to the switch (not eased into the new one)
+                    float from = Mathf.Max(0f, t0 - 1f / Mathf.Clamp((int)F_fps.GetValue(Ready), 1, 240));
+                    var rb = BakeRange(c, from, baked.Value.Value, baked.Value.Key, 0.5f, true, (string)r["name"]);
+                    r["rebaked"] = new Dictionary<string, object> { { "t0", Math.Round(t0, 4) }, { "t1", rb["t1"] }, { "keys", rb["keys"] }, { "parts", rb["parts"] } };
+                }
+            }
             finally { UndoStack.EndGroup("Clip on the timeline"); }
             AfterEdit();
+            if (baked != null) EventPump.RequestRebase();
             return r;
         }
 
@@ -252,21 +267,58 @@ namespace StudioEX.Bridge.Api
 
         /// <summary>
         /// args: {id, t0?, t1? (default: the whole timeline), parts?: [body, neck, hands] (default all), tolerance?: degrees
-        /// (default 0.5)} → {keys, bones, samples, t0, t1, name, folder}.
+        /// (default 0.5)} → {keys, bones, samples, t0, t1, name, tracks, parts}.
         /// </summary>
         private static object BakeClip(Dictionary<string, object> a)
         {
-            var s = Ready;
-            if (LockRunning || MotionSampler.Running || ViewportTools.Busy) throw new BridgeException("Already busy — try again in a moment");
-            if (TL.isPlaying) throw new BridgeException("Pause the timeline first");
-            if (PendingCount > 0) throw new BridgeException("Key or reset your unkeyed changes first — baking steps through the timeline, which would undo them");
+            var s0 = Ready;
+            CheckCanStep();
             var c = CharaApi.Chara(a.GetInt("id"));
             if (c.charInfo == null || c.charAnimeCtrl?.animator == null) throw new BridgeException("That character isn't loaded");
-
             float dur = TL.duration;
             float t0 = Mathf.Clamp(a.Has("t0") ? a.GetFloat("t0") : 0f, 0f, dur);
             float t1 = Mathf.Clamp(a.Has("t1") ? a.GetFloat("t1") : dur, 0f, dur);
             if (t1 < t0) { var x = t0; t0 = t1; t1 = x; }
+            var partNames = a.GetList("parts").Select(o => o as string).Where(x => x != null && BakeParts.ContainsKey(x)).Distinct().ToList();
+            if (!a.Has("parts")) partNames = BakeParts.Keys.ToList();
+            if (partNames.Count == 0) throw new BridgeException("Pick what to bake: body, head and neck, hands");
+            float tol = Mathf.Clamp(a.Has("tolerance") ? a.GetFloat("tolerance") : 0.5f, 0.05f, 10f);
+
+            string name = ClipName(c.oiCharInfo.animeInfo);
+            Dictionary<string, object> r;
+            UndoStack.BeginGroup();
+            try
+            {
+                // the clip runs on the timeline (the bake reads it there, and it keeps playing under the keys)
+                // its tracks muted: unmute them (re-putting it from t0 would rewrite its stretches)
+                if (!UnmuteClip(c) && !ClipDriven(c)) PutOnTimeline(c, t0);
+                r = BakeRange(c, t0, t1, partNames, tol, false, name);
+            }
+            finally
+            {
+                UndoStack.EndGroup("Bake " + name);
+            }
+            AfterEdit();
+            EventPump.RequestRebase();
+            return r;
+        }
+
+        private static void CheckCanStep()
+        {
+            if (LockRunning || MotionSampler.Running || ViewportTools.Busy) throw new BridgeException("Already busy — try again in a moment");
+            if (TL.isPlaying) throw new BridgeException("Pause the timeline first");
+            if (PendingCount > 0) throw new BridgeException("Key or reset your unkeyed changes first — baking steps through the timeline, which would undo them");
+        }
+
+        /// <summary>
+        /// Bake whatever the clip(s) on the timeline do over [t0, t1] into FK rotation keys on the parts (inside the
+        /// caller's undo group). The clip keeps playing underneath: it moves the hips through space and the bones that
+        /// aren't FK bones (upper spine, lower waist), so a walk that turns into a run bakes as one. keepOtherParts: FK
+        /// stays on for parts that had it (a re-bake); otherwise only the baked parts are on.
+        /// </summary>
+        private static Dictionary<string, object> BakeRange(OCIChar c, float t0, float t1, List<string> partNames, float tol, bool keepOtherParts, string name)
+        {
+            var s = Ready;
             int fps = Mathf.Clamp((int)F_fps.GetValue(s), 1, 240);
             if (t1 - t0 < 1f / fps - 1e-4f) throw new BridgeException("Make the range at least a frame long");
             float rate = Mathf.Min(fps, 30);
@@ -275,242 +327,119 @@ namespace StudioEX.Bridge.Api
             var times = new List<float>();
             for (int i = 0; i <= n; i++) times.Add(Mathf.Min(t1, t0 + i / rate));
             if (t1 - times[times.Count - 1] > 1e-4f) times.Add(t1);
+            // where the clip changes: the moment itself and the frame before, so the switch is a clean cut in the keys
+            var clipTrack = CharTrack(c, "charAnimation");
+            if (clipTrack != null)
+                foreach (var tk in clipTrack.keyframes.Keys.Where(k => k > t0 + 1e-4f && k <= t1 + 1e-4f).ToList())
+                {
+                    times.Add(Mathf.Min(t1, tk));
+                    if (tk - 1f / fps > t0 + 1e-4f) times.Add(tk - 1f / fps);
+                }
+            times.Sort();
+            times = times.Where((t, i) => i == 0 || t - times[i - 1] > 1e-4f).ToList();
 
-            var partNames = a.GetList("parts").Select(o => o as string).Where(x => x != null && BakeParts.ContainsKey(x)).Distinct().ToList();
-            if (!a.Has("parts")) partNames = BakeParts.Keys.ToList();
-            if (partNames.Count == 0) throw new BridgeException("Pick what to bake: body, head and neck, hands");
-            var groups = partNames.SelectMany(p => BakeParts[p]).ToList();
-            var partIdx = new HashSet<int>(groups.Select(g => ViewportGizmos.FkPart(g)).Where(i => i >= 0));
-            var bones = new List<OCIChar.BoneInfo>();
-            foreach (var b in c.listBones)
-                if (b?.guideObject?.transformTarget != null && partIdx.Contains(ViewportGizmos.FkPart(b.boneGroup))) bones.Add(b);
+            var partIdx = new HashSet<int>(partNames.SelectMany(p => BakeParts[p]).Select(g => ViewportGizmos.FkPart(g)).Where(i => i >= 0));
+            var bones = c.listBones.Where(b => b?.guideObject?.transformTarget != null && partIdx.Contains(ViewportGizmos.FkPart(b.boneGroup))).ToList();
             if (bones.Count == 0) throw new BridgeException("This character has no FK bones for that");
-            float tol = Mathf.Clamp(a.Has("tolerance") ? a.GetFloat("tolerance") : 0.5f, 0.05f, 10f);
-
             var rotModel = Models.FirstOrDefault(m => m.owner == "Timeline" && m.id == "guideObjectRot")
                 ?? throw new BridgeException("Timeline's rotation track type wasn't found");
             var animator = c.charAnimeCtrl.animator;
             float back = TL.playbackTime;
-            string name = ClipName(c.oiCharInfo.animeInfo);
             var rot = bones.Select(b => new Quaternion[times.Count]).ToList();
-            // the hips' travel (bob, sway, moving along): with the body baked it goes on the character's own position
-            // track and the clip is held on its first frame over the range, so the bake no longer needs the clip
-            bool travel = partNames.Contains("body");
-            var hips = c.listBones.FirstOrDefault(b => b?.guideObject?.transformTarget != null && b.guideObject.transformTarget.name == "cf_j_hips")?.guideObject.transformTarget;
-            var root = c.guideObject;
-            if (hips == null || root?.transformTarget == null) travel = false;
-            var hipsAt = new Vector3[times.Count];
-            var rootM = new Matrix4x4[times.Count];
-            var parentInv = new Matrix4x4[times.Count];
-            var rootPos = new Vector3[times.Count];
-            // world rotations (for the held clip: bones between baked ones that aren't FK bones, like the upper spine,
-            // stay as they are at t0, so the baked rotations make up for them)
-            var worldRot = bones.Select(b => new Quaternion[times.Count]).ToList();
-            var parentRot = bones.Select(b => new Quaternion[times.Count]).ToList();
-            var rootRot = new Quaternion[times.Count];
             int keys = 0;
             var made = new List<int>();
 
-            UndoStack.BeginGroup();
+            // the timeline moves the clip: Studio's own playback stopped
+            if (c.animeSpeed > 1e-3f)
+            {
+                UndoStack.Push(CharaApi.CharaUndo.Capture(new[] { c }, "anime", "Bake"));
+                c.animeSpeed = 0f;
+            }
+            var info = c.oiCharInfo;
+            var wasOn = info.enableFK ? (bool[])info.activeFK.Clone() : new bool[info.activeFK.Length];
+            UndoStack.Push(new KinematicsUndo(c, ViewportGizmos.KinematicsRestorer(c)));
+            // nothing holding the body: the bones show the clip alone
+            if (info.enableFK) c.ActiveKinematicMode(OICharInfo.KinematicMode.FK, false, false);
+            if (info.enableIK) c.ActiveKinematicMode(OICharInfo.KinematicMode.IK, false, false);
+
+            var clipOf = new Func<string>(() => { var x = c.oiCharInfo.animeInfo; return x.group + "/" + x.category + "/" + x.no; });
             try
             {
-                // the clip runs on the timeline (so the bake and what's left of the clip stay in step)
-                // its tracks muted: unmute them (re-putting it from t0 would rewrite its stretches)
-                if (!UnmuteClip(c) && !ClipDriven(c)) PutOnTimeline(c, t0);
-                if (c.animeSpeed > 1e-3f)
+                string was = clipOf();
+                for (int k = 0; k < times.Count; k++)
                 {
-                    UndoStack.Push(CharaApi.CharaUndo.Capture(new[] { c }, "anime", "Bake"));
-                    c.animeSpeed = 0f;
+                    float t = times[k];
+                    if (Mathf.Abs(TL.playbackTime - t) < 1e-6f) TL.Seek(t + 1e-4f);
+                    TL.Seek(t);
+                    animator.Update(0f);
+                    // another clip took over here: its state only exists from this update on, so set its time again
+                    string now = clipOf();
+                    if (now != was) { TL.Seek(t + 1e-4f); TL.Seek(t); animator.Update(0f); was = now; }
+                    for (int i = 0; i < bones.Count; i++) rot[i][k] = bones[i].guideObject.transformTarget.localRotation;
                 }
-                UndoStack.Push(new KinematicsUndo(c, ViewportGizmos.KinematicsRestorer(c)));
-                // nothing holding the body: the bones show the clip alone
-                if (c.oiCharInfo.enableFK) c.ActiveKinematicMode(OICharInfo.KinematicMode.FK, false, false);
-                if (c.oiCharInfo.enableIK) c.ActiveKinematicMode(OICharInfo.KinematicMode.IK, false, false);
-
-                var clipOf = new Func<string>(() => { var x = c.oiCharInfo.animeInfo; return x.group + "/" + x.category + "/" + x.no; });
-                try
-                {
-                    string was = clipOf();
-                    for (int k = 0; k < times.Count; k++)
-                    {
-                        float t = times[k];
-                        if (Mathf.Abs(TL.playbackTime - t) < 1e-6f) TL.Seek(t + 1e-4f);
-                        TL.Seek(t);
-                        animator.Update(0f);
-                        // another clip took over here: its state only exists from this update on, so set its time again
-                        string now = clipOf();
-                        if (now != was) { TL.Seek(t + 1e-4f); TL.Seek(t); animator.Update(0f); was = now; }
-                        for (int i = 0; i < bones.Count; i++)
-                        {
-                            var tr = bones[i].guideObject.transformTarget;
-                            rot[i][k] = tr.localRotation;
-                            worldRot[i][k] = tr.rotation;
-                            parentRot[i][k] = tr.parent != null ? tr.parent.rotation : Quaternion.identity;
-                        }
-                        rootRot[k] = root?.transformTarget != null ? root.transformTarget.rotation : Quaternion.identity;
-                        if (travel)
-                        {
-                            var rt = root.transformTarget;
-                            hipsAt[k] = hips.position;
-                            rootM[k] = rt.localToWorldMatrix;
-                            parentInv[k] = rt.parent != null ? rt.parent.worldToLocalMatrix : Matrix4x4.identity;
-                            rootPos[k] = root.changeAmount.pos;
-                        }
-                    }
-                }
-                finally
-                {
-                    if (Mathf.Abs(TL.playbackTime - back) < 1e-6f) TL.Seek(back + 1e-4f);
-                    TL.Seek(back);
-                }
-
-                // FK on for the baked parts only (the rest follows the clip)
-                var info = c.oiCharInfo;
-                for (int i = 0; i < info.activeFK.Length; i++) info.activeFK[i] = partIdx.Contains(i);
-                c.ActiveKinematicMode(OICharInfo.KinematicMode.FK, true, false);
-                for (int i = 0; i < FKCtrl.parts.Length && i < info.activeFK.Length; i++) c.ActiveFK(FKCtrl.parts[i], info.activeFK[i], true);
-
-                if (travel) HeldClipRotations(bones, rot, worldRot, parentRot, rootRot);
-                int before = Interpolables.Count;
-                var existing = new HashSet<Interpolable>(Interpolables.Values);
-                for (int i = 0; i < bones.Count; i++)
-                {
-                    var g = bones[i].guideObject;
-                    var q = rot[i];
-                    var forced = new List<int> { 0, times.Count - 1 };
-                    var ks = Simplify(forced, 0, times.Count - 1, (k, x, y, f) => Quaternion.Angle(Quaternion.SlerpUnclamped(q[x], q[y], f), q[k]), tol, times);
-                    var keep = g.changeAmount.rot;
-                    keys += WriteGuideKeys(c, g, rotModel, ks, times, 0, times.Count - 1, true, k => g.changeAmount.rot = q[k].eulerAngles);
-                    g.changeAmount.rot = keep;
-                }
-                if (travel) keys += BakeTravel(c, times, hipsAt, rootM, parentInv, rootPos);
-                made.AddRange(Interpolables.Values.Where(ip => !existing.Contains(ip)).Select(ip => ip.GetHashCode()));
-                // the clip's own tracks belong to the bake too (they hold the clip still under it): in the same folder,
-                // first — unless they're already filed in a folder of their own (an earlier bake)
-                var clipTracks = new[] { CharTrack(c, "charAnimation"), CharTrack(c, "charAnimationTime") }
-                    .Where(ip => ip != null && (LeafNode(ip) as Timeline.INode)?.parent == null).Select(ip => ip.GetHashCode()).ToList();
-                var folder = clipTracks.Concat(made).ToList();
-                if (made.Count > 0)
-                    Undoable("Bake " + name, () => GroupCreate(new Dictionary<string, object> { { "name", name + " (baked)" }, { "tracks", folder.Cast<object>().ToList() } }));
             }
             finally
             {
-                UndoStack.EndGroup("Bake " + name);
+                if (Mathf.Abs(TL.playbackTime - back) < 1e-6f) TL.Seek(back + 1e-4f);
+                TL.Seek(back);
             }
-            AfterEdit();
-            EventPump.RequestRebase();
+
+            // FK on for the baked parts (and, re-baking, the ones that had it)
+            for (int i = 0; i < info.activeFK.Length; i++) info.activeFK[i] = partIdx.Contains(i) || (keepOtherParts && wasOn[i]);
+            c.ActiveKinematicMode(OICharInfo.KinematicMode.FK, true, false);
+            for (int i = 0; i < FKCtrl.parts.Length && i < info.activeFK.Length; i++) c.ActiveFK(FKCtrl.parts[i], info.activeFK[i], true);
+
+            var existing = new HashSet<Interpolable>(Interpolables.Values);
+            for (int i = 0; i < bones.Count; i++)
+            {
+                var g = bones[i].guideObject;
+                var q = rot[i];
+                var forced = new List<int> { 0, times.Count - 1 };
+                var ks = Simplify(forced, 0, times.Count - 1, (k, x, y, f) => Quaternion.Angle(Quaternion.SlerpUnclamped(q[x], q[y], f), q[k]), tol, times);
+                var keep = g.changeAmount.rot;
+                keys += WriteGuideKeys(c, g, rotModel, ks, times, 0, times.Count - 1, true, k => g.changeAmount.rot = q[k].eulerAngles);
+                g.changeAmount.rot = keep;
+            }
+            made.AddRange(Interpolables.Values.Where(ip => !existing.Contains(ip)).Select(ip => ip.GetHashCode()));
+            // the clip's own tracks belong with the bake (it plays under the keys): in the same folder, first, unless
+            // they're already filed in a folder (an earlier bake)
+            var clipTracks = new[] { CharTrack(c, "charAnimation"), CharTrack(c, "charAnimationTime") }
+                .Where(ip => ip != null && (LeafNode(ip) as Timeline.INode)?.parent == null).Select(ip => ip.GetHashCode()).ToList();
+            var folder = clipTracks.Concat(made).ToList();
+            if (made.Count > 0)
+                Undoable("Bake " + name, () => GroupCreate(new Dictionary<string, object> { { "name", name + " (baked)" }, { "tracks", folder.Cast<object>().ToList() } }));
             return new Dictionary<string, object>
             {
                 { "keys", keys }, { "bones", bones.Count }, { "samples", times.Count }, { "tracks", made.Count },
                 { "t0", Math.Round(t0, 4) }, { "t1", Math.Round(t1, 4) }, { "name", name },
-                { "parts", partNames.Cast<object>().ToList() }, { "travel", travel },
+                { "parts", partNames.Cast<object>().ToList() },
             };
         }
 
         /// <summary>
-        /// With the clip held on its pose at the first sample, bones that aren't baked (the upper spine and waist aren't
-        /// FK bones; parts left out of the bake) stay as they are there. Each baked bone's rotation is worked out under
-        /// that held parent chain so it still ends up turned the way the clip had it (in the character's own space).
+        /// The character's baked bone keys after t (FK rotation tracks filed in a "(baked)" folder, keyed after t): which
+        /// parts they cover and how far they reach. Null when there are none.
         /// </summary>
-        private static void HeldClipRotations(List<OCIChar.BoneInfo> bones, List<Quaternion[]> rot, List<Quaternion[]> worldRot, List<Quaternion[]> parentRot, Quaternion[] rootRot)
+        private static KeyValuePair<List<string>, float>? BakedAfter(OCIChar c, float t)
         {
-            int n = rootRot.Length;
-            var tr = bones.Select(b => b.guideObject.transformTarget).ToList();
-            // nearest baked ancestor of each baked bone
-            var anc = new int[bones.Count];
-            for (int i = 0; i < bones.Count; i++)
+            var parts = new HashSet<string>();
+            float end = -1f;
+            foreach (var ip in Interpolables.Values)
             {
-                anc[i] = -1;
-                for (var p = tr[i].parent; p != null && anc[i] < 0; p = p.parent) anc[i] = tr.IndexOf(p);
+                if (ip.oci != c || ip.id != "guideObjectRot" || !ip.enabled || !(ip.parameter is GuideObject g)) continue;
+                if (!ip.keyframes.Keys.Any(k => k > t + 1e-4f)) continue;
+                var folder = (LeafNode(ip) as Timeline.INode)?.parent;
+                var fname = folder != null ? GroupType.GetField("name")?.GetValue(GroupObj(folder)) as string : null;
+                if (fname == null || !fname.EndsWith("(baked)")) continue;
+                var b = c.listBones.FirstOrDefault(x => x?.guideObject == g);
+                if (b == null) continue;
+                int part = ViewportGizmos.FkPart(b.boneGroup);
+                foreach (var kv in BakeParts)
+                    if (kv.Value.Any(bg => ViewportGizmos.FkPart(bg) == part)) parts.Add(kv.Key);
+                end = Mathf.Max(end, ip.keyframes.Keys.Last());
             }
-            var r0inv = Quaternion.Inverse(rootRot[0]);
-            for (int i = 0; i < bones.Count; i++)
-            {
-                var heldParent = r0inv * parentRot[i][0]; // the parent at the held pose, in the character's space
-                var link = anc[i] >= 0 ? Quaternion.Inverse(r0inv * worldRot[anc[i]][0]) * heldParent : Quaternion.identity;
-                for (int k = 0; k < n; k++)
-                {
-                    var rinv = Quaternion.Inverse(rootRot[k]);
-                    var want = rinv * worldRot[i][k];
-                    var parent = anc[i] >= 0 ? rinv * worldRot[anc[i]][k] * link : heldParent;
-                    rot[i][k] = Quaternion.Inverse(parent) * want;
-                }
-            }
-        }
-
-        /// <summary>A float track's value at t, the way Timeline interpolates it.</summary>
-        private static float FloatAt(Interpolable ip, float t)
-        {
-            KeyValuePair<float, TLKeyframe>? l = null, r = null;
-            foreach (var kv in ip.keyframes) { if (kv.Key <= t + 1e-5f) l = kv; else { r = kv; break; } }
-            if (l == null) return r != null && r.Value.Value.value is float rv0 ? rv0 : 0f;
-            float lv = l.Value.Value.value is float x ? x : 0f;
-            if (r == null || !(r.Value.Value.value is float rv)) return lv;
-            float u = (t - l.Value.Key) / (r.Value.Key - l.Value.Key);
-            return Mathf.LerpUnclamped(lv, rv, l.Value.Value.curve.Evaluate(u));
-        }
-
-        /// <summary>
-        /// Hold the clip on its pose at times[0] over the range and move the hips' travel onto the character's position
-        /// track instead: the root goes where it has to for the held hips to be where the clip had them. Keys only as
-        /// many as stay within about a millimetre. After the range the clip and the root carry on as before.
-        /// </summary>
-        private static int BakeTravel(OCIChar c, List<float> times, Vector3[] hipsAt, Matrix4x4[] rootM, Matrix4x4[] parentInv, Vector3[] rootPos)
-        {
-            int n = times.Count;
-            float t0 = times[0], t1 = times[n - 1];
-            int fps = Mathf.Clamp((int)F_fps.GetValue(Ready), 1, 240);
-            float frame = 1f / fps;
-            bool after = t1 < TL.duration - 1e-4f;
-
-            // 1. the clip: held at its value at t0 over the range, then on from where it would have been
-            var time = CharTrack(c, "charAnimationTime");
-            if (time == null) return 0;
-            History.Record(new[] { time });
-            float v0 = FloatAt(time, t0);
-            float vAfter = FloatAt(time, Mathf.Min(TL.duration, t1 + frame));
-            AnimationCurve carry = null;
-            foreach (var kv in time.keyframes) { if (kv.Key <= t1 + 1e-4f) carry = kv.Value.curve; else break; }
-            foreach (var t in time.keyframes.Keys.Where(t => t >= t0 - 1e-4f && t <= t1 + 1e-4f).ToList()) time.keyframes.Remove(t);
-            time.keyframes[t0] = new TLKeyframe(v0, time, HoldCurve());
-            // the clip goes on a frame after the range, the same moment the root goes back
-            float ta0 = Mathf.Min(TL.duration, t1 + frame);
-            if (after)
-            {
-                float va = vAfter;
-                foreach (var t in time.keyframes.Keys.Where(t => t > t1 + 1e-4f && t < ta0 - 1e-4f).ToList()) time.keyframes.Remove(t);
-                time.keyframes[ta0] = new TLKeyframe(va, time, carry != null ? new AnimationCurve(carry.keys) : AnimationCurve.Linear(0f, 0f, 1f, 1f));
-            }
-
-            // 2. the root: where it puts the held hips onto the clip's path
-            var posModel = Models.FirstOrDefault(m => m.owner == "Timeline" && m.id == "guideObjectPos");
-            if (posModel == null) return 0;
-            var held = rootM[0].inverse.MultiplyPoint3x4(hipsAt[0]); // the hips in the character's own space, held
-            var pos = new Vector3[n];
-            for (int k = 0; k < n; k++)
-            {
-                var inRoot = rootM[k].inverse.MultiplyPoint3x4(hipsAt[k]);
-                var world = rootM[k].MultiplyPoint3x4(inRoot - held);
-                pos[k] = parentInv[k].MultiplyPoint3x4(world);
-            }
-            var g = c.guideObject;
-            float scale = Mathf.Max(1e-3f, ((Vector3)rootM[0].GetColumn(0)).magnitude);
-            var ks = Simplify(new List<int> { 0, n - 1 }, 0, n - 1, (k, x, y, f) => Vector3.Distance(Vector3.LerpUnclamped(pos[x], pos[y], f), pos[k]) * scale, 0.001f, times);
-            var keep = g.changeAmount.pos;
-            int written = WriteGuideKeys(c, g, posModel, ks, times, 0, n - 1, true, k => g.changeAmount.pos = pos[k]);
-            // after the range: back where it was (the clip carries the hips again)
-            if (after && Interpolables.TryGetValue(new Interpolable(c, g, posModel).GetHashCode(), out var ip))
-            {
-                float ta = Mathf.Min(TL.duration, t1 + frame);
-                if (!ip.keyframes.Keys.Any(t => Mathf.Abs(t - ta) < 1e-4f && t > t1 + 1e-4f))
-                {
-                    g.changeAmount.pos = rootPos[n - 1];
-                    ip.keyframes[ta] = new TLKeyframe(ip.GetValue(), ip, AnimationCurve.Linear(0f, 0f, 1f, 1f));
-                    written++;
-                }
-            }
-            g.changeAmount.pos = keep;
-            return written;
+            if (parts.Count == 0 || end <= t + 1e-4f) return null;
+            return new KeyValuePair<List<string>, float>(BakeParts.Keys.Where(parts.Contains).ToList(), end);
         }
     }
 }

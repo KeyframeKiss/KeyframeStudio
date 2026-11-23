@@ -122,8 +122,6 @@ export default async function (t) {
     t.metric('worst bone off after the bake', w.toFixed(4), 'units');
     check('the baked motion matches the clip (within 2% of body height)', w < 0.02 * h, `${w.toFixed(4)} vs ${(0.02 * h).toFixed(4)} at ${where}`);
 
-    check("the hips' travel is baked too (the character's position track)", r.travel === true && tl.tracks.some((x) => x.oci === id && x.model === 'guideObjectPos'), JSON.stringify(r));
-
     // the clip's own tracks are filed with the bake
     const info0 = await ok('anim.timeline', { id });
     const folder = (tl.groups ?? []).find((g) => g.name.includes('(baked)'));
@@ -138,14 +136,6 @@ export default async function (t) {
     const shownAgain = await sample(0, 2);
     check('folder hidden and shown again: motion as baked', worst(after, shownAgain) < 1e-3, `${worst(after, shownAgain).toFixed(5)} at ${where}`);
     await ok('undo');
-    await ok('undo');
-    await sleep(300);
-
-    // the bake stands on its own: muting the clip changes nothing
-    await ok('timeline.setTracksEnabled', { tracks: [info0.tracks.clip, info0.tracks.time], enabled: false });
-    await sleep(300);
-    const alone = await sample(0, 2);
-    check('clip muted: the baked motion is unchanged (bob and travel included)', worst(after, alone) < 0.005, `${worst(after, alone).toFixed(5)} at ${where}`);
     await ok('undo');
     await sleep(300);
 
@@ -186,5 +176,35 @@ export default async function (t) {
     check('…and FK goes back off', (await ok('chara.get', { id })).kinematics.fk === false);
     const back = await ok('timeline.get');
     check('…and the Animation tracks are back at the top level', back.tracks.filter((x) => x.id === info0.tracks.clip || x.id === info0.tracks.time).every((x) => x.group === -1));
+  });
+
+  await t.step('walk, then a run later: put on over baked keys re-bakes them from there', async () => {
+    const run = cat.find((g) => g.id === 0)?.categories.find((c) => c.id === 3)?.clips.find((x) => x.no === 3) ? { g: 0, c: 3, no: 3 } : candidates.find((c) => c.no !== clip.no || c.c !== clip.c);
+    const runIt = async () => {
+      await ok('chara.loadAnime', { ids: [id], group: run.g, category: run.c, no: run.no });
+      return ok('anim.toTimeline', { id, t: 2 });
+    };
+    // what walk-then-run looks like from the clips alone
+    await runIt();
+    await ok('timeline.seek', { t: 0.5 });
+    await sleep(300);
+    const ref = await sample(0, 4);
+    await ok('undo');
+    await ok('undo');
+    await sleep(300);
+    // the walk baked over the whole timeline, then the run put on at 2 s
+    await ok('anim.bake', { id, t0: 0, t1: 4 });
+    const r = await runIt();
+    check('the baked keys after 2 s were re-baked', r.rebaked && Math.abs(r.rebaked.t0 - 2) < 1e-3 && Math.abs(r.rebaked.t1 - 4) < 1e-3 && r.rebaked.keys > 0, JSON.stringify(r.rebaked));
+    await ok('timeline.seek', { t: 0.5 });
+    await sleep(300);
+    const got = await sample(0, 4);
+    const h = Math.max(...ref.bones.cf_j_head.map((p, i) => dist(p, ref.bones.cf_j_foot_L[i])));
+    const w = worst(ref, got);
+    t.metric('walk then run: worst bone off', w.toFixed(4), 'units');
+    check('walk then run: the body follows both clips (within 2% of body height)', w < 0.02 * h, `${w.toFixed(4)} vs ${(0.02 * h).toFixed(4)} at ${where}`);
+    await ok('undo'); // the run (and its re-bake)
+    await ok('undo'); // the clip change
+    await ok('undo'); // the bake
   });
 }

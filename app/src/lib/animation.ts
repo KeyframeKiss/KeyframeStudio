@@ -64,9 +64,9 @@ export async function putClipOnTimeline(ids: number[], t?: number) {
   if (!ids.length) return toast('Select a character first (in the scene list or Studio)');
   const at = t ?? liveTime();
   const done: string[] = [];
-  let last: { t0: number; t1: number; name: string } | undefined;
+  let last: { t0: number; t1: number; name: string; rebaked?: { t0: number; t1: number; keys: number } } | undefined;
   for (const id of ids) {
-    const r = await call<{ t0: number; t1: number; name: string }>('anim.toTimeline', { id, t: at });
+    const r = await call<{ t0: number; t1: number; name: string; rebaked?: { t0: number; t1: number; keys: number } }>('anim.toTimeline', { id, t: at });
     if (!r) break;
     last = r;
     done.push(displayName(useStore.getState().nodes[id]));
@@ -74,7 +74,9 @@ export async function putClipOnTimeline(ids: number[], t?: number) {
   void refreshTimeline();
   if (!last) return;
   toast(
-    `“${last.name}” is on the timeline from ${sec(last.t0)} to ${sec(last.t1)}${done.length > 1 ? ` for ${names(done)}` : ''}. Scrub to see any moment of it; it plays and renders with the timeline — Ctrl+Z undoes it`,
+    `“${last.name}” is on the timeline from ${sec(last.t0)} to ${sec(last.t1)}${done.length > 1 ? ` for ${names(done)}` : ''}.${
+      last.rebaked ? ` The baked keys from ${sec(last.rebaked.t0)} to ${sec(last.rebaked.t1)} were re-baked from it (${last.rebaked.keys} keys), so the body follows the new clip there.` : ' Scrub to see any moment of it; it plays and renders with the timeline.'
+    } Ctrl+Z undoes it`,
     'done',
   );
 }
@@ -88,14 +90,12 @@ export const BAKE_PARTS: { id: BakePart; label: string }[] = [
 
 /** Turn the clip's motion over [t0, t1] into FK bone keys on the chosen parts. */
 export async function bakeClip(id: number, t0: number, t1: number, parts: BakePart[]) {
-  const r = await call<{ keys: number; bones: number; tracks: number; name: string; t0: number; t1: number; travel?: boolean }>('anim.bake', { id, t0, t1, parts });
+  const r = await call<{ keys: number; bones: number; tracks: number; name: string; t0: number; t1: number }>('anim.bake', { id, t0, t1, parts });
   void refreshTimeline();
   if (!r) return false;
   const what = BAKE_PARTS.filter((p) => parts.includes(p.id)).map((p) => p.label.toLowerCase());
   toast(
-    `Baked “${r.name}” (${sec(r.t0)}–${sec(r.t1)}): ${r.keys} keys on ${r.bones} bones${r.tracks ? `, in the folder “${r.name} (baked)” with the clip's own tracks (hide the folder to hide it all)` : ''}. FK now drives the ${names(what)}${
-      r.travel ? "; the hips' bob and travel are on the character's position track and the clip is held still underneath, so the keys carry it all" : '; the clip still moves the hips'
-    }. Edit the keys like any others — Ctrl+Z undoes it`,
+    `Baked “${r.name}” (${sec(r.t0)}–${sec(r.t1)}): ${r.keys} keys on ${r.bones} bones${r.tracks ? `, in the folder “${r.name} (baked)” with the clip's own tracks (hide the folder to hide it all)` : ''}. FK now drives the ${names(what)}; the clip keeps playing underneath for the hips' bob and travel. Edit the keys like any others — Ctrl+Z undoes it`,
     'done',
   );
   return true;

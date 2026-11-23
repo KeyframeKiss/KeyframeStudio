@@ -397,7 +397,9 @@ namespace StudioEX.Bridge.Api
             var targets = Targets(a).ToList();
             if (targets.Count == 0) throw new BridgeException("Select a character first");
             bool letPlay = a.GetBool("letPlay", true);
-            var held = letPlay ? targets.Where(c => c.oiCharInfo.enableFK || c.oiCharInfo.enableIK).ToList() : new List<OCIChar>();
+            // FK / IK holding the body still is switched off so the clip shows; not on a character the timeline drives
+            // (its bone keys, a bake, sit on top of the clip on purpose)
+            var held = letPlay ? targets.Where(c => (c.oiCharInfo.enableFK || c.oiCharInfo.enableIK) && !TimelineApi.ClipDriven(c)).ToList() : new List<OCIChar>();
             // a clip the timeline drives stays stopped (the timeline moves it); the others are started so it plays
             var driven = targets.Where(c => TimelineApi.ClipDriven(c)).ToList();
             var stopped = letPlay ? targets.Where(c => c.animeSpeed <= 0.001f && !driven.Contains(c)).ToList() : new List<OCIChar>();
