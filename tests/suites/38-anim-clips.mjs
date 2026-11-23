@@ -49,7 +49,10 @@ export default async function (t) {
   const candidates = cat.flatMap((g) => g.categories.flatMap((c) => c.clips.slice(0, 4).map((clip) => ({ g: g.id, c: c.id, no: clip.no })))).slice(0, 40);
   let clip, base;
   await t.step('put a clip on the timeline', async () => {
-    for (const cand of candidates.filter((_, i) => i % 5 === 0).slice(0, 8)) {
+    // a walk first (its bob and travel are what a bake has to carry), then whatever moves
+    const walk = cat.find((g) => g.id === 0)?.categories.find((c) => c.id === 3)?.clips.find((x) => x.no === 0);
+    const tries = [...(walk ? [{ g: 0, c: 3, no: 0 }] : []), ...candidates.filter((_, i) => i % 5 === 0).slice(0, 8)];
+    for (const cand of tries) {
       await ok('chara.loadAnime', { ids: [id], group: cand.g, category: cand.c, no: cand.no });
       await sleep(400);
       const r = await ok('anim.toTimeline', { id, t: 0 });
@@ -119,14 +122,23 @@ export default async function (t) {
     t.metric('worst bone off after the bake', w.toFixed(4), 'units');
     check('the baked motion matches the clip (within 2% of body height)', w < 0.02 * h, `${w.toFixed(4)} vs ${(0.02 * h).toFixed(4)} at ${where}`);
 
-    // muting the baked keys shows the clip again (not a body frozen in its last baked pose); unmuting brings them back
+    check("the hips' travel is baked too (the character's position track)", r.travel === true && tl.tracks.some((x) => x.oci === id && x.model === 'guideObjectPos'), JSON.stringify(r));
+
+    // the bake stands on its own: muting the clip changes nothing
+    const info0 = await ok('anim.timeline', { id });
+    await ok('timeline.setTracksEnabled', { tracks: [info0.tracks.clip, info0.tracks.time], enabled: false });
+    await sleep(300);
+    const alone = await sample(0, 2);
+    check('clip muted: the baked motion is unchanged (bob and travel included)', worst(after, alone) < 0.005, `${worst(after, alone).toFixed(5)} at ${where}`);
+    await ok('undo');
+    await sleep(300);
+
+    // muting the baked keys: FK lets go of those parts; one undo brings them back
     const bakedIds = (await ok('timeline.get')).tracks.filter((x) => x.model === 'guideObjectRot' && x.oci === id).map((x) => x.id);
     await ok('timeline.setTracksEnabled', { tracks: bakedIds, enabled: false });
     await sleep(300);
     const fkMuted = (await ok('chara.get', { id })).kinematics;
     check('all baked keys muted: FK lets go of those parts', !fkMuted.fk || !fkMuted.fkParts.find((p) => p.name === 'Body').on, JSON.stringify(fkMuted.fkParts));
-    const shown = await sample(0, 2);
-    check('…and the clip plays as it did', worst(base, shown) < 1e-3, `${worst(base, shown).toFixed(5)} at ${where}`);
     await ok('undo');
     await sleep(300);
     check('one undo: keys and FK back', (await ok('chara.get', { id })).kinematics.fk === true && (await ok('timeline.get')).tracks.filter((x) => bakedIds.includes(x.id)).every((x) => x.enabled));

@@ -293,6 +293,21 @@ namespace StudioEX.Bridge.Api
             float back = TL.playbackTime;
             string name = ClipName(c.oiCharInfo.animeInfo);
             var rot = bones.Select(b => new Quaternion[times.Count]).ToList();
+            // the hips' travel (bob, sway, moving along): with the body baked it goes on the character's own position
+            // track and the clip is held on its first frame over the range, so the bake no longer needs the clip
+            bool travel = partNames.Contains("body");
+            var hips = c.listBones.FirstOrDefault(b => b?.guideObject?.transformTarget != null && b.guideObject.transformTarget.name == "cf_j_hips")?.guideObject.transformTarget;
+            var root = c.guideObject;
+            if (hips == null || root?.transformTarget == null) travel = false;
+            var hipsAt = new Vector3[times.Count];
+            var rootM = new Matrix4x4[times.Count];
+            var parentInv = new Matrix4x4[times.Count];
+            var rootPos = new Vector3[times.Count];
+            // world rotations (for the held clip: bones between baked ones that aren't FK bones, like the upper spine,
+            // stay as they are at t0, so the baked rotations make up for them)
+            var worldRot = bones.Select(b => new Quaternion[times.Count]).ToList();
+            var parentRot = bones.Select(b => new Quaternion[times.Count]).ToList();
+            var rootRot = new Quaternion[times.Count];
             int keys = 0;
             var made = new List<int>();
 
@@ -325,7 +340,22 @@ namespace StudioEX.Bridge.Api
                         // another clip took over here: its state only exists from this update on, so set its time again
                         string now = clipOf();
                         if (now != was) { TL.Seek(t + 1e-4f); TL.Seek(t); animator.Update(0f); was = now; }
-                        for (int i = 0; i < bones.Count; i++) rot[i][k] = bones[i].guideObject.transformTarget.localRotation;
+                        for (int i = 0; i < bones.Count; i++)
+                        {
+                            var tr = bones[i].guideObject.transformTarget;
+                            rot[i][k] = tr.localRotation;
+                            worldRot[i][k] = tr.rotation;
+                            parentRot[i][k] = tr.parent != null ? tr.parent.rotation : Quaternion.identity;
+                        }
+                        rootRot[k] = root?.transformTarget != null ? root.transformTarget.rotation : Quaternion.identity;
+                        if (travel)
+                        {
+                            var rt = root.transformTarget;
+                            hipsAt[k] = hips.position;
+                            rootM[k] = rt.localToWorldMatrix;
+                            parentInv[k] = rt.parent != null ? rt.parent.worldToLocalMatrix : Matrix4x4.identity;
+                            rootPos[k] = root.changeAmount.pos;
+                        }
                     }
                 }
                 finally
@@ -340,6 +370,7 @@ namespace StudioEX.Bridge.Api
                 c.ActiveKinematicMode(OICharInfo.KinematicMode.FK, true, false);
                 for (int i = 0; i < FKCtrl.parts.Length && i < info.activeFK.Length; i++) c.ActiveFK(FKCtrl.parts[i], info.activeFK[i], true);
 
+                if (travel) HeldClipRotations(bones, rot, worldRot, parentRot, rootRot);
                 int before = Interpolables.Count;
                 var existing = new HashSet<Interpolable>(Interpolables.Values);
                 for (int i = 0; i < bones.Count; i++)
@@ -352,6 +383,7 @@ namespace StudioEX.Bridge.Api
                     keys += WriteGuideKeys(c, g, rotModel, ks, times, 0, times.Count - 1, true, k => g.changeAmount.rot = q[k].eulerAngles);
                     g.changeAmount.rot = keep;
                 }
+                if (travel) keys += BakeTravel(c, times, hipsAt, rootM, parentInv, rootPos);
                 made.AddRange(Interpolables.Values.Where(ip => !existing.Contains(ip)).Select(ip => ip.GetHashCode()));
                 if (made.Count > 0)
                     Undoable("Bake " + name, () => GroupCreate(new Dictionary<string, object> { { "name", name + " (baked)" }, { "tracks", made.Cast<object>().ToList() } }));
@@ -366,8 +398,114 @@ namespace StudioEX.Bridge.Api
             {
                 { "keys", keys }, { "bones", bones.Count }, { "samples", times.Count }, { "tracks", made.Count },
                 { "t0", Math.Round(t0, 4) }, { "t1", Math.Round(t1, 4) }, { "name", name },
-                { "parts", partNames.Cast<object>().ToList() },
+                { "parts", partNames.Cast<object>().ToList() }, { "travel", travel },
             };
+        }
+
+        /// <summary>
+        /// With the clip held on its pose at the first sample, bones that aren't baked (the upper spine and waist aren't
+        /// FK bones; parts left out of the bake) stay as they are there. Each baked bone's rotation is worked out under
+        /// that held parent chain so it still ends up turned the way the clip had it (in the character's own space).
+        /// </summary>
+        private static void HeldClipRotations(List<OCIChar.BoneInfo> bones, List<Quaternion[]> rot, List<Quaternion[]> worldRot, List<Quaternion[]> parentRot, Quaternion[] rootRot)
+        {
+            int n = rootRot.Length;
+            var tr = bones.Select(b => b.guideObject.transformTarget).ToList();
+            // nearest baked ancestor of each baked bone
+            var anc = new int[bones.Count];
+            for (int i = 0; i < bones.Count; i++)
+            {
+                anc[i] = -1;
+                for (var p = tr[i].parent; p != null && anc[i] < 0; p = p.parent) anc[i] = tr.IndexOf(p);
+            }
+            var r0inv = Quaternion.Inverse(rootRot[0]);
+            for (int i = 0; i < bones.Count; i++)
+            {
+                var heldParent = r0inv * parentRot[i][0]; // the parent at the held pose, in the character's space
+                var link = anc[i] >= 0 ? Quaternion.Inverse(r0inv * worldRot[anc[i]][0]) * heldParent : Quaternion.identity;
+                for (int k = 0; k < n; k++)
+                {
+                    var rinv = Quaternion.Inverse(rootRot[k]);
+                    var want = rinv * worldRot[i][k];
+                    var parent = anc[i] >= 0 ? rinv * worldRot[anc[i]][k] * link : heldParent;
+                    rot[i][k] = Quaternion.Inverse(parent) * want;
+                }
+            }
+        }
+
+        /// <summary>A float track's value at t, the way Timeline interpolates it.</summary>
+        private static float FloatAt(Interpolable ip, float t)
+        {
+            KeyValuePair<float, TLKeyframe>? l = null, r = null;
+            foreach (var kv in ip.keyframes) { if (kv.Key <= t + 1e-5f) l = kv; else { r = kv; break; } }
+            if (l == null) return r != null && r.Value.Value.value is float rv0 ? rv0 : 0f;
+            float lv = l.Value.Value.value is float x ? x : 0f;
+            if (r == null || !(r.Value.Value.value is float rv)) return lv;
+            float u = (t - l.Value.Key) / (r.Value.Key - l.Value.Key);
+            return Mathf.LerpUnclamped(lv, rv, l.Value.Value.curve.Evaluate(u));
+        }
+
+        /// <summary>
+        /// Hold the clip on its pose at times[0] over the range and move the hips' travel onto the character's position
+        /// track instead: the root goes where it has to for the held hips to be where the clip had them. Keys only as
+        /// many as stay within about a millimetre. After the range the clip and the root carry on as before.
+        /// </summary>
+        private static int BakeTravel(OCIChar c, List<float> times, Vector3[] hipsAt, Matrix4x4[] rootM, Matrix4x4[] parentInv, Vector3[] rootPos)
+        {
+            int n = times.Count;
+            float t0 = times[0], t1 = times[n - 1];
+            int fps = Mathf.Clamp((int)F_fps.GetValue(Ready), 1, 240);
+            float frame = 1f / fps;
+            bool after = t1 < TL.duration - 1e-4f;
+
+            // 1. the clip: held at its value at t0 over the range, then on from where it would have been
+            var time = CharTrack(c, "charAnimationTime");
+            if (time == null) return 0;
+            History.Record(new[] { time });
+            float v0 = FloatAt(time, t0);
+            float vAfter = FloatAt(time, Mathf.Min(TL.duration, t1 + frame));
+            AnimationCurve carry = null;
+            foreach (var kv in time.keyframes) { if (kv.Key <= t1 + 1e-4f) carry = kv.Value.curve; else break; }
+            foreach (var t in time.keyframes.Keys.Where(t => t >= t0 - 1e-4f && t <= t1 + 1e-4f).ToList()) time.keyframes.Remove(t);
+            time.keyframes[t0] = new TLKeyframe(v0, time, HoldCurve());
+            // the clip goes on a frame after the range, the same moment the root goes back
+            float ta0 = Mathf.Min(TL.duration, t1 + frame);
+            if (after)
+            {
+                float va = vAfter;
+                foreach (var t in time.keyframes.Keys.Where(t => t > t1 + 1e-4f && t < ta0 - 1e-4f).ToList()) time.keyframes.Remove(t);
+                time.keyframes[ta0] = new TLKeyframe(va, time, carry != null ? new AnimationCurve(carry.keys) : AnimationCurve.Linear(0f, 0f, 1f, 1f));
+            }
+
+            // 2. the root: where it puts the held hips onto the clip's path
+            var posModel = Models.FirstOrDefault(m => m.owner == "Timeline" && m.id == "guideObjectPos");
+            if (posModel == null) return 0;
+            var held = rootM[0].inverse.MultiplyPoint3x4(hipsAt[0]); // the hips in the character's own space, held
+            var pos = new Vector3[n];
+            for (int k = 0; k < n; k++)
+            {
+                var inRoot = rootM[k].inverse.MultiplyPoint3x4(hipsAt[k]);
+                var world = rootM[k].MultiplyPoint3x4(inRoot - held);
+                pos[k] = parentInv[k].MultiplyPoint3x4(world);
+            }
+            var g = c.guideObject;
+            float scale = Mathf.Max(1e-3f, ((Vector3)rootM[0].GetColumn(0)).magnitude);
+            var ks = Simplify(new List<int> { 0, n - 1 }, 0, n - 1, (k, x, y, f) => Vector3.Distance(Vector3.LerpUnclamped(pos[x], pos[y], f), pos[k]) * scale, 0.001f, times);
+            var keep = g.changeAmount.pos;
+            int written = WriteGuideKeys(c, g, posModel, ks, times, 0, n - 1, true, k => g.changeAmount.pos = pos[k]);
+            // after the range: back where it was (the clip carries the hips again)
+            if (after && Interpolables.TryGetValue(new Interpolable(c, g, posModel).GetHashCode(), out var ip))
+            {
+                float ta = Mathf.Min(TL.duration, t1 + frame);
+                if (!ip.keyframes.Keys.Any(t => Mathf.Abs(t - ta) < 1e-4f && t > t1 + 1e-4f))
+                {
+                    g.changeAmount.pos = rootPos[n - 1];
+                    ip.keyframes[ta] = new TLKeyframe(ip.GetValue(), ip, AnimationCurve.Linear(0f, 0f, 1f, 1f));
+                    written++;
+                }
+            }
+            g.changeAmount.pos = keep;
+            return written;
         }
     }
 }
