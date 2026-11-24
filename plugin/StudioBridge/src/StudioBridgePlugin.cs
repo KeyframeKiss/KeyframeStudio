@@ -42,6 +42,9 @@ namespace StudioEX.Bridge
             gameObject.AddComponent<ViewportTools>();
             gameObject.AddComponent<ViewportGizmos>();
             gameObject.AddComponent<CameraTools>();
+            StudioHotkeys.Bind(Config);
+            gameObject.AddComponent<StudioHotkeys>();
+            StudioHotkeys.Register(_router);
             ViewportTools.Register(_router);
             ViewportGizmos.Register(_router);
             gameObject.AddComponent<FaceBaker>();

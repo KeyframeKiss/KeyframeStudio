@@ -619,8 +619,15 @@ let toastId = 1;
  * A short message that pops up above the transport bar. It stays long enough to read (longer text, longer
  * time), pauses while the mouse is on it, and is kept in the Messages list in the status bar afterwards.
  */
+// a Studio hotkey just ran: for a few seconds, what the app says also shows in Studio's window (studio.flash)
+let echoUntil = 0;
+export function echoToastsToStudio(ms = 4000) {
+  echoUntil = Date.now() + ms;
+}
+
 export function toast(text: string, kind: Toast['kind'] = 'info') {
   const id = toastId++;
+  if (Date.now() < echoUntil) bridge.request('studio.flash', { text, seconds: kind === 'error' ? 3 : 1.8 }).catch(() => {});
   if (kind === 'error') log('error', text, 'ui');
   const base = kind === 'error' ? 4000 : kind === 'done' ? 2600 : 2200;
   const ms = Math.min(16000, base + text.length * 55); // ~ a comfortable reading pace

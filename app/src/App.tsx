@@ -15,6 +15,7 @@ import { PRESETS, toFlat } from './lib/curve';
 import { isInteractive } from './lib/pressable';
 import { startAutoTranslate } from './lib/translate';
 import { startUpdateChecks } from './lib/updates';
+import { installStudioHotkeys } from './lib/studioHotkeys';
 import {
   applyCurveToSelected,
   copySelected,
@@ -175,7 +176,9 @@ export function App() {
     const onKeyEvt = () => keySelected();
     window.addEventListener('keydown', onKey);
     window.addEventListener('studioex:key', onKeyEvt);
+    const offStudioKeys = installStudioHotkeys();
     return () => {
+      offStudioKeys();
       window.removeEventListener('keydown', onKey);
       window.removeEventListener('studioex:key', onKeyEvt);
     };

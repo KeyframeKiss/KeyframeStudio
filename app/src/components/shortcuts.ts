@@ -16,6 +16,7 @@ export const SHORTCUTS: [string, string][] = [
   ['Ctrl A', 'Select all visible keys'],
   ['Ctrl G', 'New folder from selected tracks'],
   ['G', 'Frame guides on / off (which ones: Shoot, on the right)'],
+  ['Ctrl K in Studio', 'Key while CharaStudio is the active window (Ctrl Shift K: the whole object). Change them in Mod settings › Keyframe Studio Bridge'],
   ['Esc', 'Clear selection'],
   ['Ctrl Z / Ctrl Y', 'Undo / redo (timeline, character, look, objects)'],
   ['1 – 5', 'Easing: Linear · In-out · In · Out · Step'],
