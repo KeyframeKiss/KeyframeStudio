@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Help } from './Help';
 import { ask } from './Dialogs';
 import { parseTags, useLibMeta } from '../lib/libmeta';
@@ -8,7 +8,9 @@ import { PromptDialog, type PromptState } from './PromptDialog';
 import { StarIcon } from './StarIcon';
 import { Slider } from './CharacterPanel';
 import { ContextMenu, type MenuItem } from './ContextMenu';
+import { Popover } from './Shell';
 import { Icon } from './Icon';
+import { SwitchCard } from './EditorBits';
 
 import { pressable } from '../lib/pressable';
 interface Preset {
@@ -37,6 +39,17 @@ export const lookChanged = () => window.dispatchEvent(new CustomEvent('studioex:
 
 /** Look preset gallery: apply (all or some groups, any strength), save, overwrite, delete. */
 /** A look without a picture: a gradient of its colours, lit from the top left like a scene. */
+const AUTO_KEY = 'kf.looks.autoPicture';
+const lsBool = (k: string, d: boolean) => {
+  try {
+    const v = localStorage.getItem(k);
+    return v == null ? d : v === '1';
+  } catch {
+    return d;
+  }
+};
+const wait = (ms: number) => new Promise((r) => window.setTimeout(r, ms));
+
 function swatchStyle(sw?: string[]): React.CSSProperties | undefined {
   if (!sw || sw.length < 2) return undefined;
   const [a, b, c = b] = sw;
@@ -59,6 +72,19 @@ export function LookPresets({ wide }: { wide?: boolean }) {
   const [tagFilter, setTagFilter] = useState<string[]>([]);
   const [prompt, setPrompt] = useState<PromptState | null>(null);
   const lib = useLibMeta('looks');
+  // a look without a picture gets one the first time it's applied in full (can be switched off)
+  const [autoPic, setAutoPicState] = useState(() => lsBool(AUTO_KEY, true));
+  const setAutoPic = (on: boolean) => {
+    setAutoPicState(on);
+    try {
+      localStorage.setItem(AUTO_KEY, on ? '1' : '0');
+    } catch {
+      /* storage unavailable */
+    }
+  };
+  // retaking every picture from the current scene: how far along, and whether to stop
+  const [batch, setBatch] = useState<{ done: number; total: number } | null>(null);
+  const stopBatch = useRef(false);
 
   useEffect(() => {
     if (status === 'open') call<Preset[]>('look.presets').then((p) => p && setPresets(p));
@@ -72,13 +98,49 @@ export function LookPresets({ wide }: { wide?: boolean }) {
       lib.markUsed(p.file);
       toast(`Applied “${p.name}”${strength < 1 ? ` at ${Math.round(strength * 100)}%` : ''} — Ctrl+Z to undo`);
       // A look without a picture (the built-in starters) gets one the first time it's applied in full.
-      if (!p.thumb && strength >= 1 && groups.size === GROUPS.length)
+      if (autoPic && !p.thumb && strength >= 1 && groups.size === GROUPS.length)
         window.setTimeout(() => {
           bridge
             .request<Preset[]>('look.thumb', { file: p.file })
             .then((l) => l && setPresets(l))
             .catch(() => {});
         }, 900);
+    }
+  };
+
+  const clearPicture = (p: Preset) =>
+    call<Preset[]>('look.clearThumb', { file: p.file }).then((l) => l && (setPresets(l), toast(`“${p.name}” shows its colours again`)));
+
+  const clearAll = async () => {
+    if (!(await ask('Remove the pictures of all looks? Each shows its colours until it gets a new picture.'))) return;
+    const l = await call<Preset[]>('look.clearThumb', { all: true });
+    if (l) (setPresets(l), toast('Pictures removed'));
+  };
+
+  // apply each look in full, take its picture of the current view, then undo them all so the scene keeps its own look
+  const retakeAll = async () => {
+    const all = presets;
+    if (!all.length || batch) return;
+    if (!(await ask(`Retake the pictures of all ${all.length} looks from the current view? Each look is applied for a moment; your scene's own look comes back afterwards.`))) return;
+    stopBatch.current = false;
+    let applied = 0;
+    let latest: Preset[] | undefined;
+    setBatch({ done: 0, total: all.length });
+    try {
+      for (const p of all) {
+        if (stopBatch.current) break;
+        if (!(await call('look.applyPreset', { file: p.file, groups: GROUPS.map((g) => g.id), strength: 1, ids: useStore.getState().studioSelection }))) break;
+        applied++;
+        await wait(900);
+        latest = (await call<Preset[]>('look.thumb', { file: p.file })) ?? latest;
+        setBatch({ done: applied, total: all.length });
+      }
+    } finally {
+      for (let i = 0; i < applied; i++) await call('undo');
+      lookChanged();
+      if (latest) setPresets(latest);
+      setBatch(null);
+      toast(stopBatch.current ? `Stopped after ${applied} picture${applied === 1 ? '' : 's'}; the scene's look is back` : 'New pictures from this scene; its own look is back');
     }
   };
 
@@ -139,7 +201,36 @@ export function LookPresets({ wide }: { wide?: boolean }) {
           </div>
         </div>
         {wide && <span className="spacer" style={{ flex: 1 }} />}
-        <Help text="Click a look to apply it (the parts lit up above, at the strength set). Looks get a thumbnail of the current view when saved — the starters the first time you apply one in full. Right-click a look to retake its thumbnail, tag it or overwrite it with the current settings." />
+        <Help text="Click a look to apply it (the parts lit up above, at the strength set). Looks get a picture of the current view when saved, and the built-in ones the first time you apply one in full. Right-click a look to retake or remove its picture, tag it or overwrite it with the current settings." />
+        {batch ? (
+          <button className="btn solid" onClick={() => (stopBatch.current = true)} title="Stop; the scene's own look comes back">
+            Taking pictures {batch.done}/{batch.total}… Stop
+          </button>
+        ) : (
+          <Popover
+            align="right"
+            placement="down"
+            width={300}
+            trigger={(open, toggle) => (
+              <button className={`btn solid ${open ? 'on' : ''}`} onClick={toggle} disabled={status !== 'open'}>
+                <Icon name="camera" size={13} /> Pictures
+              </button>
+            )}
+          >
+            {(close) => (
+              <div className="layout-menu look-pic-menu">
+                <button className="menu-item" onClick={() => (close(), void retakeAll())}>
+                  Retake all from this scene…
+                </button>
+                <button className="menu-item danger" onClick={() => (close(), void clearAll())}>
+                  Remove all pictures…
+                </button>
+                <div className="menu-sep" />
+                <SwitchCard on={autoPic} label="Picture on first use" help="A look without a picture gets one of the current view the first time you apply it in full. Off: it keeps its colours until you take one." onChange={setAutoPic} />
+              </div>
+            )}
+          </Popover>
+        )}
         <button className="btn" title="Back to Studio's default look (undoable)" onClick={() => call('look.resetDefault').then((r) => r && lookChanged())}>
           Reset to default
         </button>
@@ -186,9 +277,10 @@ export function LookPresets({ wide }: { wide?: boolean }) {
                       }),
                   },
                   {
-                    label: p.thumb ? 'Retake thumbnail from the current view' : 'Take thumbnail from the current view',
-                    action: () => call<Preset[]>('look.thumb', { file: p.file }).then((l) => l && (setPresets(l), toast(`New thumbnail for “${p.name}”`))),
+                    label: p.thumb ? 'Retake picture from the current view' : 'Take picture from the current view',
+                    action: () => call<Preset[]>('look.thumb', { file: p.file }).then((l) => l && (setPresets(l), toast(`New picture for “${p.name}”`))),
                   },
+                  ...(p.thumb ? [{ label: 'Remove picture (show its colours)', action: () => void clearPicture(p) }] : []),
                   { label: 'Overwrite with current look…', action: async () => (await ask(`Replace “${p.name}” (settings and thumbnail) with the current look? This can't be undone.`)) && save(p.name) },
                   { sep: true },
                   { label: 'Delete…', danger: true, action: () => setConfirmDelete(p) },

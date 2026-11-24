@@ -55,6 +55,15 @@ namespace StudioEX.Bridge.Api
                 File.WriteAllBytes(Path.ChangeExtension(path, ".jpg"), Convert.FromBase64String(thumb.Substring(thumb.IndexOf(',') + 1)));
                 return ListPresets();
             });
+            // a look's picture off again (it shows its colours), or every look's with all: true
+            r.Add("look.clearThumb", a =>
+            {
+                var files = a.GetBool("all")
+                    ? Directory.GetFiles(Folder, "*.jpg")
+                    : new[] { Path.Combine(Folder, SafeFile(a.GetString("file") ?? "") + ".jpg") };
+                foreach (var f in files) if (File.Exists(f)) File.Delete(f);
+                return ListPresets();
+            });
             r.Add("look.resetDefault", a =>
             {
                 UndoStack.Push(new LookUndo(Snapshot(), "reset"));
