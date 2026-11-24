@@ -179,7 +179,8 @@ const XUKMI_NAMES: Record<string, string> = {
 };
 const xukmiLabel = (e: string) => XUKMI_NAMES[e] ?? e.replace(/([a-z])([A-Z])/g, '$1 $2');
 
-export function EffectsPage() {
+/** Keyframe Studio's effects (and xukmi FX). With `only`: just those cards, tagged, for Look › Picture; 'xukmi' = its items. */
+export function EffectsPage({ only }: { only?: string[] } = {}) {
   const status = useStore((s) => s.status);
   const [fx, setFx] = useState<FxState | null>(null);
   const [xk, setXk] = useState<Xukmi | null>(null);
@@ -245,9 +246,18 @@ export function EffectsPage() {
         onSet={(v) => set(def.id, v)}
         onReset={() => bridge.request('fx.reset', { effect: def.id }).then(load)}
         doubles={[...xkVisible(def.xukmi).map((i) => `xukmi's ${xukmiLabel(i.effect)} (${i.name})`), ...(studioOn(def.studio) ? [`Studio's own ${def.studio === 'dof' ? 'depth of field' : def.studio}`] : [])]}
+        tag={only ? 'Keyframe Studio' : undefined}
       />
     );
   };
+
+  if (only)
+    return (
+      <>
+        {!fx.ready && only.some((id) => id !== 'xukmi') && <div className="fx-warn">Effects can't run: {fx.error ?? 'the shaders didn’t load'}</div>}
+        {only.map((id) => (id === 'xukmi' ? (xk?.installed ? <XukmiSection key="xukmi" xk={xk} reload={load} /> : null) : card(id)))}
+      </>
+    );
 
   return (
     <Page>
@@ -365,7 +375,7 @@ function XukmiSection({ xk, reload }: { xk: Xukmi; reload: () => void }) {
   );
 }
 
-function EffectCard({ def, values, onSet, onReset, doubles }: { def: EffectDef; values: Record<string, Value>; onSet: (v: Record<string, Value>) => void; onReset: () => void; doubles: string[] }) {
+function EffectCard({ def, values, onSet, onReset, doubles, tag }: { def: EffectDef; values: Record<string, Value>; onSet: (v: Record<string, Value>) => void; onReset: () => void; doubles: string[]; tag?: string }) {
   const [more, setMore] = useState(false);
   const on = values.on === true;
   const shown = (p: Param) => !(p.kind === 'chara' && Math.round(values.autoFocus as number) !== 2);
@@ -379,6 +389,7 @@ function EffectCard({ def, values, onSet, onReset, doubles }: { def: EffectDef; 
             {def.title}
             <Help text={def.help} />
           </b>
+          {tag && <small className="src-tag">{tag}</small>}
         </div>
         <button className="btn icon" title="Back to the starting values" onClick={onReset}>
           <Icon name="undo" size={13} />

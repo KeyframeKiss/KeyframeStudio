@@ -29,7 +29,7 @@ const SECTIONS: Section[] = [
           </li>
           <li>Load a scene from <b>Library › Scenes</b> (<K>Ctrl O</K>) or from Studio itself.</li>
           <li>
-            Pick a workspace along the top: <b>Animate</b>, <b>Pose</b>, <b>Look</b>, <b>Shoot</b> or <b>Library</b> (<K>Ctrl 1</K>–<K>5</K>).
+            Pick a workspace along the top: <b>Animate</b>, <b>Character</b>, <b>Look</b>, <b>Shoot</b> or <b>Library</b> (<K>Ctrl 1</K>–<K>5</K>).
           </li>
         </ol>
         <p>

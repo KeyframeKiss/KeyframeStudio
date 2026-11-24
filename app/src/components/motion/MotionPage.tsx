@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { bridge } from '../../bridge/client';
-import { call, displayName, liveTime, seek, useStore } from '../../state/store';
+import { call, displayName, liveTime, seek, setClipShelf, useStore } from '../../state/store';
 import { appended, blockEnd, blockName, clearSeq, listenMotion, loadAll, newId, plays, seqEnd, setSeq, useMotion, type Block, type Seq } from '../../lib/motionSeq';
 import { MClipPicker } from './MClipPicker';
 import { AnimationBrowser } from '../AnimationBrowser';
@@ -58,6 +58,7 @@ export function MotionPage() {
   const fps = useStore((s) => s.tl?.fps ?? 30);
   useStore((s) => s.showEnglish);
   const { seqs, building, lengths, sel } = useMotion();
+  const clipShelf = useStore((s) => s.clipShelf);
   const [picker, setPicker] = useState<null | { kind: Block['kind']; replace?: string }>(null);
   const [catalog, setCatalog] = useState<Catalog[] | null>(null);
   const [draft, setDraft] = useState<{ chara: number; blocks: Block[] } | null>(null);
@@ -340,6 +341,9 @@ export function MotionPage() {
           </button>
         )}
         <span className="spacer" />
+        <button className={`btn solid ${clipShelf ? 'on' : ''}`} aria-pressed={clipShelf} onClick={() => setClipShelf(!clipShelf)} title="Your motion clips beside the lanes: save the selected keys as a clip, apply one to a character, rename or delete">
+          <Icon name="scissors" size={13} /> Clips
+        </button>
         <span className="mo-status">
           {busy ? (building[chara!] > 0 ? `Building… ${Math.round(building[chara!] * 100)}%` : 'Building…') : seq?.blocks.length ? `${seq.blocks.length} block${seq.blocks.length > 1 ? 's' : ''} · ${seqEnd(seq).toFixed(2)} s · built` : 'No motion yet'}
         </span>

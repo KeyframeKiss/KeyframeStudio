@@ -6406,6 +6406,10 @@ html.frameless .tooltip {
 input[type='range'] {
   transition: filter var(--t-fast) var(--ease-out);
 }
+/* Chromium draws a dark empty track beside a light accent; a deeper accent on light ground keeps the track light */
+:root[data-theme='light'] input[type='range'] {
+  accent-color: color-mix(in srgb, var(--accent) 70%, #000) !important;
+}
 input[type='range']:hover {
   filter: brightness(1.12);
 }
@@ -9827,4 +9831,55 @@ a.btn {
   padding: 0 var(--sp-2);
   border-radius: 999px;
   font-size: var(--fs-xs);
+}
+
+/* Animate › Motion builder with its clip shelf */
+.mo-split {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+.mo-split-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.mo-shelf {
+  width: 320px;
+  flex: none;
+  border-left: 1px solid var(--line);
+  background: var(--bg-1);
+  overflow: auto;
+}
+
+/* Shoot › Output: Video / Pictures on top */
+.output-mode {
+  display: flex;
+  justify-content: center;
+  padding: var(--sp-3) var(--sp-4) 0;
+}
+
+/* Look › Picture: Studio's settings and Keyframe Studio's effects, flowing in columns */
+.pic-cards {
+  columns: 3 340px;
+  column-gap: 10px;
+}
+.pic-cards > * {
+  break-inside: avoid;
+  margin-bottom: 10px;
+}
+.pic-cards > .fx-warn {
+  column-span: all;
+}
+/* where a card comes from: Studio or Keyframe Studio */
+.look-card-head .src-tag {
+  align-self: flex-start;
+  margin-top: 2px;
+  padding: 0 6px;
+  border-radius: 99px;
+  border: 1px solid var(--line);
+  color: var(--text-2);
+  font-size: var(--fs-xs);
+  line-height: 16px;
 }

@@ -40,8 +40,13 @@ export interface MatRule {
 const hex = (c: number[]) => '#' + c.slice(0, 3).map((v) => Math.round(Math.max(0, Math.min(1, v)) * 255).toString(16).padStart(2, '0')).join('');
 const fromHex = (h: string, a = 1): RGBA => [parseInt(h.slice(1, 3), 16) / 255, parseInt(h.slice(3, 5), 16) / 255, parseInt(h.slice(5, 7), 16) / 255, a];
 
-/** Look › Settings: every render setting, grouped into sections of cards (live, undoable). */
-export function LookPanel() {
+/**
+ * Studio's own render settings as cards (live, undoable). On its own: every card, in sections. With `cards`: just
+ * those cards, tagged "Studio", for Look › Picture (beside Keyframe Studio's effects), Lighting and Materials.
+ */
+export function LookPanel({ cards: only }: { cards?: string[] } = {}) {
+  const has = (id: string) => !only || only.includes(id);
+  const tag = only ? 'Studio' : undefined;
   const status = useStore((s) => s.status);
   const revision = useStore((s) => s.revision);
   const selection = useStore((s) => s.studioSelection);
@@ -84,161 +89,166 @@ export function LookPanel() {
   const l = look.lights;
   const lutName = (n: Named) => displayName({ name: n.name, nameEn: n.nameEn ?? undefined });
 
-  return (
-    <Page max={1280}>
-      <div className="look-page-bar">
-        <span style={{ flex: 1 }} />
-        <Help text="Changes show in Studio right away, are undoable (Ctrl+Z) and are saved with the scene." />
-        <button className="btn" title="Back to Studio's default look (undoable)" onClick={() => call('look.resetDefault').then((r) => r !== undefined && load())}>
-          Reset to Studio default
-        </button>
-        <button className="btn solid" title="Save these settings as a look you can apply to other scenes" onClick={() => showTab('look', 'presets')}>
-          Save as a look…
-        </button>
-      </div>
-
-      <LookGroup title="Color" hint="The picture's overall color and glow">
-        <LookCard title="Color grade" desc="A LUT tints the whole picture">
-          <div className="kv">
-            <label>LUT</label>
-            <select className="input" value={e.lut} onChange={(ev) => patch('effects', { lut: Number(ev.target.value) })}>
-              {look.luts.map((x) => (
-                <option key={x.id} value={x.id}>
-                  {lutName(x)}
-                </option>
-              ))}
-            </select>
-            {look.twoLut && (
-              <>
-                <label title="Second LUT (KK_TwoLut) — Blend fades from LUT to LUT 2">LUT 2</label>
-                <select className="input" value={e.lut2} onChange={(ev) => patch('effects', { lut2: Number(ev.target.value) })}>
-                  {look.luts.map((x) => (
-                    <option key={x.id} value={x.id}>
-                      {lutName(x)}
-                    </option>
-                  ))}
-                </select>
-              </>
-            )}
-            <label>Blend</label>
-            <Slider value={e.lutBlend} min={0} max={1} step={0.01} onChange={(v) => patch('effects', { lutBlend: v })} />
-          </div>
-        </LookCard>
-        <LookCard title="Bloom" desc="Bright areas glow" on={e.bloom} onToggle={(v) => patch('effects', { bloom: v })}>
-          <div className="kv">
-            <label>Intensity</label>
-            <Slider value={e.bloomIntensity} min={0} max={5} step={0.01} onChange={(v) => patch('effects', { bloomIntensity: v })} />
-            <label>Threshold</label>
-            <Slider value={e.bloomThreshold} min={0.5} max={1} step={0.01} onChange={(v) => patch('effects', { bloomThreshold: v })} />
-            <label>Softness</label>
-            <Slider value={e.bloomBlur} min={0.1} max={10} step={0.05} onChange={(v) => patch('effects', { bloomBlur: v })} />
-          </div>
-        </LookCard>
-        <LookCard title="Vignette" desc="Darkened corners (Studio only has on/off)" on={e.vignette} onToggle={(v) => patch('effects', { vignette: v })}>
-          <div className="pn-note">
-            Studio's vignette is on or off only. For strength, roundness and colour, use the vignette in{' '}
-            <button className="btn small solid" onClick={() => showTab('look', 'effects')}>
-              Effects
-            </button>
-            .
-          </div>
-        </LookCard>
-      </LookGroup>
-
-      <LookGroup title="Depth & atmosphere" hint="Focus, contact shadows and the air between camera and scene">
-        <LookCard title="Depth of field" desc="Blur away from the focus point" on={e.dof} onToggle={(v) => patch('effects', { dof: v })}>
-          <div className="kv">
-            <label>Focal size</label>
-            <Slider value={e.dofFocal} min={0} max={2} step={0.01} onChange={(v) => patch('effects', { dofFocal: v })} />
-            <label>Aperture</label>
-            <Slider value={e.dofAperture} min={0} max={1} step={0.01} onChange={(v) => patch('effects', { dofAperture: v })} />
-          </div>
-        </LookCard>
-        <LookCard title="Ambient occlusion" desc="Soft shadows where things meet" on={e.ssao} onToggle={(v) => patch('effects', { ssao: v })}>
-          <div className="kv">
-            <label>Color</label>
-            <ColorInput value={e.ssaoColor} onChange={(c) => patch('effects', { ssaoColor: c })} />
-            <label>Radius</label>
-            <Slider value={e.ssaoRadius} min={0} max={1} step={0.005} onChange={(v) => patch('effects', { ssaoRadius: v })} />
-          </div>
-        </LookCard>
-        <LookCard title="Fog" desc="Haze that thickens with distance" on={e.fog} onToggle={(v) => patch('effects', { fog: v })}>
-          <div className="kv">
-            <label>Color</label>
-            <ColorInput value={e.fogColor} onChange={(c) => patch('effects', { fogColor: c })} />
-            <label>Height</label>
-            <Slider value={e.fogHeight} min={0} max={50} step={0.1} onChange={(v) => patch('effects', { fogHeight: v })} />
-            <label>Start</label>
-            <Slider value={e.fogStart} min={0} max={50} step={0.1} onChange={(v) => patch('effects', { fogStart: v })} />
-          </div>
-        </LookCard>
-        <LookCard title="Sun shafts" desc="Light rays from a sun caster set in Studio" on={e.sunShafts} onToggle={(v) => patch('effects', { sunShafts: v })}>
-          <div className="kv">
-            <label>Color</label>
-            <ColorInput value={e.sunColor} onChange={(c) => patch('effects', { sunColor: c })} />
-            <label>Threshold</label>
-            <ColorInput value={e.sunThreshold} onChange={(c) => patch('effects', { sunThreshold: c })} />
-          </div>
-        </LookCard>
-      </LookGroup>
-
-      <LookGroup title="Characters" hint="How every character is shaded">
-        <LookCard title="Toon shading" desc="Shadow ramp and outlines for all characters" wide>
-          <div className="look-two">
+  const body = (
+    <>
+      <LookGroup flat={!!only} title="Color" hint="The picture's overall color and glow">
+        {has('lut') && (
+          <LookCard tag={tag} title="Color grade" desc="A LUT tints the whole picture">
             <div className="kv">
-              <label>Ramp</label>
-              <select className="input" value={t.ramp} onChange={(ev) => patch('toon', { ramp: Number(ev.target.value) })}>
-                {look.ramps.map((x) => (
+              <label>LUT</label>
+              <select className="input" value={e.lut} onChange={(ev) => patch('effects', { lut: Number(ev.target.value) })}>
+                {look.luts.map((x) => (
                   <option key={x.id} value={x.id}>
                     {lutName(x)}
                   </option>
                 ))}
               </select>
-              <label>Shadow color</label>
-              <ColorInput value={t.ambientShadow} onChange={(c) => patch('toon', { ambientShadow: c })} />
-              <label>Shadow depth</label>
-              <Slider value={t.ambientShadowG} min={0} max={1} step={0.01} onChange={(v) => patch('toon', { ambientShadowG: v })} />
+              {look.twoLut && (
+                <>
+                  <label title="Second LUT (KK_TwoLut) — Blend fades from LUT to LUT 2">LUT 2</label>
+                  <select className="input" value={e.lut2} onChange={(ev) => patch('effects', { lut2: Number(ev.target.value) })}>
+                    {look.luts.map((x) => (
+                      <option key={x.id} value={x.id}>
+                        {lutName(x)}
+                      </option>
+                    ))}
+                  </select>
+                </>
+              )}
+              <label>Blend</label>
+              <Slider value={e.lutBlend} min={0} max={1} step={0.01} onChange={(v) => patch('effects', { lutBlend: v })} />
             </div>
+          </LookCard>
+        )}
+        {has('bloom') && (
+          <LookCard tag={tag} title="Bloom" desc="Bright areas glow" on={e.bloom} onToggle={(v) => patch('effects', { bloom: v })}>
             <div className="kv">
-              <label>Outline dark</label>
-              <Slider value={t.lineColor} min={0} max={1} step={0.01} onChange={(v) => patch('toon', { lineColor: v })} />
-              <label>Outline width</label>
-              <Slider value={t.lineWidth} min={0} max={1} step={0.01} onChange={(v) => patch('toon', { lineWidth: v })} />
-              <label>Options</label>
-              <div className="look-chips">
-                <button className={`btn solid ${t.faceNormal ? 'on' : ''}`} onClick={() => patch('toon', { faceNormal: !t.faceNormal })} title="Smoother face shading">
-                  Face normals
-                </button>
-                <button className={`btn solid ${t.faceShadow ? 'on' : ''}`} onClick={() => patch('toon', { faceShadow: !t.faceShadow })} title="Shadows on the face">
-                  Face shadow
-                </button>
-                <button className={`btn solid ${e.shadow ? 'on' : ''}`} onClick={() => patch('effects', { shadow: !e.shadow })} title="Characters cast shadows on themselves">
-                  Self shadows
-                </button>
+              <label>Intensity</label>
+              <Slider value={e.bloomIntensity} min={0} max={5} step={0.01} onChange={(v) => patch('effects', { bloomIntensity: v })} />
+              <label>Threshold</label>
+              <Slider value={e.bloomThreshold} min={0.5} max={1} step={0.01} onChange={(v) => patch('effects', { bloomThreshold: v })} />
+              <label>Softness</label>
+              <Slider value={e.bloomBlur} min={0.1} max={10} step={0.05} onChange={(v) => patch('effects', { bloomBlur: v })} />
+            </div>
+          </LookCard>
+        )}
+        {has('vignette') && (
+          <LookCard tag={tag} title="Vignette" desc="Darkened corners (Studio only has on/off)" on={e.vignette} onToggle={(v) => patch('effects', { vignette: v })}>
+            <div className="pn-note">On or off only. Keyframe Studio's vignette has strength, roundness and colour.</div>
+          </LookCard>
+        )}
+      </LookGroup>
+
+      <LookGroup flat={!!only} title="Depth & atmosphere" hint="Focus, contact shadows and the air between camera and scene">
+        {has('dof') && (
+          <LookCard tag={tag} title="Depth of field" desc="Blur away from the focus point" on={e.dof} onToggle={(v) => patch('effects', { dof: v })}>
+            <div className="kv">
+              <label>Focal size</label>
+              <Slider value={e.dofFocal} min={0} max={2} step={0.01} onChange={(v) => patch('effects', { dofFocal: v })} />
+              <label>Aperture</label>
+              <Slider value={e.dofAperture} min={0} max={1} step={0.01} onChange={(v) => patch('effects', { dofAperture: v })} />
+            </div>
+          </LookCard>
+        )}
+        {has('ssao') && (
+          <LookCard tag={tag} title="Ambient occlusion" desc="Soft shadows where things meet" on={e.ssao} onToggle={(v) => patch('effects', { ssao: v })}>
+            <div className="kv">
+              <label>Color</label>
+              <ColorInput value={e.ssaoColor} onChange={(c) => patch('effects', { ssaoColor: c })} />
+              <label>Radius</label>
+              <Slider value={e.ssaoRadius} min={0} max={1} step={0.005} onChange={(v) => patch('effects', { ssaoRadius: v })} />
+            </div>
+          </LookCard>
+        )}
+        {has('fog') && (
+          <LookCard tag={tag} title="Fog" desc="Haze that thickens with distance" on={e.fog} onToggle={(v) => patch('effects', { fog: v })}>
+            <div className="kv">
+              <label>Color</label>
+              <ColorInput value={e.fogColor} onChange={(c) => patch('effects', { fogColor: c })} />
+              <label>Height</label>
+              <Slider value={e.fogHeight} min={0} max={50} step={0.1} onChange={(v) => patch('effects', { fogHeight: v })} />
+              <label>Start</label>
+              <Slider value={e.fogStart} min={0} max={50} step={0.1} onChange={(v) => patch('effects', { fogStart: v })} />
+            </div>
+          </LookCard>
+        )}
+        {has('sun') && (
+          <LookCard tag={tag} title="Sun shafts" desc="Light rays from a sun caster set in Studio" on={e.sunShafts} onToggle={(v) => patch('effects', { sunShafts: v })}>
+            <div className="kv">
+              <label>Color</label>
+              <ColorInput value={e.sunColor} onChange={(c) => patch('effects', { sunColor: c })} />
+              <label>Threshold</label>
+              <ColorInput value={e.sunThreshold} onChange={(c) => patch('effects', { sunThreshold: c })} />
+            </div>
+          </LookCard>
+        )}
+      </LookGroup>
+
+      <LookGroup flat={!!only} title="Characters" hint="How every character is shaded">
+        {has('toon') && (
+          <LookCard tag={tag} title="Toon shading" desc="Shadow ramp and outlines for all characters" wide>
+            <div className="look-two">
+              <div className="kv">
+                <label>Ramp</label>
+                <select className="input" value={t.ramp} onChange={(ev) => patch('toon', { ramp: Number(ev.target.value) })}>
+                  {look.ramps.map((x) => (
+                    <option key={x.id} value={x.id}>
+                      {lutName(x)}
+                    </option>
+                  ))}
+                </select>
+                <label>Shadow color</label>
+                <ColorInput value={t.ambientShadow} onChange={(c) => patch('toon', { ambientShadow: c })} />
+                <label>Shadow depth</label>
+                <Slider value={t.ambientShadowG} min={0} max={1} step={0.01} onChange={(v) => patch('toon', { ambientShadowG: v })} />
+              </div>
+              <div className="kv">
+                <label>Outline dark</label>
+                <Slider value={t.lineColor} min={0} max={1} step={0.01} onChange={(v) => patch('toon', { lineColor: v })} />
+                <label>Outline width</label>
+                <Slider value={t.lineWidth} min={0} max={1} step={0.01} onChange={(v) => patch('toon', { lineWidth: v })} />
+                <label>Options</label>
+                <div className="look-chips">
+                  <button className={`btn solid ${t.faceNormal ? 'on' : ''}`} onClick={() => patch('toon', { faceNormal: !t.faceNormal })} title="Smoother face shading">
+                    Face normals
+                  </button>
+                  <button className={`btn solid ${t.faceShadow ? 'on' : ''}`} onClick={() => patch('toon', { faceShadow: !t.faceShadow })} title="Shadows on the face">
+                    Face shadow
+                  </button>
+                  <button className={`btn solid ${e.shadow ? 'on' : ''}`} onClick={() => patch('effects', { shadow: !e.shadow })} title="Characters cast shadows on themselves">
+                    Self shadows
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
-        </LookCard>
+          </LookCard>
+        )}
       </LookGroup>
 
-      <LookGroup title="Lights" hint="Studio's two built-in lights (lights you add and rigs are under Lighting rigs)">
-        <LookCard title="Character light" desc="Lights the characters" extra={<ShadowToggle on={l.charaShadow} onChange={(v) => patch('lights', { charaShadow: v })} />}>
-          <LightRows prefix="chara" lights={l} onPatch={(v) => patch('lights', v)} />
-        </LookCard>
-        <LookCard title="Map light" desc="Lights the stage and items" extra={<ShadowToggle on={l.mapShadow} onChange={(v) => patch('lights', { mapShadow: v })} />}>
-          <LightRows prefix="map" lights={l} onPatch={(v) => patch('lights', v)} />
-        </LookCard>
+      <LookGroup flat={!!only} title="Lights" hint="Studio's two built-in lights (lights you add and rigs are under Lighting rigs)">
+        {has('charaLight') && (
+          <LookCard tag={tag} title="Character light" desc="Lights the characters" extra={<ShadowToggle on={l.charaShadow} onChange={(v) => patch('lights', { charaShadow: v })} />}>
+            <LightRows prefix="chara" lights={l} onPatch={(v) => patch('lights', v)} />
+          </LookCard>
+        )}
+        {has('mapLight') && (
+          <LookCard tag={tag} title="Map light" desc="Lights the stage and items" extra={<ShadowToggle on={l.mapShadow} onChange={(v) => patch('lights', { mapShadow: v })} />}>
+            <LightRows prefix="map" lights={l} onPatch={(v) => patch('lights', v)} />
+          </LookCard>
+        )}
       </LookGroup>
 
-      {look.materialEditor && (
-        <LookGroup title="Materials by shader" hint="One value across every material of the same shader on the selected characters or items, through MaterialEditor (saved like MaterialEditor edits). To edit a single material — textures, shader, renderer switches — use the Materials tab.">
+      {look.materialEditor && has('materials') && (
+        <LookGroup flat={!!only} title="Materials by shader" hint="One value across every material of the same shader on the selected characters or items, through MaterialEditor (saved like MaterialEditor edits). To edit a single material — textures, shader, renderer switches — use the Materials tab.">
           <LookCard
             title={selection.length ? 'Selected objects' : 'Nothing selected'}
             wide
             extra={
-              <button className="btn" onClick={() => showTab('look', 'materials')} title="Edit one material at a time: every value, textures, shader, render queue">
-                One material…
-              </button>
+              !only && (
+                <button className="btn solid" onClick={() => showTab('look', 'materials')} title="Edit one material at a time: every value, textures, shader, render queue">
+                  One material…
+                </button>
+              )
             }
           >
             <MaterialsSection
@@ -251,11 +261,28 @@ export function LookPanel() {
           </LookCard>
         </LookGroup>
       )}
+    </>
+  );
+  if (only) return body;
+  return (
+    <Page max={1280}>
+      <div className="look-page-bar">
+        <span style={{ flex: 1 }} />
+        <Help text="Changes show in Studio right away, are undoable (Ctrl+Z) and are saved with the scene." />
+        <button className="btn solid" title="Back to Studio's default look (undoable)" onClick={() => call('look.resetDefault').then((r) => r !== undefined && load())}>
+          Reset to Studio default
+        </button>
+        <button className="btn solid" title="Save these settings as a look you can apply to other scenes" onClick={() => showTab('look', 'presets')}>
+          Save as a look…
+        </button>
+      </div>
+      {body}
     </Page>
   );
 }
 
-function LookGroup({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
+function LookGroup({ title, hint, children, flat }: { title: string; hint?: string; children: React.ReactNode; flat?: boolean }) {
+  if (flat) return <>{children}</>;
   return (
     <Section title={title} help={hint}>
       {/* one column per card (they line up as a row, same height), wrapping only when the window is narrow */}
@@ -267,7 +294,7 @@ function LookGroup({ title, hint, children }: { title: string; hint?: string; ch
 }
 
 /** One effect: title, what it does, its switch; switched off it dims but stays editable. */
-function LookCard({ title, desc, on, onToggle, extra, wide, children }: { title: string; desc?: string; on?: boolean; onToggle?: (v: boolean) => void; extra?: React.ReactNode; wide?: boolean; children?: React.ReactNode }) {
+function LookCard({ title, desc, on, onToggle, extra, wide, children, tag }: { title: string; desc?: string; on?: boolean; onToggle?: (v: boolean) => void; extra?: React.ReactNode; wide?: boolean; children?: React.ReactNode; tag?: string }) {
   return (
     <div className={`look-card ${on === false ? 'off' : ''} ${wide ? 'wide' : ''}`}>
       <div className="look-card-head">
@@ -276,6 +303,7 @@ function LookCard({ title, desc, on, onToggle, extra, wide, children }: { title:
             {title}
             {desc && <Help text={desc} />}
           </b>
+          {tag && <small className="src-tag">{tag}</small>}
         </div>
         {extra}
         {onToggle && <Switch on={!!on} onChange={onToggle} />}

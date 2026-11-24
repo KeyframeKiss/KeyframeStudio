@@ -43,7 +43,7 @@ export function PosePicker({ title, onPick, onClose }: { title: string; onPick: 
         </div>
         <div className="mo-pose-grid">
           {!poses && <div className="empty">Loading poses…</div>}
-          {poses && !list.length && <div className="empty">{poses.length ? `No poses match “${q}”.` : 'The pose library is empty — save poses in Pose › Pose library first.'}</div>}
+          {poses && !list.length && <div className="empty">{poses.length ? `No poses match “${q}”.` : 'The pose library is empty — save poses in Character › Poses library first.'}</div>}
           {list.map((p) => {
             const img = canThumb ? (p.thumb ?? (p.png ? p.path : null)) : null;
             return (

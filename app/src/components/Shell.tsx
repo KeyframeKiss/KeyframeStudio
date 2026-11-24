@@ -15,7 +15,7 @@ import { toggleCleanStudio, useStudioUi } from '../state/studioUi';
 import { UpdateNotices } from './Updates';
 const WORKSPACES: { id: Workspace; label: string; icon: string; hint: string }[] = [
   { id: 'animate', label: 'Animate', icon: 'animate', hint: 'Timeline, keys and curves (Ctrl+1)' },
-  { id: 'pose', label: 'Pose', icon: 'pose', hint: 'Characters, poses and animations (Ctrl+2)' },
+  { id: 'pose', label: 'Character', icon: 'pose', hint: 'Poses, animations, face shape, outfit and body of the selected character (Ctrl+2)' },
   { id: 'look', label: 'Look', icon: 'look', hint: 'Lighting, effects, shaders and look presets (Ctrl+3)' },
   { id: 'shoot', label: 'Shoot', icon: 'camera', hint: 'Camera, shots, audio and rendering (Ctrl+4)' },
   { id: 'library', label: 'Library', icon: 'library', hint: 'Scenes, characters, quick actions (Ctrl+5)' },
@@ -79,6 +79,9 @@ export function Header() {
       )}
       <button className="btn icon" title="Mini mode: just the timeline, in a small window kept on top (Ctrl+Shift+M)" onClick={() => setMiniMode(true)}>
         <Icon name="tracks" />
+      </button>
+      <button className="btn icon" title="Help & guide (F1)" aria-label="Help & guide" onClick={() => openLibrary('help')}>
+        <Icon name="help" />
       </button>
       <AppMenu pinned={pinned} setPinned={setPinned} />
     </header>

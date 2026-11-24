@@ -1,6 +1,8 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { bridge } from '../bridge/client';
-import { openLibrary, showTab, workingShot, renderShots, displayName, selectedCharacters, useStore, type LibraryPage } from '../state/store';
+import { openLibrary, showTab, workingShot, renderShots, displayName, selectedCharacters, setOutputMode, useStore, type LibraryPage } from '../state/store';
+import { EmptyState } from './EditorBits';
+import { AbmxSection } from './AbmxSection';
 import { FaceAnimation } from './FaceAnimation';
 import { Group, SelectionHeader, Stack } from './InspectorStack';
 import { AudioPage } from './AudioPage';
@@ -23,10 +25,10 @@ import { RenderPanel } from './RenderPanel';
 import { OutfitPanel } from './OutfitPanel';
 import { LightingPage } from './LightRigsPanel';
 import { LookPanel } from './LookPanel';
+import { PicturePage } from './PicturePage';
 import { MaterialEditorPage } from './MaterialEditor';
-import { EffectsPage } from './EffectsPage';
 import { ItemLibrary } from './ItemLibrary';
-import { Col, Columns, Page } from './Page';
+import { Col, Columns, Page, Section } from './Page';
 import { StillsPage } from './StillsPage';
 import { StudioWindowPage } from './StudioWindowPage';
 import { LookPresets } from './LookPresets';
@@ -157,13 +159,12 @@ function SubPage({ max = 760, children }: { max?: number; children: React.ReactN
 }
 
 // ---------------------------------------------------------------------------
-// Animate: scene | Timeline / Motion builder / Face / Motion clips / Cleanup + transport | keys, selected object
+// Animate: scene | Timeline / Motion builder (+ clip shelf) / Face / Cleanup + transport | keys, selected object
 // ---------------------------------------------------------------------------
 const ANIMATE_TABS: SubTab[] = [
   { id: 'timeline', label: 'Timeline', icon: 'tracks', hint: 'Dope sheet and graph editor (Tab switches)' },
   { id: 'motion', label: 'Motion builder', icon: 'animate', hint: 'Line up Studio clips and poses on a character, blend them, and get keys' },
   { id: 'face', label: 'Face', icon: 'target', hint: 'Animate a face: expressions keyed at the playhead, lip-sync, blinks' },
-  { id: 'clips', label: 'Motion clips', icon: 'scissors', hint: 'Save a stretch of animation and reuse it on any character' },
   { id: 'cleanup', label: 'Cleanup', icon: 'sliders', hint: 'Lock a foot or hand, smooth, retime, loop, and find sudden moves or sliding feet' },
 ];
 
@@ -191,13 +192,8 @@ export function AnimateWorkspace() {
         <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', position: 'relative' }}>
           <ErrorBoundary key={tab} name={ANIMATE_TABS.find((t) => t.id === tab)?.label ?? tab}>
             {tab === 'timeline' && <DopeSheet />}
-            {tab === 'motion' && <MotionPage />}
+            {tab === 'motion' && <MotionWithShelf />}
             {tab === 'face' && <FaceAnimation />}
-            {tab === 'clips' && (
-              <SubPage max={1100}>
-                <ClipsPanel wide />
-              </SubPage>
-            )}
             {tab === 'cleanup' && (
               <SubPage max={1100}>
                 <CleanupPanel />
@@ -266,13 +262,14 @@ function AnimateInspector() {
 }
 
 // ---------------------------------------------------------------------------
-// Pose: scene | Pose library / Animations / Face Studio / Outfit | the selected character's basics
+// Character (internally 'pose'): scene | Poses / Animations / Face shape / Outfit / Body | the selected character's state
 // ---------------------------------------------------------------------------
 const POSE_TABS: SubTab[] = [
-  { id: 'poses', label: 'Pose library', icon: 'pose' },
-  { id: 'anims', label: 'Animations', icon: 'animate' },
-  { id: 'face', label: 'Face Studio', icon: 'target', hint: 'Face shape, expressions, mesh shapes' },
+  { id: 'poses', label: 'Poses', icon: 'pose', hint: 'The pose library: apply, save, mirror, copy between characters' },
+  { id: 'anims', label: 'Animations', icon: 'animate', hint: "Studio's animations for the selected character" },
+  { id: 'face', label: 'Face shape', icon: 'target', hint: 'Face parts, saved faces and expressions, mesh shapes' },
   { id: 'outfit', label: 'Outfit', icon: 'look', hint: 'Clothes, saved outfits, accessories' },
+  { id: 'body', label: 'Body', icon: 'sliders', hint: 'Body sliders (ABMX): every bone’s size and position' },
 ];
 
 export function PoseWorkspace() {
@@ -290,6 +287,7 @@ export function PoseWorkspace() {
             {tab === 'anims' && <AnimationLibrary />}
             {tab === 'face' && <FaceStudio />}
             {tab === 'outfit' && <OutfitPage />}
+            {tab === 'body' && <BodyPage />}
           </ErrorBoundary>
           <Disconnected />
         </div>
@@ -308,7 +306,7 @@ function PoseInspector() {
       <SelectionHeader empty="Select a character in the Scene list or in Studio. With several selected, changes apply to all of them." />
       {isChar && (
         <Group ws="pose" id="character" icon="pose" title="Character">
-          <CharacterPanel bare sections={['anim', 'pose', 'abmx']} />
+          <CharacterPanel bare sections={['anim', 'pose']} />
         </Group>
       )}
       {item !== null && <Group ws="pose" id="attachment" icon="target" title="Attachment">
@@ -323,7 +321,25 @@ function PoseInspector() {
   );
 }
 
-/** Pose › Outfit: what the character wears (clothes and their states), saved outfits, accessories. */
+/** Character › Body: the selected character's body sliders (ABMX), on a page of their own. */
+function BodyPage() {
+  const id = useStore((s) => (s.studioSelection.length > 0 && s.nodes[s.studioSelection[0]]?.type === 'Char' ? s.studioSelection[0] : null));
+  if (id == null)
+    return (
+      <div className="pg">
+        <div className="pg-inner" style={{ maxWidth: 760 }}>
+          <EmptyState title="Select a character">Pick the character whose body to adjust, in the Scene list or in Studio.</EmptyState>
+        </div>
+      </div>
+    );
+  return (
+    <SubPage max={900}>
+      <AbmxSection key={id} id={id} />
+    </SubPage>
+  );
+}
+
+/** Character › Outfit: what the character wears (clothes and their states), saved outfits, accessories. */
 function OutfitPage() {
   const isChar = useStore((s) => s.studioSelection.length > 0 && s.nodes[s.studioSelection[0]]?.type === 'Char');
   if (!isChar)
@@ -388,18 +404,59 @@ function AnimationLibrary() {
 // ---------------------------------------------------------------------------
 const LOOK_TABS: SubTab[] = [
   { id: 'presets', label: 'Presets', icon: 'look', hint: 'Saved looks: apply all or some parts, at any strength' },
-  { id: 'settings', label: 'Settings', icon: 'sliders', hint: 'Color grade, bloom, depth of field, fog, toon shading, lights, materials' },
-  { id: 'effects', label: 'Effects', icon: 'sparkle', hint: 'Two-tone fog, colour correction, sharpening, vignette, lens fringes, grain — built in, or xukmi FX when installed' },
-  { id: 'materials', label: 'Materials', icon: 'grid', hint: 'MaterialEditor for the selected character or item: every material, its values, textures and shader' },
-  { id: 'lighting', label: 'Lighting', icon: 'bolt', hint: 'Lighting rigs around a character, projectors (window light, blinds, leaf shadows), lights that aim at a character' },
+  { id: 'picture', label: 'Picture', icon: 'sparkle', hint: "Colour, lens, atmosphere and character shading: Studio's settings and Keyframe Studio's effects together" },
+  { id: 'lighting', label: 'Lighting', icon: 'bolt', hint: "Studio's two lights, lighting rigs around a character, projectors (window light, blinds, leaf shadows), lights that aim at a character" },
+  { id: 'materials', label: 'Materials', icon: 'grid', hint: 'MaterialEditor: one material at a time, or one value across every material of a shader' },
 ];
+
+/** Look › Materials: one material at a time (MaterialEditor), or one value across every material of a shader. */
+function MaterialsTab() {
+  const [mode, setMode] = useState<'one' | 'shader'>(() => {
+    try {
+      return localStorage.getItem('kf.materials.mode') === 'shader' ? 'shader' : 'one';
+    } catch {
+      return 'one';
+    }
+  });
+  const pick = (m: 'one' | 'shader') => {
+    setMode(m);
+    try {
+      localStorage.setItem('kf.materials.mode', m);
+    } catch {
+      /* a convenience only */
+    }
+  };
+  return (
+    <div className="subpage" style={{ display: 'flex', flexDirection: 'column' }}>
+      <div className="output-mode">
+        <div className="seg" role="tablist" aria-label="How to edit materials">
+          <button role="tab" aria-selected={mode === 'one'} className={mode === 'one' ? 'on' : ''} onClick={() => pick('one')}>
+            One material
+          </button>
+          <button role="tab" aria-selected={mode === 'shader'} className={mode === 'shader' ? 'on' : ''} onClick={() => pick('shader')}>
+            By shader
+          </button>
+        </div>
+      </div>
+      {mode === 'one' ? (
+        <MaterialEditorPage />
+      ) : (
+        <Page max={1100}>
+          <Section title="Materials by shader" help="One value across every material of the same shader on the selected characters or items, through MaterialEditor (saved like MaterialEditor edits).">
+            <LookPanel cards={['materials']} />
+          </Section>
+        </Page>
+      )}
+    </div>
+  );
+}
 
 export function LookWorkspace() {
   const sizes = usePanelSizes('look');
   const [tab, pick] = useCenterTab('look', LOOK_TABS);
   return (
-    <div className="ws ws-3" style={{ gridTemplateColumns: `${leftCss(sizes)} minmax(0, 1fr)` }}>
-      <Splitters ws="look" right={false} />
+    <div className="ws ws-3" style={{ gridTemplateColumns: columns(sizes) }}>
+      <Splitters ws="look" />
       <ScenePanel />
       <main className="ws-center" style={{ position: 'relative' }}>
         <CenterTabBar tabs={LOOK_TABS} tab={tab} pick={pick} />
@@ -412,15 +469,19 @@ export function LookWorkspace() {
                 </div>
               </div>
             )}
-            {tab === 'settings' && (
+            {tab === 'picture' && (
               <div className="subpage">
-                <LookPanel />
+                <PicturePage />
               </div>
             )}
-            {tab === 'effects' && <EffectsPage />}
-            {tab === 'materials' && <MaterialEditorPage />}
+            {tab === 'materials' && <MaterialsTab />}
             {tab === 'lighting' && (
               <Page>
+                <Section title="Studio's lights" help="Studio's two built-in lights: one for the characters, one for the stage and items. Lights you add, rigs and projectors are below.">
+                  <div className="look-cards" style={{ '--n': 2 } as React.CSSProperties}>
+                    <LookPanel cards={['charaLight', 'mapLight']} />
+                  </div>
+                </Section>
                 <LightingPage />
               </Page>
             )}
@@ -428,7 +489,35 @@ export function LookWorkspace() {
           <Disconnected />
         </div>
       </main>
+      <ObjectInspector ws="look" />
     </div>
+  );
+}
+
+/** The right column in Look and Shoot: the selected object (a light, a camera, an item…), always at hand. */
+function ObjectInspector({ ws }: { ws: string }) {
+  const first = useStore((s) => s.studioSelection[0]);
+  const node = useStore((s) => (first != null ? s.nodes[first] : undefined));
+  useStore((s) => s.showEnglish);
+  return (
+    <Stack>
+      {node ? (
+        <Group
+          ws={ws}
+          id="object"
+          icon="target"
+          title={
+            <>
+              Object <span className="group-sub">{displayName(node)}</span>
+            </>
+          }
+        >
+          <ObjectPanel bare />
+        </Group>
+      ) : (
+        <EmptyState title="Nothing selected">Select a light, camera or item in the Scene list or in Studio to move and adjust it here.</EmptyState>
+      )}
+    </Stack>
   );
 }
 
@@ -463,37 +552,63 @@ const setShootTop = (v: number) => {
 const SHOOT_TABS: SubTab[] = [
   { id: 'shots', label: 'Shots & camera', icon: 'camera', hint: 'Shots, saved views, camera keys and moves, over the timeline' },
   { id: 'audio', label: 'Audio', icon: 'pulse', hint: 'The audio track that plays with the timeline' },
-  { id: 'render', label: 'Render', icon: 'record', hint: 'Make a video with VideoExport' },
-  { id: 'stills', label: 'Stills', icon: 'camera', hint: 'High-quality pictures: supersampled, transparent background, one per saved view or shot' },
-  { id: 'templates', label: 'Templates', icon: 'library', hint: "A scene's staging, reused in another scene" },
+  { id: 'output', label: 'Output', icon: 'record', hint: 'Videos (VideoExport) and pictures: sizes, versions, the queue' },
 ];
 
 export function ShootWorkspace() {
   const sizes = usePanelSizes('shoot');
   const [tab, pick] = useCenterTab('shoot', SHOOT_TABS);
   return (
-    <div className="ws ws-3" style={{ gridTemplateColumns: `${leftCss(sizes)} minmax(0, 1fr)` }}>
-      <Splitters ws="shoot" right={false} />
+    <div className="ws ws-3" style={{ gridTemplateColumns: columns(sizes) }}>
+      <Splitters ws="shoot" />
       <ScenePanel />
       <main className="ws-center" style={{ position: 'relative' }}>
         <CenterTabBar tabs={SHOOT_TABS} tab={tab} pick={pick} />
         <ErrorBoundary key={tab} name={SHOOT_TABS.find((t) => t.id === tab)?.label ?? tab}>
           {tab === 'shots' && <ShotsAndCamera />}
           {tab === 'audio' && <AudioPage />}
-          {tab === 'render' && (
-            <div className="subpage">
-              <RenderPanel />
-            </div>
-          )}
-          {tab === 'stills' && (
-            <div className="subpage">
-              <StillsPage />
-            </div>
-          )}
-          {tab === 'templates' && <TemplatesPanel />}
+          {tab === 'output' && <OutputPage />}
         </ErrorBoundary>
         <Disconnected />
       </main>
+      <ObjectInspector ws="shoot" />
+    </div>
+  );
+}
+
+/** Animate › Motion builder, with its motion clip shelf on the right when open (save, apply and manage clips). */
+function MotionWithShelf() {
+  const shelf = useStore((s) => s.clipShelf);
+  return (
+    <div className="mo-split">
+      <div className="mo-split-main">
+        <MotionPage />
+      </div>
+      {shelf && (
+        <aside className="mo-shelf" aria-label="Motion clips">
+          <ClipsPanel />
+        </aside>
+      )}
+    </div>
+  );
+}
+
+/** Shoot › Output: a video (VideoExport) or pictures, one tab with the mode on top. */
+function OutputPage() {
+  const mode = useStore((s) => s.outputMode);
+  return (
+    <div className="subpage">
+      <div className="output-mode">
+        <div className="seg" role="tablist" aria-label="What to make">
+          <button role="tab" aria-selected={mode === 'video'} className={mode === 'video' ? 'on' : ''} onClick={() => setOutputMode('video')}>
+            <Icon name="record" size={13} /> Video
+          </button>
+          <button role="tab" aria-selected={mode === 'pictures'} className={mode === 'pictures' ? 'on' : ''} onClick={() => setOutputMode('pictures')}>
+            <Icon name="camera" size={13} /> Pictures
+          </button>
+        </div>
+      </div>
+      {mode === 'video' ? <RenderPanel /> : <StillsPage />}
     </div>
   );
 }
@@ -543,7 +658,7 @@ const LIBRARY_PAGES: PageDef[] = [
   { id: 'scenes', label: 'Scenes', icon: 'scenes', hint: 'Load, import, save scenes' },
   { id: 'characters', label: 'Characters', icon: 'pose', hint: 'Cards: add or swap characters' },
   { id: 'items', label: 'Objects', icon: 'grid', hint: 'Every item and mod, with pictures' },
-  { id: 'macros', label: 'Quick actions', icon: 'bolt', hint: 'Record and replay steps' },
+  { id: 'templates', label: 'Templates', icon: 'library', hint: "A scene's staging, reused in another scene" },
 ];
 const SETTINGS_PAGES: PageDef[] = [
   { id: 'help', label: 'Help & guide', icon: 'book', hint: 'Getting started, good habits, fixes' },
@@ -581,6 +696,7 @@ export function LibraryWorkspace() {
         {page === 'scenes' && <SceneBrowser />}
         {page === 'characters' && <CharacterLibrary />}
         {page === 'items' && <ItemLibrary />}
+        {page === 'templates' && <TemplatesPanel />}
         {page === 'macros' && <QuickActionsPage />}
         {page !== 'macros' && <Disconnected />}
       </main>

@@ -255,7 +255,7 @@ export function FaceStudio() {
   if (error)
     return (
       <div className="empty">
-        <strong>Face Studio isn’t available</strong>
+        <strong>Face shape isn’t available</strong>
         {error}
       </div>
     );

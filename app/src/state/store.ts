@@ -181,6 +181,10 @@ export interface AppState {
   lastWorkspace: Workspace;
   libraryPage: LibraryPage;
   settingsPage: LibraryPage;
+  /** Shoot › Output: a video or pictures. */
+  outputMode: 'video' | 'pictures';
+  /** Animate › Motion builder: the motion clip shelf beside the lanes is open. */
+  clipShelf: boolean;
   paletteOpen: boolean;
   helpOpen: boolean;
   /** the characters the animation browser window is open for (null = closed) */
@@ -195,7 +199,7 @@ export interface AppState {
 
 export type Workspace = 'animate' | 'pose' | 'look' | 'shoot' | 'library' | 'settings';
 /** Library pages (content) and Settings pages (the app): both open through openLibrary(). */
-export type LibraryPage = 'scenes' | 'characters' | 'items' | 'macros' | 'translate' | 'settings' | 'studio' | 'shortcuts' | 'about' | 'help' | 'appearance';
+export type LibraryPage = 'scenes' | 'characters' | 'items' | 'templates' | 'macros' | 'translate' | 'settings' | 'studio' | 'shortcuts' | 'about' | 'help' | 'appearance';
 const SETTINGS_PAGES: LibraryPage[] = ['help', 'settings', 'studio', 'translate', 'shortcuts', 'about', 'appearance'];
 export const isSettingsPage = (p: LibraryPage) => SETTINGS_PAGES.includes(p);
 const WORKSPACES: Workspace[] = ['animate', 'pose', 'look', 'shoot', 'library', 'settings'];
@@ -270,6 +274,20 @@ export const useStore = create<AppState>(() => ({
   lastWorkspace: 'animate',
   libraryPage: 'scenes',
   settingsPage: 'settings',
+  clipShelf: (() => {
+    try {
+      return localStorage.getItem('kf.clipShelf') === '1';
+    } catch {
+      return false;
+    }
+  })(),
+  outputMode: (() => {
+    try {
+      return localStorage.getItem('kf.output.mode') === 'pictures' ? 'pictures' : 'video';
+    } catch {
+      return 'video';
+    }
+  })(),
   paletteOpen: false,
   helpOpen: false,
   animBrowserFor: null,
@@ -519,7 +537,37 @@ export function editTranslation(text: string) {
 }
 
 /** Switch workspace and bring one of its center sub-tabs forward (e.g. Animate › Face). */
+/** The Motion builder's motion clip shelf, open or shut (remembered). */
+export function setClipShelf(open: boolean) {
+  set({ clipShelf: open });
+  lsSet('kf.clipShelf', open ? '1' : '0');
+}
+
+/** Shoot › Output in one mode (video or pictures). */
+export function setOutputMode(mode: 'video' | 'pictures') {
+  set({ outputMode: mode });
+  lsSet('kf.output.mode', mode);
+}
+
+// tabs that moved in the reorganisation: old names still lead to the new places
+const MOVED: Record<string, { ws: Workspace; tab?: string; library?: LibraryPage; output?: 'video' | 'pictures'; shelf?: boolean }> = {
+  'animate:clips': { ws: 'animate', tab: 'motion', shelf: true },
+  'shoot:render': { ws: 'shoot', tab: 'output', output: 'video' },
+  'shoot:stills': { ws: 'shoot', tab: 'output', output: 'pictures' },
+  'shoot:templates': { ws: 'library', library: 'templates' },
+  'look:settings': { ws: 'look', tab: 'picture' },
+  'look:effects': { ws: 'look', tab: 'picture' },
+};
+
 export function showTab(workspace: Workspace, tab: string) {
+  const moved = MOVED[`${workspace}:${tab}`];
+  if (moved) {
+    if (moved.output) setOutputMode(moved.output);
+    if (moved.shelf) setClipShelf(true);
+    if (moved.library) return openLibrary(moved.library);
+    workspace = moved.ws;
+    tab = moved.tab ?? tab;
+  }
   let stored = false;
   try {
     localStorage.setItem(`kf.center.${workspace}`, tab);

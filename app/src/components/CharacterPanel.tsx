@@ -207,8 +207,8 @@ export function CharacterPanel({ bare, sections = ['anim', 'pose', 'face', 'outf
         onToggle={() => tog('face')}
         title="Expression"
         extra={
-          <button className="btn" style={{ height: 20, fontSize: 10 }} title="Every face part and shape: Face Studio" onClick={() => showTab('pose', 'face')}>
-            Face Studio ›
+          <button className="btn" style={{ height: 20, fontSize: 10 }} title="Every face part and shape: Character › Face shape" onClick={() => showTab('pose', 'face')}>
+            Face shape ›
           </button>
         }
       >
