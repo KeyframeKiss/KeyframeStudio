@@ -4,6 +4,7 @@ import { call, saveSceneFile, copySelected, deleteSelectedKeys, displayName, dup
 import { applyCurveToSelected } from '../state/store';
 import { PRESETS, toFlat } from '../lib/curve';
 import { Icon } from './Icon';
+import { toggleGuides } from './CameraToolsCards';
 import { lookChanged } from './LookPresets';
 
 import { isRecording, macros } from '../lib/macros';
@@ -56,6 +57,7 @@ function PaletteInner() {
       { id: 'ws.look', group: 'Workspace', title: 'Go to Look', kbd: 'Ctrl 3', run: () => setWorkspace('look') },
       { id: 'ws.shoot', group: 'Workspace', title: 'Go to Shoot', kbd: 'Ctrl 4', keywords: 'camera shots audio render video export', run: () => setWorkspace('shoot') },
       { id: 'ws.library', group: 'Workspace', title: 'Go to Library', kbd: 'Ctrl 5', run: () => setWorkspace('library') },
+      { id: 'shoot.guides', group: 'Shoot', title: 'Frame guides on / off', kbd: 'G', keywords: 'thirds centre center safe golden spiral diagonals frame aspect grid overlay', run: () => toggleGuides() },
       { id: 'shoot.render', group: 'Shoot', title: 'Render a video', keywords: 'output export mp4 webm gif videoexport', run: () => showTab('shoot', 'render') },
       { id: 'shoot.stills', group: 'Shoot', title: 'Take pictures', keywords: 'output stills screenshot png supersample transparent', run: () => showTab('shoot', 'stills') },
       { id: 'shoot.audio', group: 'Shoot', title: 'Audio track', keywords: 'wav sound voice music', run: () => showTab('shoot', 'audio') },

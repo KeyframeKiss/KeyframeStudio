@@ -5,6 +5,7 @@ import { toast, useStore } from '../state/store';
 import { Help } from './Help';
 import { Icon } from './Icon';
 import { NumberField } from './TopBar';
+import { toggleGuides, useGuidesShowing } from './CameraToolsCards';
 
 type V3 = [number, number, number];
 
@@ -123,6 +124,7 @@ export function OverlayToggles() {
 
 /** Overlay & handle settings, with the handles' target to type values into (in the view options popover). */
 export function OverlayOptions() {
+  const guidesOn = useGuidesShowing();
   const st = useGz((s) => s.st);
   if (!st) return <div className="hint">Not connected to Studio.</div>;
   const set = setGz;
@@ -184,6 +186,7 @@ export function OverlayOptions() {
         {check('Names on hover', o.labels, (v) => set({ overlays: { labels: v } }))}
       </div>
       {check('Every character, not just the selected', o.allCharacters, (v) => set({ overlays: { allCharacters: v } }))}
+      {check('Frame guides (G)', guidesOn, () => toggleGuides(), 'Thirds, centre, safe areas, frame shape… — pick which in Shoot, on the right')}
 
       <div className="menu-sep" />
       <div className="menu-label">

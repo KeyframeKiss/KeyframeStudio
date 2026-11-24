@@ -10016,3 +10016,35 @@ a.btn {
   font-size: var(--fs-xs);
   font-weight: 700;
 }
+
+/* Shoot's right column: frame guides and the camera without their own cards */
+.pn.bare {
+  background: none;
+  border: 0;
+  border-radius: 0;
+}
+.pn.bare > .pn-body {
+  padding: 10px 12px 12px;
+}
+/* narrow column: a field's label above its control */
+.pn.bare .pn-field {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+}
+.group-content > .cam-menu {
+  padding: 10px 12px 12px;
+}
+/* the camera menu's own headings already name each part */
+.cam-menu .pn {
+  background: none;
+  border: 0;
+  border-radius: 0;
+}
+.cam-menu .pn > .pn-head {
+  display: none;
+}
+.cam-menu .pn > .pn-body {
+  padding: 0;
+}

@@ -1,11 +1,10 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { bridge } from '../../bridge/client';
 import { liveTime, useStore } from '../../state/store';
 import { byStart, shotAt } from '../../lib/shots';
 import { formatTime } from '../../lib/time';
 import { useAnimationFrame } from '../useAnimationFrame';
-import { FrameGuidesPanel, useLoadedCamTools } from '../CameraToolsCards';
-import { CameraMenu } from '../CameraPanel';
+import { guidesShowing, toggleGuides, useLoadedCamTools } from '../CameraToolsCards';
 import { Icon } from '../Icon';
 import { effMode, lookThrough } from './actions';
 
@@ -14,30 +13,6 @@ const WIDTH = 640;
 const FPS = 12;
 
 /** A small menu under a toolbar button; closes on a click outside or Esc. */
-function Pop({ label, icon, title, children, wide }: { label: string; icon: string; title: string; children: ReactNode; wide?: boolean }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const down = (e: PointerEvent) => !ref.current?.contains(e.target as Node) && setOpen(false);
-    const key = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
-    window.addEventListener('pointerdown', down, true);
-    window.addEventListener('keydown', key);
-    return () => {
-      window.removeEventListener('pointerdown', down, true);
-      window.removeEventListener('keydown', key);
-    };
-  }, [open]);
-  return (
-    <div className="mon-pop" ref={ref}>
-      <button className={`btn small solid ${open ? 'on' : ''}`} aria-expanded={open} onClick={() => setOpen(!open)} title={title}>
-        <Icon name={icon} size={12} /> {label}
-      </button>
-      {open && <div className={`mon-pop-body ${wide ? 'wide' : ''}`}>{children}</div>}
-    </div>
-  );
-}
-
 /**
  * Shoot › Shots: the monitor. What the edit shows at the playhead — through the shot's own camera (Studio's view
  * isn't moved), or Studio's camera for shots driven by keys, first person or follow — with the shot's name,
@@ -50,6 +25,7 @@ export function Monitor() {
   const playEdit = useStore((s) => s.liveCuts);
   useStore((s) => s.keyedShots);
   const { t: tools } = useLoadedCamTools();
+  const guidesOn = guidesShowing(tools?.guides);
   const [live, setLive] = useState(() => {
     try {
       return localStorage.getItem(LIVE_KEY) !== '0';
@@ -189,12 +165,15 @@ export function Monitor() {
           <span className="mon-live-dot" />
           {live ? 'Live' : 'Paused'}
         </button>
-        <Pop label="Guides" icon="grid" title="Thirds, centre, safe areas… drawn here and in Studio's window (never in renders)" wide>
-          <FrameGuidesPanel />
-        </Pop>
-        <Pop label="Camera" icon="camera" title="Studio's own camera: lens, camera keys, first person / follow, scene cameras, camera moves" wide>
-          <CameraMenu />
-        </Pop>
+        <button
+          className={`btn small solid ${guidesOn ? 'on' : ''}`}
+          role="switch"
+          aria-checked={guidesOn}
+          onClick={() => toggleGuides()}
+          title="Frame guides on / off (G), here and in Studio's window, never in renders. Which ones: Frame guides on the right"
+        >
+          <Icon name="grid" size={12} /> Guides
+        </button>
       </header>
       <div className="mon-screen" style={{ aspectRatio: `${w} / ${h}` }} onDoubleClick={() => cur && lookThrough(cur.id)} title={cur ? 'Double-click to look through this shot in Studio' : undefined}>
         <canvas ref={canvas} className={showStill ? 'hidden' : ''} />

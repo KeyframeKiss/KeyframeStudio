@@ -6,7 +6,7 @@ import { PreviewPanel } from './components/PreviewPanel';
 import { AnimationsOverlay } from './components/AnimationsOverlay';
 import { RecordingBadge } from './components/QuickActions';
 import { MessagesButton, ToastItem } from './components/Messages';
-import { CameraTakeoverChip } from './components/CameraToolsCards';
+import { CameraTakeoverChip, toggleGuides } from './components/CameraToolsCards';
 import { Header, MiniHeader, TransportBar } from './components/Shell';
 import { DopeSheet } from './components/DopeSheet';
 import { SHORTCUTS } from './components/shortcuts';
@@ -153,6 +153,7 @@ export function App() {
         else keyChanged();
       } else if (k === 'enter' && e.shiftKey) keyChanged();
       else if (k === 'r') setAutoKey(!st.autoKey);
+      else if (k === 'g') toggleGuides();
       else if (k === 'm') {
         const ids = st.studioSelection.filter((id) => st.nodes[id]?.type === 'Char');
         if (ids.length) bridge.request('pose.mirror', { ids }).catch(() => {});

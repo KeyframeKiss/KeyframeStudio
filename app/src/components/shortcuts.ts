@@ -15,6 +15,7 @@ export const SHORTCUTS: [string, string][] = [
   ['Ctrl D', 'Duplicate keys to playhead'],
   ['Ctrl A', 'Select all visible keys'],
   ['Ctrl G', 'New folder from selected tracks'],
+  ['G', 'Frame guides on / off (which ones: Shoot, on the right)'],
   ['Esc', 'Clear selection'],
   ['Ctrl Z / Ctrl Y', 'Undo / redo (timeline, character, look, objects)'],
   ['1 – 5', 'Easing: Linear · In-out · In · Out · Step'],

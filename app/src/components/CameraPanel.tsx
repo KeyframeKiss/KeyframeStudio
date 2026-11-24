@@ -21,7 +21,7 @@ export interface CamKey {
   thumb?: string;
 }
 
-/** Studio's camera and the camera keys — shared by the monitor's Camera menu, the shot track and the inspector. */
+/** Studio's camera and the camera keys — shared by Shoot's Camera section, the shot track and the inspector. */
 interface CamStore {
   st: CamState | null;
   keys: CamKey[];
@@ -56,7 +56,7 @@ export async function keyCamera(cut: boolean, t = liveTime()) {
 export const ANGLE_DRAG = 'application/x-kf-angle';
 
 /**
- * The monitor's Camera menu: Studio's own camera for work outside shots — its lens, camera keys at the playhead,
+ * Shoot's Camera section (right column): Studio's own camera for work outside shots — its lens, camera keys at the playhead,
  * first person / follow, scene cameras and the camera move presets.
  */
 export function CameraMenu() {

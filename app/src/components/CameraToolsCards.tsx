@@ -63,7 +63,7 @@ let frame = 0;
 let inflight = 0;
 
 function loadCamTools() {
-  bridge
+  return bridge
     .request<Tools>('camtools.get')
     .then(async (r) => {
       // the colour you picked last time (Studio forgets it when it restarts)
@@ -71,11 +71,13 @@ function loadCamTools() {
       if (saved && saved.some((x, i) => Math.abs(x - (r.guides.color?.[i] ?? 0)) > 1e-3)) r = await bridge.request<Tools>('camtools.set', { guides: { color: saved } });
       useCamTools.setState({ t: r });
     })
-    .catch(() => useCamTools.setState({ t: null }));
-  bridge
-    .request<{ settings: { resize: boolean; width: number; height: number } }>('render.status')
-    .then((r) => useCamTools.setState({ renderAspect: r.settings.resize && r.settings.height ? r.settings.width / r.settings.height : 0 }))
-    .catch(() => useCamTools.setState({ renderAspect: 0 }));
+    .catch(() => useCamTools.setState({ t: null }))
+    .finally(() =>
+      bridge
+        .request<{ settings: { resize: boolean; width: number; height: number } }>('render.status')
+        .then((r) => useCamTools.setState({ renderAspect: r.settings.resize && r.settings.height ? r.settings.width / r.settings.height : 0 }))
+        .catch(() => useCamTools.setState({ renderAspect: 0 })),
+    );
 }
 
 // the bridge changed a guide itself (a shot's frame shape): show it, with its chip picked
@@ -113,6 +115,53 @@ export function setCamTools(patch: Patch) {
       loadCamTools();
     }
   });
+}
+
+type Guides = Tools['guides'];
+const LAST_KEY = 'kf.guides.last';
+const GUIDE_FLAGS = ['thirds', 'center', 'safe', 'golden', 'diagonals'] as const;
+
+/** Any frame guide showing: a line, the spiral or a frame shape. */
+export const guidesShowing = (g?: Guides | null) => !!g && (GUIDE_FLAGS.some((k) => g[k]) || (g.spiral ?? -1) >= 0 || (g.aspect ?? 0) > 0);
+
+/**
+ * Frame guides off, or back on (G, the View menu, the monitor): off remembers which were showing, on brings that
+ * set back (thirds when there's nothing to bring back).
+ */
+export async function toggleGuides() {
+  await loadCamTools(); // what Studio shows now, not what this window last heard
+  const st = useCamTools.getState();
+  const g = st.t?.guides;
+  if (!g) return;
+  if (guidesShowing(g)) {
+    const keep = { thirds: g.thirds, center: g.center, safe: g.safe, golden: g.golden, diagonals: g.diagonals, spiral: g.spiral, aspect: g.aspect, pick: st.aspectPick };
+    try {
+      localStorage.setItem(LAST_KEY, JSON.stringify(keep));
+    } catch {
+      /* this session only */
+    }
+    useCamTools.setState({ aspectPick: 'Off' });
+    setCamTools({ guides: { thirds: false, center: false, safe: false, golden: false, diagonals: false, spiral: -1, aspect: 0 } });
+    toast('Frame guides off (G brings them back)');
+    return;
+  }
+  let last: (Partial<Guides> & { pick?: string }) | null = null;
+  try {
+    last = JSON.parse(localStorage.getItem(LAST_KEY) ?? 'null');
+  } catch {
+    last = null;
+  }
+  const back = last && guidesShowing({ ...g, ...last } as Guides) ? last : { thirds: true };
+  const { pick, ...guides } = back as Partial<Guides> & { pick?: string };
+  if (pick) useCamTools.setState({ aspectPick: pick });
+  setCamTools({ guides });
+  toast('Frame guides on');
+}
+
+/** Whether frame guides are showing (loads them while connected). */
+export function useGuidesShowing() {
+  const { t } = useLoadedCamTools();
+  return guidesShowing(t?.guides);
 }
 
 export function useLoadedCamTools() {
@@ -230,9 +279,9 @@ export function CameraModePanel() {
 // Frame guides
 // ---------------------------------------------------------------------------
 
-export function FrameGuidesPanel() {
+export function FrameGuidesPanel({ bare }: { bare?: boolean } = {}) {
   const { t, renderAspect, aspectPick } = useLoadedCamTools();
-  if (!t) return null;
+  if (!t) return bare ? <div className="pn-note">Not connected to Studio.</div> : null;
   const g = t.guides;
   const setColor = (color: number[]) => {
     try {
@@ -252,7 +301,11 @@ export function FrameGuidesPanel() {
   // the golden spiral winds into one of four corners; each press turns it, the last press hides it
   const SPIRAL = ['↗ top right', '↖ top left', '↘ bottom right', '↙ bottom left'];
   return (
-    <Panel title="Frame guides" help="Drawn over Studio's window only — never in renders, snapshots or stills, and hidden while recording.">
+    <Panel
+      title={bare ? undefined : 'Frame guides'}
+      help="Drawn over Studio's window only — never in renders, snapshots or stills, and hidden while recording."
+      className={bare ? 'bare' : ''}
+    >
       <Field label="Show">
         <div className="ct-chips" style={{ margin: 0 }}>
           {toggles.map(([k, label, hint]) => (
@@ -269,7 +322,7 @@ export function FrameGuidesPanel() {
           </button>
         </div>
       </Field>
-      <Field label="Frame" help="The shape of the picture, with the outside dimmed. Render size = the size set in Shoot › Render.">
+      <Field label="Frame" help="The shape of the picture, with the outside dimmed. Render size = the size set in Shoot › Output.">
         <div className="ct-chips" style={{ margin: 0 }}>
           {ASPECTS.map((a) => {
             const v = a.v === 'render' ? renderAspect : a.v;
@@ -279,7 +332,7 @@ export function FrameGuidesPanel() {
                 key={a.label}
                 className={`btn chip ${on ? 'on' : ''}`}
                 disabled={a.v === 'render' && !renderAspect}
-                title={a.v === 'render' ? (renderAspect ? 'The size set in Shoot › Render' : 'Render uses the window size') : undefined}
+                title={a.v === 'render' ? (renderAspect ? 'The size set in Shoot › Output' : 'Render uses the window size') : undefined}
                 onClick={() => {
                   useCamTools.setState({ aspectPick: a.label });
                   setCamTools({ guides: { aspect: v } });
@@ -318,7 +371,7 @@ export function FrameGuidesPanel() {
 }
 
 /**
- * Status bar: says so while first person or follow has Studio's camera (from the Camera menu or a shot looked
+ * Status bar: says so while first person or follow has Studio's camera (from Shoot's Camera section or a shot looked
  * through), with Stop. Otherwise nothing: Studio's view is your own.
  */
 export function CameraTakeoverChip() {

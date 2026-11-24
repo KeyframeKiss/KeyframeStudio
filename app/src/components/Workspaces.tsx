@@ -24,7 +24,9 @@ import { Inspector, useGettingStarted } from './Inspector';
 import { RenderPanel } from './RenderPanel';
 import { OutfitPanel } from './OutfitPanel';
 import { LightingPage } from './LightRigsPanel';
-import { LookPanel } from './LookPanel';
+import { LookPanel, Switch } from './LookPanel';
+import { FrameGuidesPanel, toggleGuides, useGuidesShowing } from './CameraToolsCards';
+import { CameraMenu, useCamLoader } from './CameraPanel';
 import { PicturePage } from './PicturePage';
 import { MaterialEditorPage } from './MaterialEditor';
 import { ItemLibrary } from './ItemLibrary';
@@ -494,7 +496,48 @@ export function LookWorkspace() {
   );
 }
 
-/** The right column in Look and Shoot: the selected object (a light, a camera, an item…), always at hand. */
+/** Shoot's right column: frame guides and Studio's camera always at hand, the selected object below. */
+function ShootInspector() {
+  useCamLoader();
+  const guidesOn = useGuidesShowing();
+  const first = useStore((s) => s.studioSelection[0]);
+  const node = useStore((s) => (first != null ? s.nodes[first] : undefined));
+  useStore((s) => s.showEnglish);
+  return (
+    <Stack>
+      <Group
+        ws="shoot"
+        id="guides"
+        icon="grid"
+        title="Frame guides"
+        extra={<Switch on={guidesOn} onChange={() => toggleGuides()} />}
+      >
+        <FrameGuidesPanel bare />
+      </Group>
+      <Group ws="shoot" id="camera" icon="camera" title="Camera">
+        <CameraMenu />
+      </Group>
+      {node && (
+        <Group
+          ws="shoot"
+          id="object"
+          icon="target"
+          title={
+            <>
+              Object <span className="group-sub">{displayName(node)}</span>
+            </>
+          }
+          defaultOpen={false}
+          pinned
+        >
+          <ObjectPanel bare />
+        </Group>
+      )}
+    </Stack>
+  );
+}
+
+/** The right column in Look: the selected object (a light, a camera, an item…), always at hand. */
 function ObjectInspector({ ws }: { ws: string }) {
   const first = useStore((s) => s.studioSelection[0]);
   const node = useStore((s) => (first != null ? s.nodes[first] : undefined));
@@ -571,7 +614,7 @@ export function ShootWorkspace() {
         </ErrorBoundary>
         <Disconnected />
       </main>
-      <ObjectInspector ws="shoot" />
+      <ShootInspector />
     </div>
   );
 }
