@@ -387,6 +387,7 @@ export function MotionPage() {
                       {prev && <span className="mo-blend-handle" style={{ left: Math.min(xOf(b.blend), xOf(b.len)) - 5 }} title="Drag: how long it blends in from the block before" />}
                       <Icon name={iconOf(b.kind)} size={11} />
                       <span className="mo-name">{blockName(b)}</span>
+                      {b.mirror && <span className="mo-mirror" title="Mirrored: left and right swapped">⇋</span>}
                     </div>
                   );
                 })}
@@ -461,6 +462,10 @@ export function MotionPage() {
                 ))}
               </div>
             )}
+            <label className="mo-check" title="Play it as in a mirror: left and right swapped (a right-foot step becomes a left-foot one)">
+              <input type="checkbox" checked={!!selBlock.mirror} onChange={(e) => update({ mirror: e.target.checked }, e.target.checked ? 'Mirror block' : 'Unmirror block')} />
+              Mirror
+            </label>
             {natural != null && (
               <button className="btn small solid" onClick={() => update({ len: Math.max(1 / fps, snapT(natural / (selBlock.speed ?? 1))) }, 'Change block length')} title="One pass of the clip at this speed">
                 Fit to the clip ({(natural / (selBlock.speed ?? 1)).toFixed(2)} s)

@@ -8799,3 +8799,18 @@ a.btn {
   color: var(--text-2);
   font-size: 10px;
 }
+
+.mo-mirror {
+  position: relative;
+  margin-left: auto;
+  padding-left: 4px;
+  color: var(--text-1);
+  font-size: 12px;
+}
+.mo-fields .mo-check {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  color: var(--text-1);
+}

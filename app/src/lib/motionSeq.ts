@@ -35,6 +35,8 @@ export interface Block {
   clip?: ClipRef;
   pose?: PoseRef;
   mclip?: MClipRef;
+  /** played as in a mirror: left and right swapped */
+  mirror?: boolean;
 }
 export interface Seq {
   blocks: Block[];

@@ -378,12 +378,13 @@ namespace StudioEX.Bridge.Api
                     }
                 }
 
-                // 5. mix: each frame's wanted rotations and hips
+                // 5. mix: each frame's wanted rotations and hips (a mirrored block: left and right swapped and flipped)
+                var partner = tr.Select(x => { var o = MirrorName(x.name); int j = o != null ? tr.FindIndex(y => y.name == o) : -1; return j; }).ToArray();
                 Func<int, float, PoseFrame> frameOf = (bi, t) =>
                 {
                     var b = blocks[bi];
-                    if (b.GetString("kind") == "pose") return PoseCache[poseKeys[b]];
-                    return clipFrames[bi][Q(clipTime[bi](t))];
+                    var f = b.GetString("kind") == "pose" ? PoseCache[poseKeys[b]] : clipFrames[bi][Q(clipTime[bi](t))];
+                    return b.GetBool("mirror") ? Mirrored(f, partner) : f;
                 };
                 var want = new Quaternion[times.Count][];
                 var hips = new Vector3[times.Count];
@@ -463,6 +464,31 @@ namespace StudioEX.Bridge.Api
         }
 
         private static int Q(float clipSeconds) => Mathf.RoundToInt(clipSeconds * 10000f);
+
+        /// <summary>The bone on the other side (…_L ↔ …_R), or null for a middle bone.</summary>
+        private static string MirrorName(string name)
+        {
+            if (name.EndsWith("_L")) return name.Substring(0, name.Length - 2) + "_R";
+            if (name.EndsWith("_R")) return name.Substring(0, name.Length - 2) + "_L";
+            if (name.Contains("_L_")) return name.Replace("_L_", "_R_");
+            if (name.Contains("_R_")) return name.Replace("_R_", "_L_");
+            return null;
+        }
+
+        /// <summary>
+        /// A frame seen in a mirror across the character's middle: each bone takes its partner's rotation, reflected
+        /// (x, −y, −z — the same flip the pose mirror uses), and the hips go to the other side.
+        /// </summary>
+        private static PoseFrame Mirrored(PoseFrame f, int[] partner)
+        {
+            var w = new Quaternion[f.Want.Length];
+            for (int i = 0; i < w.Length; i++)
+            {
+                var q = f.Want[partner[i] >= 0 ? partner[i] : i];
+                w[i] = new Quaternion(q.x, -q.y, -q.z, q.w);
+            }
+            return new PoseFrame { Want = w, Hips = new Vector3(-f.Hips.x, f.Hips.y, f.Hips.z) };
+        }
 
         /// <summary>A saved Motion clip, as the builder reads it: FK rotation keys by bone name, the object's position keys.</summary>
         private sealed class MClip

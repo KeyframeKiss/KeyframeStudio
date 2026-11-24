@@ -179,4 +179,39 @@ export default async function (t) {
     await ok('undo');
     await sleep(300);
   });
+
+  await t.step('a mirrored block: left and right swapped across her middle', async () => {
+    await build({ blocks: [{ ...seq.blocks[0], mirror: true }] }, 'Mirror');
+    await ok('timeline.seek', { t: 0.5 });
+    await sleep(300);
+    const m = await sample(0, 2);
+    // her middle: the plane through her root with her right-hand axis as its normal (Unity's Euler: Z, then X, then Y)
+    const o = await ok('object.get', { id });
+    const [rx, ry, rz] = o.transform.rot.map((d) => (d * Math.PI) / 180);
+    const rotate = (v) => {
+      let [x, y, z] = v;
+      [x, y] = [x * Math.cos(rz) - y * Math.sin(rz), x * Math.sin(rz) + y * Math.cos(rz)];
+      [y, z] = [y * Math.cos(rx) - z * Math.sin(rx), y * Math.sin(rx) + z * Math.cos(rx)];
+      [x, z] = [x * Math.cos(ry) + z * Math.sin(ry), -x * Math.sin(ry) + z * Math.cos(ry)];
+      return [x, y, z];
+    };
+    const n = rotate([1, 0, 0]);
+    const P = (await ok('motion.seq.get', { id })).anchor; // where the motion stands (her position now is moved by it)
+    const reflect = (p) => {
+      const d = (p[0] - P[0]) * n[0] + (p[1] - P[1]) * n[1] + (p[2] - P[2]) * n[2];
+      return [p[0] - 2 * d * n[0], p[1] - 2 * d * n[1], p[2] - 2 * d * n[2]];
+    };
+    let w = 0, at = '';
+    const pairs = [['cf_j_foot_L', 'cf_j_foot_R'], ['cf_j_foot_R', 'cf_j_foot_L'], ['cf_j_hand_L', 'cf_j_hand_R'], ['cf_j_hand_R', 'cf_j_hand_L'], ['cf_j_head', 'cf_j_head'], ['cf_j_hips', 'cf_j_hips']];
+    for (const [a, b] of pairs)
+      for (let i = 0; i < m.times.length; i++) {
+        if (m.times[i] > 1.99) continue;
+        const d = dist(m.bones[a][i], reflect(got.bones[b][i]));
+        if (d > w) (w = d), (at = `${a} @${m.times[i]}s`);
+      }
+    t.metric('mirrored walk vs the walk reflected: worst bone off', w.toFixed(4), 'units');
+    check('mirrored: each side lands where the other side was, reflected (within 3% of body height)', w < 0.03 * h(), `${w.toFixed(4)} at ${at}`);
+    await ok('undo');
+    await sleep(300);
+  });
 }
