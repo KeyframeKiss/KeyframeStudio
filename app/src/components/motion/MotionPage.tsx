@@ -73,6 +73,10 @@ export function MotionPage() {
     listenMotion();
     if (status === 'open') void loadAll();
   }, [status]);
+
+  const chars = useMemo(() => Object.values(nodes).filter((n) => n.type === 'Char').sort((a, b) => a.id - b.id), [nodes]);
+  // the lanes only exist with a character in the scene (see the early return below): measure them once they do
+  const hasLanes = chars.length > 0;
   useLayoutEffect(() => {
     const el = wrap.current;
     if (!el) return;
@@ -80,9 +84,7 @@ export function MotionPage() {
     ro.observe(el);
     setW(Math.max(100, el.clientWidth - LABEL_W));
     return () => ro.disconnect();
-  }, []);
-
-  const chars = useMemo(() => Object.values(nodes).filter((n) => n.type === 'Char').sort((a, b) => a.id - b.id), [nodes]);
+  }, [hasLanes]);
   // whose lane is picked: the one clicked here, else the one selected in Studio, else the first
   const chara = sel.chara != null && nodes[sel.chara] ? sel.chara : (studioSel.find((id) => nodes[id]?.type === 'Char') ?? chars[0]?.id ?? null);
   const seq: Seq | undefined = chara != null ? seqs[chara] : undefined;
@@ -296,7 +298,7 @@ export function MotionPage() {
     const stop = (e: WheelEvent) => e.ctrlKey && e.preventDefault();
     el.addEventListener('wheel', stop, { passive: false });
     return () => el.removeEventListener('wheel', stop);
-  }, []);
+  }, [hasLanes]);
 
   const fmt = fmtT;
   const parseS = (s: string) => {
@@ -470,7 +472,7 @@ export function MotionPage() {
             {selBlock.tweaks && Object.keys(selBlock.tweaks).length > 0 && (
               <div className="mo-tweaks" title={Object.keys(selBlock.tweaks).join(', ')}>
                 Your key edits: {Object.keys(selBlock.tweaks).length} bone{Object.keys(selBlock.tweaks).length > 1 ? 's' : ''}, kept through rebuilds
-                <button className="btn small solid" onClick={() => update({ tweaks: undefined }, 'Clear key edits')}>
+                <button className="btn small solid" onClick={() => update({ tweaks: undefined, clearTweaks: true }, 'Clear key edits')}>
                   Clear them
                 </button>
               </div>

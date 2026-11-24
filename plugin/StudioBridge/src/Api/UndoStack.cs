@@ -47,6 +47,22 @@ namespace StudioEX.Bridge.Api
             Push(g.Count == 1 ? g[0] : new GroupUndo(g, label));
         }
 
+        /// <summary>
+        /// Something failed partway: put back what the open group already did (last first) and drop it, so no half
+        /// step is left to undo. A following <see cref="EndGroup"/> does nothing.
+        /// </summary>
+        public static void AbortGroup()
+        {
+            var g = _group;
+            _group = null;
+            if (g == null) return;
+            for (int i = g.Count - 1; i >= 0; i--)
+            {
+                try { g[i].Restore(); }
+                catch (Exception e) { StudioBridgePlugin.Logger.LogWarning("Undo: putting back a failed edit: " + e.Message); }
+            }
+        }
+
         private sealed class GroupUndo : IUndoEntry
         {
             private readonly List<IUndoEntry> _parts; // in the order they happened

@@ -37,8 +37,10 @@ export interface Block {
   mclip?: MClipRef;
   /** played as in a mirror: left and right swapped */
   mirror?: boolean;
-  /** hand edits to its keys, kept through rebuilds: bone → [block time, x, y, z, w][] (written by the bridge) */
+  /** hand edits to its keys, kept through rebuilds: bone → [block time, x, y, z, w][] (the bridge owns these) */
   tweaks?: Record<string, number[][]>;
+  /** sent once to drop the kept hand edits (the bridge keeps them otherwise, whatever this copy says) */
+  clearTweaks?: boolean;
 }
 export interface Seq {
   blocks: Block[];
@@ -56,12 +58,20 @@ interface MotionState {
 
 export const useMotion = create<MotionState>(() => ({ seqs: {}, building: {}, lengths: {}, sel: { chara: null, block: null } }));
 
+// Each edit sent to the bridge gets a number. Until the bridge reports the latest one built, the page keeps
+// its own copy: what the bridge reads back meanwhile is an older sequence.
+const latest: Record<number, number> = {};
+let token = 0;
+const pending = (id: number) => useMotion.getState().building[id] != null;
+
 let listening = false;
 export function listenMotion() {
   if (listening) return;
   listening = true;
   bridge.on('motion.build', (d) => {
-    const r = d as { id: number; progress?: number; done?: boolean; error?: string; lengths?: Record<string, number> };
+    const r = d as { id: number; token?: number; progress?: number; done?: boolean; error?: string; cancelled?: boolean; lengths?: Record<string, number> };
+    // an older edit, already replaced by a newer one still on its way
+    if (r.token != null && latest[r.id] != null && r.token !== latest[r.id]) return;
     if (!r.done) return useMotion.setState((s) => ({ building: { ...s.building, [r.id]: r.progress ?? 0 } }));
     useMotion.setState((s) => {
       const building = { ...s.building };
@@ -83,6 +93,7 @@ export function listenMotion() {
 
 export async function loadSeq(id: number) {
   const seq = await bridge.request<Seq | null>('motion.seq.get', { id }).catch(() => null);
+  if (pending(id)) return; // an edit is still building: the bridge's copy is older than this one
   useMotion.setState((s) => {
     const seqs = { ...s.seqs };
     if (seq) seqs[id] = seq;
@@ -101,9 +112,12 @@ export async function loadAll() {
 export async function setSeq(id: number, seq: Seq, label = 'Edit motion') {
   const blocks = [...seq.blocks].sort((a, b) => a.start - b.start);
   const next = { ...seq, blocks };
-  useMotion.setState((s) => ({ seqs: { ...s.seqs, [id]: next }, building: { ...s.building, [id]: -1 } }));
-  const r = await call('motion.seq.set', { id, seq: next, label });
-  if (!r) {
+  // the copy shown keeps no one-off requests (clearing edits is sent once)
+  const shown = { ...next, blocks: blocks.map(({ clearTweaks: _, ...b }) => b) };
+  const t = (latest[id] = ++token);
+  useMotion.setState((s) => ({ seqs: { ...s.seqs, [id]: shown }, building: { ...s.building, [id]: -1 } }));
+  const r = await call('motion.seq.set', { id, seq: next, label, token: t });
+  if (!r && latest[id] === t) {
     useMotion.setState((s) => {
       const building = { ...s.building };
       delete building[id];
@@ -114,6 +128,12 @@ export async function setSeq(id: number, seq: Seq, label = 'Edit motion') {
 }
 
 export async function clearSeq(id: number) {
+  latest[id] = ++token; // a build still on its way is cancelled by the bridge
+  useMotion.setState((s) => {
+    const building = { ...s.building };
+    delete building[id];
+    return { building };
+  });
   await call('motion.seq.clear', { id });
   useMotion.setState((s) => ({ sel: s.sel.chara === id ? { chara: id, block: null } : s.sel }));
 }

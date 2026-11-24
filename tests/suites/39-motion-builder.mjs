@@ -247,13 +247,76 @@ export default async function (t) {
     check('after the rebuild the walk still has the edit', still < 0.015, `${still.toFixed(4)} at ${where}`);
     check('…and the run did change', worstIn(edited, after, (x) => x > 2.5) > 0.05);
 
-    // cleared: back to the plain walk
-    const cleared = { ...fast, blocks: (await ok('motion.seq.get', { id })).blocks.map((b) => { const c = { ...b }; delete c.tweaks; return c; }) };
+    // the page's copy can be a build behind (sent before the kept edit reached it): the edit stays anyway
+    const stale = { ...seq, blocks: seq.blocks.map((b) => (b.id === 'r' ? { ...b, speed: 1.5 } : b)) }; // no tweaks in it
+    await build(stale, 'Change speed (from an older copy)');
+    check('an edit sent from an older copy keeps the hand edit', !!(await ok('motion.seq.get', { id })).blocks.find((b) => b.id === 'w')?.tweaks?.cf_j_arm00_L);
+    await ok('timeline.seek', { t: 0.5 });
+    await sleep(300);
+    const after2 = await sample(0, 4);
+    check('…and the walk still shows it', worstIn(edited, after2, (x) => x < 1.99) < 0.015, `${worstIn(edited, after2, (x) => x < 1.99).toFixed(4)} at ${where}`);
+
+    // cleared (the page asks once): back to the plain walk
+    const cleared = { ...fast, blocks: (await ok('motion.seq.get', { id })).blocks.map((b) => (b.id === 'w' ? { ...b, tweaks: undefined, clearTweaks: true } : b)) };
     await build(cleared, 'Clear key edits');
     await ok('timeline.seek', { t: 0.5 });
     await sleep(300);
     const plain = await sample(0, 4);
     check('cleared: the walk is as built', worstIn(got, plain, (x) => x < 1.99) < 0.005, `${worstIn(got, plain, (x) => x < 1.99).toFixed(4)} at ${where}`);
     check('…and stays cleared', !(await ok('motion.seq.get', { id })).blocks.find((b) => b.id === 'w')?.tweaks);
+  });
+
+  await t.step('a Motion clip saved again is used as it is now, not taken for a key edit', async () => {
+    await build(seq, 'Walk then run');
+    const tl = await ok('timeline.get');
+    const folder = (tl.groups ?? []).find((g) => g.name.startsWith('Motion: '));
+    const tracks = tl.tracks.filter((x) => x.group === folder?.id && (x.model === 'guideObjectRot' || x.model === 'guideObjectPos')).map((x) => x.id);
+    const name = 'kf-test-resave';
+    await ok('clips.save', { name, tracks, t0: 0, t1: 2 });
+    t.defer(() => req('clips.delete', { file: name }));
+    const block = { id: 'm', kind: 'mclip', start: 0, len: 2, blend: 0, ease: 'smooth', speed: 1, offset: 0, mclip: { file: name, name } };
+    await build({ blocks: [block] }, 'Motion clip');
+    // saved again, different: the same walk from 0.6 s on (its keys are this build's)
+    await sleep(1100); // a new file date
+    const tl2 = await ok('timeline.get');
+    const f2 = (tl2.groups ?? []).find((g) => g.name.startsWith('Motion: '));
+    await ok('clips.save', { name, tracks: tl2.tracks.filter((x) => x.group === f2?.id && (x.model === 'guideObjectRot' || x.model === 'guideObjectPos')).map((x) => x.id), t0: 0.6, t1: 2 });
+    // an unrelated edit (the block a frame longer): rebuilt from the clip as it is now
+    const r = await build({ blocks: [{ ...block, len: 2 + 1 / 30 }] }, 'Longer');
+    const b = (await ok('motion.seq.get', { id })).blocks[0];
+    check('no key edits made up from the clip saved again', r.tweaked === 0 && !b.tweaks, JSON.stringify({ tweaked: r.tweaked, bones: Object.keys(b.tweaks ?? {}) }));
+    await ok('timeline.seek', { t: 0.5 });
+    await sleep(300);
+    const s = await sample(0, 2);
+    // the walk 0.6 s on: got at t + 0.6 (0.6 s is on the 15 fps sample grid)
+    const off = Math.round(0.6 * 15);
+    // relative to the hips: the clip's travel starts from where it starts, the walk's 0.6 s further on
+    const rel = (a) => ({ times: a.times, bones: Object.fromEntries(Object.entries(a.bones).map(([k, v]) => [k, v.map((p, i) => [p[0] - a.bones.cf_j_hips[i][0], p[1] - a.bones.cf_j_hips[i][1], p[2] - a.bones.cf_j_hips[i][2]])])) });
+    const ahead = rel({ times: got.times.slice(0, got.times.length - off), bones: Object.fromEntries(Object.entries(got.bones).map(([k, v]) => [k, v.slice(off)])) });
+    const w = worstIn(ahead, rel(s), (x) => x < 1.39);
+    check('the block plays the clip as saved again', w < 0.02 * h(), `${w.toFixed(4)} at ${where}`);
+  });
+
+  await t.step('Clear while a build is still reading poses: nothing comes back', async () => {
+    const all = await ok('pose.list');
+    const usedBefore = (all.find((p) => /\.dat$/i.test(p.path)) ?? all[0])?.path; // the pose step's
+    const poses = all.filter((p) => /\.(dat|png)$/i.test(p.path) && p.path !== usedBefore);
+    if (!poses.length) return t.metric('clear during a build', 'skipped: no second pose in the library', '');
+    await build(seq, 'Walk then run');
+    // a pose not read before, so the build waits a frame for it
+    const pose = poses[poses.length - 1];
+    const done = studio.waitFor('motion.build', (d) => d.done && d.id === id, 120000);
+    // sent together, so the clear lands while the build waits for the pose
+    const setting = req('motion.seq.set', { id, seq: { blocks: [...seq.blocks, { id: 'p2', kind: 'pose', start: 4, len: 1, blend: 0.4, ease: 'smooth', pose: { path: pose.path, name: pose.name } }] }, label: 'Add pose' });
+    const clearing = req('motion.seq.clear', { id });
+    check('both accepted', (await setting).ok && (await clearing).ok);
+    const r = await done;
+    await sleep(400);
+    const tl = await ok('timeline.get');
+    const left = await ok('motion.seq.get', { id });
+    // (requests wait while a pose loads, so the clear usually comes after the build; either way nothing may be left)
+    if (!r.cancelled) t.metric('clear during a build', 'requests waited for the pose: cleared after the build', '');
+    check('the build was stopped, or finished first and was cleared', r.cancelled === true || !r.error, JSON.stringify(r));
+    check('cleared: no sequence and no Motion folder afterwards', left == null && !(tl.groups ?? []).some((g) => g.name.startsWith('Motion: ')), JSON.stringify({ left: !!left, groups: (tl.groups ?? []).map((g) => g.name) }));
   });
 }

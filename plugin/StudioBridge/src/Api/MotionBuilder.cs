@@ -30,8 +30,19 @@ namespace StudioEX.Bridge.Api
     internal static partial class TimelineImpl
     {
         private static readonly Dictionary<int, Dictionary<string, object>> Seqs = new Dictionary<int, Dictionary<string, object>>();
-        private static readonly Dictionary<int, KeyValuePair<Dictionary<string, object>, string>> BuildQueue = new Dictionary<int, KeyValuePair<Dictionary<string, object>, string>>();
+        private static readonly Dictionary<int, Job> BuildQueue = new Dictionary<int, Job>();
         private static bool _building;
+        /// <summary>Bumped by Clear: a build that started before it stops before writing anything.</summary>
+        private static readonly Dictionary<int, int> ClearCount = new Dictionary<int, int>();
+
+        private sealed class Job
+        {
+            public Dictionary<string, object> Seq;
+            public string Label;
+            public object Token; // the app's number for this edit, echoed in its events
+        }
+
+        private sealed class BuildCancelled : Exception { }
         private static readonly Dictionary<string, PoseFrame> PoseCache = new Dictionary<string, PoseFrame>();
 
         private sealed class PoseFrame
@@ -63,7 +74,7 @@ namespace StudioEX.Bridge.Api
             var seq = a.GetObject("seq") ?? throw new BridgeException("No sequence");
             Validate(seq);
             int id = c.objectInfo.dicKey;
-            BuildQueue[id] = new KeyValuePair<Dictionary<string, object>, string>(seq, a.GetString("label") ?? "Edit motion");
+            BuildQueue[id] = new Job { Seq = seq, Label = a.GetString("label") ?? "Edit motion", Token = a.TryGetValue("token", out var tk) ? tk : null };
             if (!_building) StudioBridgePlugin.Instance.StartCoroutine(BuildLoop());
             return new Dictionary<string, object> { { "queued", true } };
         }
@@ -99,7 +110,10 @@ namespace StudioEX.Bridge.Api
             var _ = Ready;
             var c = CharaApi.Chara(a.GetInt("id"));
             int id = c.objectInfo.dicKey;
-            if (!Seqs.ContainsKey(id)) return false;
+            // an edit still waiting or building doesn't bring the motion back afterwards
+            bool queued = BuildQueue.Remove(id);
+            ClearCount[id] = (ClearCount.TryGetValue(id, out var n) ? n : 0) + 1;
+            if (!Seqs.ContainsKey(id)) return queued;
             UndoStack.BeginGroup();
             try
             {
@@ -145,17 +159,24 @@ namespace StudioEX.Bridge.Api
                 {
                     var next = BuildQueue.First();
                     BuildQueue.Remove(next.Key);
+                    var job = next.Value;
+                    int cleared = ClearCount.TryGetValue(next.Key, out var cc) ? cc : 0;
                     // other tools stepping the scene: wait for them
                     while (LockRunning || MotionSampler.Running || ViewportTools.Busy) yield return null;
-                    var it = Build(next.Key, next.Value.Key, next.Value.Value);
+                    var it = Build(next.Key, job, cleared);
                     while (true)
                     {
                         object cur;
                         try { if (!it.MoveNext()) break; cur = it.Current; }
+                        catch (BuildCancelled)
+                        {
+                            BuildDone(next.Key, job.Token, new Dictionary<string, object> { { "cancelled", true } }, null);
+                            break;
+                        }
                         catch (Exception e)
                         {
                             StudioBridgePlugin.Logger.LogWarning("Motion build: " + e);
-                            BuildDone(next.Key, null, e is BridgeException ? e.Message : "Building the motion failed: " + e.Message);
+                            BuildDone(next.Key, job.Token, null, e is BridgeException ? e.Message : "Building the motion failed: " + e.Message);
                             break;
                         }
                         yield return cur;
@@ -165,10 +186,11 @@ namespace StudioEX.Bridge.Api
             finally { _building = false; ViewportTools.Busy = false; }
         }
 
-        private static void BuildDone(int id, Dictionary<string, object> result, string error)
+        private static void BuildDone(int id, object token, Dictionary<string, object> result, string error)
         {
             var msg = error != null ? new Dictionary<string, object> { { "error", error } } : result ?? new Dictionary<string, object>();
             msg["id"] = id;
+            if (token != null) msg["token"] = token;
             msg["done"] = true;
             StudioBridgePlugin.Instance?.Broadcast("motion.build", msg);
         }
@@ -205,8 +227,10 @@ namespace StudioEX.Bridge.Api
         private static float BStart(Dictionary<string, object> b) => b.GetFloat("start");
         private static float BEnd(Dictionary<string, object> b) => b.GetFloat("start") + b.GetFloat("len");
 
-        private static IEnumerator Build(int id, Dictionary<string, object> seq, string label)
+        private static IEnumerator Build(int id, Job job, int cleared)
         {
+            var seq = job.Seq;
+            string label = job.Label;
             var s = Ready;
             if (!(SceneApi.FindOci(id) is OCIChar c) || c.charInfo == null) throw new BridgeException("That character is gone");
             var blocks = seq.GetList("blocks").OfType<Dictionary<string, object>>().OrderBy(BStart).ToList();
@@ -230,20 +254,88 @@ namespace StudioEX.Bridge.Api
             // the previous build's sequence (its result is worked out again to see what was edited by hand)
             var prevBlocks = before?.GetList("blocks").OfType<Dictionary<string, object>>().OrderBy(BStart).ToList();
             bool hasKeys = prevBlocks != null && MotionTracks(c).Count > 0;
+
+            // Kept hand edits belong to the bridge: the page's copy can be a build behind (an edit sent before the
+            // last build's edits reached it), so a block keeps what the last build gave it unless the page asks to
+            // clear them. A block the last build didn't have (a duplicate) keeps what it came with.
+            var prevById = new Dictionary<string, Dictionary<string, object>>();
+            foreach (var pb in prevBlocks ?? new List<Dictionary<string, object>>())
+                if (pb.GetString("id") is string pid) prevById[pid] = pb;
+            foreach (var b in blocks)
+            {
+                bool clear = b.GetBool("clearTweaks");
+                b.Remove("clearTweaks");
+                if (clear) b.Remove("tweaks");
+                else if (b.GetString("id") is string bid && prevById.TryGetValue(bid, out var pb))
+                {
+                    if (pb.TryGetValue("tweaks", out var pt)) b["tweaks"] = pt; else b.Remove("tweaks");
+                }
+            }
             var ai0 = c.oiCharInfo.animeInfo;
             var own = new[] { ai0.group, ai0.category, ai0.no };
 
-            // 1. poses (put on for a frame each, once; remembered by file and date)
+            // 1. poses (put on for a frame each, once; remembered by file and date) and Motion clips. Each block
+            // records the version of its file it was built from ("src"): the last build is worked out again from
+            // those versions, so a pose or clip saved again since isn't mistaken for an edit to the keys.
             var poseKeys = new Dictionary<Dictionary<string, object>, string>();
+            var mclips = new Dictionary<Dictionary<string, object>, MClip>();
             var missing = new List<KeyValuePair<string, string>>();
-            foreach (var b in blocks.Concat(hasKeys ? prevBlocks : new List<Dictionary<string, object>>()).Where(x => x.GetString("kind") == "pose"))
+            bool prevReadable = hasKeys;
+            foreach (var b in blocks)
             {
-                string path = b.GetObject("pose").GetString("path");
-                if (!File.Exists(path)) continue;
-                string key = Path.GetFullPath(path).ToLowerInvariant() + "|" + File.GetLastWriteTimeUtc(path).Ticks + "|" + bones.Count;
-                poseKeys[b] = key;
-                if (!PoseCache.ContainsKey(key) && !missing.Any(m => m.Key == key)) missing.Add(new KeyValuePair<string, string>(key, path));
+                string kind = b.GetString("kind");
+                if (kind == "pose")
+                {
+                    string path = b.GetObject("pose").GetString("path");
+                    string key = PoseKey(path, bones.Count);
+                    poseKeys[b] = key;
+                    b["src"] = key;
+                    if (!PoseCache.ContainsKey(key) && !missing.Any(m => m.Key == key)) missing.Add(new KeyValuePair<string, string>(key, path));
+                }
+                else if (kind == "mclip")
+                {
+                    string path = ClipPath(b.GetObject("mclip").GetString("file"));
+                    mclips[b] = LoadMClip(path);
+                    b["src"] = MClipKey(path);
+                }
+                else b.Remove("src");
             }
+            if (hasKeys)
+                foreach (var b in prevBlocks)
+                {
+                    string kind = b.GetString("kind"), was = b.GetString("src");
+                    if (kind == "pose")
+                    {
+                        string path = b.GetObject("pose").GetString("path");
+                        string now = File.Exists(path) ? PoseKey(path, bones.Count) : null;
+                        if (was != null && was != now)
+                        {
+                            // saved again (or gone) since: the version it was built from, if it's still remembered
+                            if (PoseCache.ContainsKey(was)) poseKeys[b] = was; else prevReadable = false;
+                        }
+                        else if (now != null)
+                        {
+                            poseKeys[b] = now;
+                            if (!PoseCache.ContainsKey(now) && !missing.Any(m => m.Key == now)) missing.Add(new KeyValuePair<string, string>(now, path));
+                        }
+                        else prevReadable = false;
+                    }
+                    else if (kind == "mclip")
+                    {
+                        string path = ClipPath(b.GetObject("mclip").GetString("file"));
+                        string now = File.Exists(path) ? MClipKey(path) : null;
+                        if (was != null && was != now)
+                        {
+                            if (MClipCache.TryGetValue(was, out var old)) mclips[b] = old; else prevReadable = false;
+                        }
+                        else if (now != null)
+                        {
+                            try { mclips[b] = LoadMClip(path); }
+                            catch { prevReadable = false; }
+                        }
+                        else prevReadable = false;
+                    }
+                }
             if (missing.Count > 0)
             {
                 if (TL.isPlaying) TL.Pause();
@@ -260,7 +352,9 @@ namespace StudioEX.Bridge.Api
                         if (c.charInfo == null) throw new BridgeException("The character was removed");
                         PoseCache[m.Key] = new PoseFrame { Want = wantNow(), Hips = hipsNow() };
                         done++;
-                        StudioBridgePlugin.Instance?.Broadcast("motion.build", new Dictionary<string, object> { { "id", id }, { "progress", Math.Round((double)done / (missing.Count + 1), 3) } });
+                        var prog = new Dictionary<string, object> { { "id", id }, { "progress", Math.Round((double)done / (missing.Count + 1), 3) } };
+                        if (job.Token != null) prog["token"] = job.Token;
+                        StudioBridgePlugin.Instance?.Broadcast("motion.build", prog);
                     }
                 }
                 finally
@@ -270,12 +364,15 @@ namespace StudioEX.Bridge.Api
                 }
             }
 
-            var ctx = new BuildCtx { C = c, Bones = bones, Rate = rate, WantNow = wantNow, HipsNow = hipsNow, RootInv = rootInv, Rt = rt, PoseKeys = poseKeys, OwnClip = own };
+            // cleared while the poses were read: stop here, nothing written
+            if ((ClearCount.TryGetValue(id, out var cn) ? cn : 0) != cleared) throw new BuildCancelled();
+
+            var ctx = new BuildCtx { C = c, Bones = bones, Rate = rate, WantNow = wantNow, HipsNow = hipsNow, RootInv = rootInv, Rt = rt, PoseKeys = poseKeys, MClips = mclips, OwnClip = own };
             try
             {
                 // hand edits to the last build's keys: kept with their blocks, so they survive this rebuild
                 int tweaked = 0;
-                if (hasKeys && prevBlocks.All(b => b.GetString("kind") != "pose" || poseKeys.ContainsKey(b)))
+                if (prevReadable && prevBlocks.All(b => b.GetString("kind") != "pose" || poseKeys.ContainsKey(b)))
                 {
                     try { tweaked = CaptureTweaks(ctx, Compute(ctx, prevBlocks), blocks); }
                     catch (Exception e) { StudioBridgePlugin.Logger.LogWarning("Motion: reading hand edits failed: " + e.Message); }
@@ -316,6 +413,12 @@ namespace StudioEX.Bridge.Api
                     }
                     result = WriteMotion(c, times, bones, o.Local, pos, end, edges.Distinct().ToList());
                 }
+                catch
+                {
+                    // nothing half-written stays: the sequence, the keys and the character go back
+                    UndoStack.AbortGroup();
+                    throw;
+                }
                 finally { UndoStack.EndGroup(label); }
                 if (end > TL.duration + 1e-4f) F_duration.SetValue(s, end); // room for all of it
                 RefreshView();
@@ -324,7 +427,7 @@ namespace StudioEX.Bridge.Api
                 result["lengths"] = o.Lengths;
                 result["end"] = Math.Round(end, 4);
                 result["tweaked"] = tweaked;
-                BuildDone(id, result, null);
+                BuildDone(id, job.Token, result, null);
                 SeqChanged(id);
             }
             catch
@@ -346,6 +449,7 @@ namespace StudioEX.Bridge.Api
             public Quaternion RootInv;
             public Transform Rt;
             public Dictionary<Dictionary<string, object>, string> PoseKeys;
+            public Dictionary<Dictionary<string, object>, MClip> MClips; // each Motion clip block's clip, as it was built
             public int[] OwnClip; // the character's own clip when the build started (held when there's no clip block)
         }
 
@@ -456,7 +560,7 @@ namespace StudioEX.Bridge.Api
             {
                 var b = blocks[bi];
                 if (b.GetString("kind") != "mclip") continue;
-                var data = LoadMClip(ClipPath(b.GetObject("mclip").GetString("file")));
+                var data = x.MClips.TryGetValue(b, out var md) ? md : LoadMClip(ClipPath(b.GetObject("mclip").GetString("file")));
                 lengths[b.GetString("id") ?? bi.ToString()] = Math.Round(data.Length, 4);
                 float speed = b.Has("speed") ? Mathf.Clamp(b.GetFloat("speed"), 0.05f, 10f) : 1f;
                 float offset = Mathf.Max(0f, b.Has("offset") ? b.GetFloat("offset") : 0f);
@@ -694,9 +798,12 @@ namespace StudioEX.Bridge.Api
         }
         private static readonly Dictionary<string, MClip> MClipCache = new Dictionary<string, MClip>();
 
+        private static string MClipKey(string path) => Path.GetFullPath(path).ToLowerInvariant() + "|" + File.GetLastWriteTimeUtc(path).Ticks;
+        private static string PoseKey(string path, int bones) => Path.GetFullPath(path).ToLowerInvariant() + "|" + File.GetLastWriteTimeUtc(path).Ticks + "|" + bones;
+
         private static MClip LoadMClip(string path)
         {
-            string key = path.ToLowerInvariant() + "|" + File.GetLastWriteTimeUtc(path).Ticks;
+            string key = MClipKey(path);
             if (MClipCache.TryGetValue(key, out var hit)) return hit;
             var doc = new System.Xml.XmlDocument();
             doc.Load(path);
