@@ -86,6 +86,15 @@ export interface Toast {
   /** done: a piece of work finished (render, pictures, lip-sync, saved) — shown with a check */
   kind: 'error' | 'info' | 'done';
   text: string;
+  /** how long it stays up (paused while the mouse is on it) */
+  ms: number;
+}
+/** a toast kept for the Messages list after it goes away */
+export interface Message {
+  id: number;
+  kind: Toast['kind'];
+  text: string;
+  at: number;
 }
 
 export interface AppState {
@@ -115,6 +124,9 @@ export interface AppState {
   clipboard: { refs: KeyRef[]; base: number } | null;
 
   toasts: Toast[];
+  /** recent toasts, newest first (status bar › Messages) */
+  messages: Message[];
+  unreadMessages: number;
 
   centerView: 'dope' | 'graph';
   leftTab: 'scene' | 'tracks' | 'poses' | 'camera';
@@ -229,6 +241,8 @@ export const useStore = create<AppState>(() => ({
   showEnglish: lsGet('studioex.english') !== '0',
   clipboard: null,
   toasts: [],
+  messages: [],
+  unreadMessages: 0,
   centerView: (lsGet('studioex.view') as 'dope' | 'graph') || 'dope',
   leftTab: 'scene',
   rightTab: 'inspector',
@@ -539,11 +553,28 @@ export function lsSet(k: string, v: string) {
 // Toasts
 // ---------------------------------------------------------------------------
 let toastId = 1;
+/**
+ * A short message that pops up above the transport bar. It stays long enough to read (longer text, longer
+ * time), pauses while the mouse is on it, and is kept in the Messages list in the status bar afterwards.
+ */
 export function toast(text: string, kind: Toast['kind'] = 'info') {
   const id = toastId++;
   if (kind === 'error') log('error', text, 'ui');
-  set((s) => ({ toasts: [...s.toasts.slice(-3), { id, kind, text }] }));
-  window.setTimeout(() => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })), kind === 'error' ? 5000 : kind === 'done' ? 3200 : 2500);
+  const base = kind === 'error' ? 4000 : kind === 'done' ? 2600 : 2200;
+  const ms = Math.min(16000, base + text.length * 55); // ~ a comfortable reading pace
+  set((s) => {
+    // the same message again (a repeated click) refreshes the one on screen instead of stacking
+    const toasts = s.toasts.filter((t) => t.text !== text || t.kind !== kind);
+    return {
+      toasts: [...toasts.slice(-3), { id, kind, text, ms }],
+      messages: [{ id, kind, text, at: Date.now() }, ...s.messages].slice(0, 60),
+      unreadMessages: s.unreadMessages + 1,
+    };
+  });
+}
+
+export function dismissToast(id: number) {
+  set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) }));
 }
 
 export async function call<T>(cmd: string, args?: Record<string, unknown>): Promise<T | undefined> {

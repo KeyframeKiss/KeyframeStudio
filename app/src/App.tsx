@@ -5,6 +5,7 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import { PreviewPanel } from './components/PreviewPanel';
 import { AnimationsOverlay } from './components/AnimationsOverlay';
 import { RecordingBadge } from './components/QuickActions';
+import { MessagesButton, ToastItem } from './components/Messages';
 import { Header, MiniHeader, TransportBar } from './components/Shell';
 import { DopeSheet } from './components/DopeSheet';
 import { SHORTCUTS } from './components/shortcuts';
@@ -196,15 +197,7 @@ export function App() {
       </div>
     )}
     {toasts.map((t) => (
-      <div key={t.id} className={`toast ${t.kind}`}>
-        {t.kind === 'done' && (
-          <svg className="toast-check" viewBox="0 0 16 16" aria-hidden="true">
-            <circle cx="8" cy="8" r="7" />
-            <path d="M4.6 8.3l2.2 2.2 4.6-4.8" />
-          </svg>
-        )}
-        <span>{t.text}</span>
-      </div>
+      <ToastItem key={t.id} t={t} />
     ))}
   </div>
   );
@@ -276,6 +269,7 @@ export function App() {
           <span>{status === 'connecting' ? 'Connecting to CharaStudio…' : 'Waiting for CharaStudio'}</span>
         )}
         <div className="spacer" />
+        <MessagesButton />
         <span>
           <span className="kbd">Ctrl K</span> actions · <span className="kbd">?</span> shortcuts
         </span>

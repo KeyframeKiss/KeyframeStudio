@@ -24,6 +24,8 @@ const paths: Record<string, string> = {
   fit: 'M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4',
   legacy: 'M2.5 3.5h11v9h-11zM2.5 6h11M5 8.5h6M5 10.5h4',
   check: 'M3.5 8.5l3 3 6-7',
+  close: 'M4 4l8 8M12 4l-8 8',
+  bell: 'M4 11.5V7.5a4 4 0 018 0v4l1.2 1.2H2.8zM6.5 13.8a1.6 1.6 0 003 0',
   globe: 'M8 14A6 6 0 108 2a6 6 0 000 12zM2 8h12M8 2c1.7 1.6 2.5 3.6 2.5 6S9.7 12.4 8 14C6.3 12.4 5.5 10.4 5.5 8S6.3 3.6 8 2z',
   download: 'M8 2.5v7.5M4.8 7l3.2 3.2L11.2 7M3 13h10',
   plug: 'M6 2v3M10 2v3M4.5 5h7v2.5a3.5 3.5 0 01-7 0zM8 11v3',

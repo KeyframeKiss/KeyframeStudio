@@ -8823,3 +8823,168 @@ a.btn {
   font-size: 11px;
   color: var(--text-1);
 }
+
+/* ---- toasts you can read: they stay up for their reading time, pause on hover, close with × ---- */
+.toast:not(.notice) {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding-right: 8px;
+  overflow: hidden;
+  pointer-events: auto; /* hover holds it; × closes it */
+  line-height: 1.45;
+}
+.toast.done {
+  align-items: center;
+}
+.toast-text {
+  flex: 1;
+  min-width: 0;
+}
+.toast-close {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  margin-top: -1px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+}
+.toast-close:hover {
+  background: var(--bg-4, rgba(255, 255, 255, 0.08));
+  color: var(--text-0);
+}
+/* how long is left: a hairline that runs out along the bottom, stopped while the mouse is on it */
+.toast-timer {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: color-mix(in srgb, var(--text-2) 45%, transparent);
+  transform-origin: left;
+  animation: toast-timer var(--toast-ms, 3000ms) linear forwards;
+}
+.toast.error .toast-timer {
+  background: color-mix(in srgb, var(--danger) 60%, transparent);
+}
+.toast.done .toast-timer {
+  background: color-mix(in srgb, var(--ok) 55%, transparent);
+}
+.toast.held .toast-timer {
+  animation-play-state: paused;
+}
+@keyframes toast-timer {
+  to {
+    transform: scaleX(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .toast-timer {
+    display: none;
+  }
+}
+
+/* status bar › Messages: everything that popped up, to read again */
+.sb-messages {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 20px;
+  padding: 0 7px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-3);
+  font: inherit;
+  cursor: pointer;
+}
+.sb-messages:hover,
+.sb-messages.on {
+  background: var(--bg-3);
+  border-color: var(--line);
+  color: var(--text-1);
+}
+.sb-messages.unread {
+  color: var(--text-1);
+}
+.sb-count {
+  min-width: 15px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #1a1206;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 15px;
+  text-align: center;
+}
+.sb-messages.has-error .sb-count {
+  background: var(--danger);
+  color: #fff;
+}
+.msg-list {
+  display: flex;
+  flex-direction: column;
+  max-height: min(60vh, 520px);
+}
+.msg-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 6px 8px;
+  border-bottom: 1px solid var(--line-soft);
+}
+.msg-scroll {
+  overflow-y: auto;
+  padding: 4px 0;
+}
+.msg {
+  display: flex;
+  gap: 9px;
+  padding: 8px 6px;
+  border-radius: 6px;
+  user-select: text; /* copy a path or an error out of it */
+}
+.msg + .msg {
+  border-top: 1px solid var(--line-soft);
+}
+.msg-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  margin-top: 6px;
+  border-radius: 50%;
+  background: var(--text-3);
+}
+.msg.error .msg-dot {
+  background: var(--danger);
+}
+.msg.done .msg-dot {
+  background: var(--ok);
+}
+.msg-text {
+  color: var(--text-0);
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.msg.error .msg-text {
+  color: color-mix(in srgb, var(--danger) 35%, var(--text-0));
+}
+.msg-when {
+  margin-top: 2px;
+  color: var(--text-3);
+  font-size: 10px;
+}
+.msg-empty {
+  padding: 10px 8px;
+  color: var(--text-2);
+  font-size: 12px;
+}
