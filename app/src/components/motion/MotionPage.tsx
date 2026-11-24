@@ -9,6 +9,7 @@ import { Icon } from '../Icon';
 import { NumberField } from '../TopBar';
 import { useAnimationFrame } from '../useAnimationFrame';
 import { PosePicker } from './PosePicker';
+import { IconTile, SwitchCard } from '../EditorBits';
 
 const LABEL_W = 150;
 const EDGE = 7; // px: grab a block's edge to trim it
@@ -416,15 +417,13 @@ export function MotionPage() {
 
       {chara != null && selBlock && (
         <div className={`mo-inspector ${selBlock.kind}`}>
-          <div className="mo-insp-head">
-            <span className="mo-insp-icon">
-              <Icon name={iconOf(selBlock.kind)} size={14} />
-            </span>
-            <div className="mo-insp-title">
+          <div className="ed-head">
+            <IconTile name={iconOf(selBlock.kind)} />
+            <div className="ed-title">
               <b>{blockName(selBlock)}</b>
               <span className="sub">
                 {selBlock.kind === 'clip' ? 'Studio clip' : selBlock.kind === 'mclip' ? 'Motion clip' : 'Pose (held)'}
-                <span className="mo-insp-range">
+                <span className="ed-meta">
                   {fmt(selBlock.start)} – {fmt(blockEnd(selBlock))}
                 </span>
               </span>
@@ -441,10 +440,10 @@ export function MotionPage() {
               Remove
             </button>
           </div>
-          <div className="mo-groups">
-            <section className="mo-group">
+          <div className="ed-groups">
+            <section className="ed-group">
               <h4>Timing</h4>
-              <div className="mo-row-fields">
+              <div className="ed-fields">
                 <label>
                   Starts at
                   <NumberField value={selBlock.start} format={fmt} parse={parseS} onCommit={(v) => update({ start: snapT(v) }, 'Move block')} />
@@ -466,9 +465,9 @@ export function MotionPage() {
               </div>
             </section>
             {plays(selBlock) && (
-              <section className="mo-group">
+              <section className="ed-group">
                 <h4>Playback</h4>
-                <div className="mo-row-fields">
+                <div className="ed-fields">
                   <label>
                     Speed
                     <NumberField value={selBlock.speed ?? 1} format={(v) => `${v.toFixed(2)}×`} parse={(s) => {
@@ -484,9 +483,9 @@ export function MotionPage() {
               </section>
             )}
             {seq && seq.blocks[0]?.id !== selBlock.id && (
-              <section className="mo-group">
+              <section className="ed-group">
                 <h4>Blend in</h4>
-                <div className="mo-row-fields">
+                <div className="ed-fields">
                   <label>
                     Length
                     <NumberField value={selBlock.blend} format={fmt} parse={parseS} onCommit={(v) => update({ blend: Math.min(selBlock.len, Math.max(0, v)) }, 'Change blend')} />
@@ -507,42 +506,28 @@ export function MotionPage() {
                 </div>
               </section>
             )}
-            <section className="mo-group mo-options">
+            <section className="ed-group">
               <h4>Options</h4>
-              <div className="mo-row-fields">
-                <button
-                  className={`mo-option ${selBlock.feet ? 'on' : ''}`}
-                  aria-pressed={!!selBlock.feet}
-                  onClick={() => update({ feet: !selBlock.feet }, selBlock.feet ? 'Unplant feet' : 'Plant feet')}
+              <div className="ed-fields">
+                <SwitchCard
+                  on={!!selBlock.feet}
+                  label="Feet planted"
+                  hint="No sliding while a foot is down"
                   title="A foot on the ground stays on its spot while it's down: no sliding, and a walk or run on the spot moves across the floor"
-                >
-                  <span className={`switch ${selBlock.feet ? 'on' : ''}`}>
-                    <span />
-                  </span>
-                  <span className="mo-option-text">
-                    <b>Feet planted</b>
-                    <span>No sliding while a foot is down</span>
-                  </span>
-                </button>
-                <button
-                  className={`mo-option ${selBlock.mirror ? 'on' : ''}`}
-                  aria-pressed={!!selBlock.mirror}
-                  onClick={() => update({ mirror: !selBlock.mirror }, selBlock.mirror ? 'Unmirror block' : 'Mirror block')}
+                  onChange={(on) => update({ feet: on }, on ? 'Plant feet' : 'Unplant feet')}
+                />
+                <SwitchCard
+                  on={!!selBlock.mirror}
+                  label="Mirror"
+                  hint="Left and right swapped"
                   title="Play it as in a mirror: left and right swapped (a right-foot step becomes a left-foot one)"
-                >
-                  <span className={`switch ${selBlock.mirror ? 'on' : ''}`}>
-                    <span />
-                  </span>
-                  <span className="mo-option-text">
-                    <b>Mirror</b>
-                    <span>Left and right swapped</span>
-                  </span>
-                </button>
+                  onChange={(on) => update({ mirror: on }, on ? 'Mirror block' : 'Unmirror block')}
+                />
               </div>
             </section>
           </div>
           {selBlock.tweaks && Object.keys(selBlock.tweaks).length > 0 && (
-            <div className="mo-tweaks" title={Object.keys(selBlock.tweaks).join(', ')}>
+            <div className="ed-note mo-tweaks" title={Object.keys(selBlock.tweaks).join(', ')}>
               <Icon name="key" size={12} />
               Your key edits on {Object.keys(selBlock.tweaks).length} bone{Object.keys(selBlock.tweaks).length > 1 ? 's' : ''} are kept through rebuilds.
               <button className="btn small solid" onClick={() => update({ tweaks: undefined, clearTweaks: true }, 'Clear key edits')}>

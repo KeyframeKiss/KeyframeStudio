@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { bridge } from '../bridge/client';
-import { call, saveSceneFile, copySelected, deleteSelectedKeys, displayName, duplicateSelectedToPlayhead, keyAllOfSelectedObjects, keyChanged, keySelected, lsSet, openLibrary, pasteAtPlayhead, redo, seek, selectAllKeys, selectedCharacters, setAutoKey, setTimelineUiVisible, setWorkspace, showPanel, showTab, stop, studioSelect, toast, togglePlay, undo, useStore, setMiniMode } from '../state/store';
+import { call, saveSceneFile, copySelected, deleteSelectedKeys, displayName, duplicateSelectedToPlayhead, keyAllOfSelectedObjects, keyChanged, keySelected, lsSet, openLibrary, pasteAtPlayhead, redo, seek, selectAllKeys, selectedCharacters, setAutoKey, setTimelineUiVisible, setWorkspace, showTab, stop, studioSelect, toast, togglePlay, undo, useStore, setMiniMode } from '../state/store';
 import { applyCurveToSelected } from '../state/store';
 import { PRESETS, toFlat } from '../lib/curve';
 import { Icon } from './Icon';
@@ -62,9 +62,9 @@ function PaletteInner() {
       { id: 'anim.track', group: 'Keys', title: 'Add animation track…', keywords: 'property animate new track', run: () => { if (useStore.getState().workspace !== 'shoot') setWorkspace('animate'); window.setTimeout(() => window.dispatchEvent(new CustomEvent('kf:add-track')), 50); } },
       { id: 'anim.clips', group: 'Keys', title: 'Motion clips (save / apply)', keywords: 'clip reuse segment wave nod walk cycle library', run: () => showTab('animate', 'clips') },
       { id: 'shoot.templates', group: 'Shoot', title: 'Production templates', keywords: 'template staging setup reuse scene', run: () => showTab('shoot', 'templates') },
-      { id: 'anim.cleanup', group: 'Keys', title: 'Clean up keys (smooth, retime, loop)', keywords: 'smooth retime loop pops sliding', run: () => showPanel('animate', 'cleanup') },
+      { id: 'anim.cleanup', group: 'Keys', title: 'Clean up keys (smooth, retime, loop)', keywords: 'smooth retime loop pops sliding', run: () => showTab('animate', 'cleanup') },
       { id: 'chara.anim', group: 'Character', title: 'Change animation…', keywords: 'animation clip motion idle dance walk pose loop studio anime', run: () => openAnimations() },
-      { id: 'anim.lock', group: 'Keys', title: 'Lock a foot or hand in place', keywords: 'lock pin plant foot hand sliding contact ik stick', run: () => showPanel('animate', 'cleanup') },
+      { id: 'anim.lock', group: 'Keys', title: 'Lock a foot or hand in place', keywords: 'lock pin plant foot hand sliding contact ik stick', run: () => showTab('animate', 'cleanup') },
       { id: 'lib.scenes', group: 'Scenes', title: 'Open scene browser', kbd: 'Ctrl O', keywords: 'load import', run: () => openLibrary('scenes') },
       { id: 'scene.save', group: 'Scenes', title: 'Save scene (new file)', run: () => { void saveSceneFile(); } },
       { id: 'lib.translate', group: 'Settings', title: 'Fix translations', keywords: 'english japanese names', run: () => openLibrary('translate') },

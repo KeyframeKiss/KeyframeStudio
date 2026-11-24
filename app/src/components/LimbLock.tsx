@@ -2,8 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { create } from 'zustand';
 import { bridge } from '../bridge/client';
 import { call, displayName, liveTime, parseKeyId, refreshTimeline, selectedCharacters, toast, useStore } from '../state/store';
-import { Help } from './Help';
 import { NumberField } from './TopBar';
+import { IconTile, SwitchCard } from './EditorBits';
 
 export type Limb = 'footL' | 'footR' | 'handL' | 'handR';
 export const LIMBS: { id: Limb; label: string }[] = [
@@ -72,7 +72,7 @@ function selectedRange(): [number, number] | null {
   return b - a > 1e-3 ? [a, b] : null;
 }
 
-/** Animate › Cleanup › Lock a foot or hand. */
+/** Animate › Cleanup › Lock a foot or hand (a tool row, like the others on the page). */
 export function LimbLockSection() {
   const status = useStore((s) => s.status);
   const tl = useStore((s) => s.tl);
@@ -122,64 +122,82 @@ export function LimbLockSection() {
   };
 
   return (
-    <div className="section limb-lock">
-      <h3>
-        Lock a foot or hand
-        <Help text="Keeps a foot or hand on one spot in the world while the body moves: no sliding feet, a hand that stays on the table. Steps through the range (Studio pauses for a moment) and keys the limb's IK target. A limb posed with FK switches to IK, and its motion is kept. One undo step." />
-      </h3>
-      <div className="seg limb-pick">
-        {LIMBS.map((l) => (
-          <button key={l.id} className={limb === l.id ? 'on' : ''} onClick={() => setLimb(l.id)}>
-            {l.label}
-          </button>
-        ))}
-      </div>
-      <div className="cleanup-row">
-        <span>From</span>
-        <NumberField value={t0} format={fmt} parse={parse} onCommit={(v) => setT0(Math.min(v, t1))} />
-        <button className="btn small solid" onClick={fromPlayhead} title="Start at the playhead">
-          Playhead
-        </button>
-      </div>
-      <div className="cleanup-row">
-        <span>To</span>
-        <NumberField value={t1} format={fmt} parse={parse} onCommit={(v) => setT1(Math.max(v, t0))} />
-        <button className="btn small solid" onClick={toPlayhead} title="End at the playhead">
-          Playhead
-        </button>
-      </div>
-      {range && (
-        <button className="btn small solid limb-range" onClick={() => (setT0(snap(range[0])), setT1(snap(range[1])))} title="Use the first and last selected key">
-          Use the selected keys ({range[0].toFixed(2)}–{range[1].toFixed(2)} s)
-        </button>
-      )}
-      <div className="cleanup-row">
-        <span>Let go</span>
-        <div className="seg">
-          {[
-            [0, 'At once'],
-            [0.1, '0.1 s'],
-            [0.25, '0.25 s'],
-            [0.5, '0.5 s'],
-          ].map(([v, label]) => (
-            <button key={v} className={blend === v ? 'on' : ''} onClick={() => setBlend(v as number)} title={v ? `After the range, ease back into its own motion over ${label}` : 'Jump straight back to its own motion after the range'}>
-              {label}
-            </button>
-          ))}
+    <section className="tool">
+      <div className="tool-about">
+        <IconTile name="pin" />
+        <div>
+          <h3>Lock a foot or hand</h3>
+          <p>Keeps it on one spot while the body moves: no sliding feet, a hand that stays on the table. Keys its IK target; a limb posed with FK switches to IK with its motion kept.</p>
         </div>
       </div>
-      <label className="limb-rot">
-        <input type="checkbox" checked={rotation} onChange={(e) => setRotation(e.target.checked)} /> Keep its angle too
-      </label>
-      <button
-        className="btn primary wide"
-        disabled={disabled}
-        onClick={() => chars.length && lockLimb({ id: chars[0], limb, t0, t1, rotation, blend })}
-        title={who ? `${who}'s ${limbLabel(limb).toLowerCase()} stays where it is at ${t0.toFixed(2)} s until ${t1.toFixed(2)} s` : 'Select a character first'}
-      >
-        {running ? `Locking ${limbLabel(running).toLowerCase()}… ${Math.round(progress * 100)}%` : !chars.length ? 'Select a character to lock' : `Lock ${limbLabel(limb).toLowerCase()} · ${t0.toFixed(2)}–${t1.toFixed(2)} s`}
-      </button>
-    </div>
+      <div className="tool-body">
+        <div className="ed-fields">
+          <label>
+            Limb
+            <div className="seg">
+              {LIMBS.map((l) => (
+                <button key={l.id} className={limb === l.id ? 'on' : ''} onClick={() => setLimb(l.id)}>
+                  {l.label}
+                </button>
+              ))}
+            </div>
+          </label>
+        </div>
+        <div className="ed-fields">
+          <label>
+            From
+            <div className="ed-pair">
+              <NumberField value={t0} format={fmt} parse={parse} onCommit={(v) => setT0(Math.min(v, t1))} />
+              <button className="btn small solid" onClick={fromPlayhead} title="Start at the playhead">
+                Playhead
+              </button>
+            </div>
+          </label>
+          <label>
+            To
+            <div className="ed-pair">
+              <NumberField value={t1} format={fmt} parse={parse} onCommit={(v) => setT1(Math.max(v, t0))} />
+              <button className="btn small solid" onClick={toPlayhead} title="End at the playhead">
+                Playhead
+              </button>
+            </div>
+          </label>
+          {range && (
+            <button className="btn small solid" onClick={() => (setT0(snap(range[0])), setT1(snap(range[1])))} title="Use the first and last selected key">
+              Selected keys ({range[0].toFixed(2)}–{range[1].toFixed(2)} s)
+            </button>
+          )}
+        </div>
+        <div className="ed-fields">
+          <label>
+            Let go
+            <div className="seg">
+              {[
+                [0, 'At once'],
+                [0.1, '0.1 s'],
+                [0.25, '0.25 s'],
+                [0.5, '0.5 s'],
+              ].map(([v, label]) => (
+                <button key={v} className={blend === v ? 'on' : ''} onClick={() => setBlend(v as number)} title={v ? `After the range, ease back into its own motion over ${label}` : 'Jump straight back to its own motion after the range'}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          </label>
+          <SwitchCard on={rotation} label="Keep its angle too" hint="Holds how it's turned, not only where it is" onChange={setRotation} />
+        </div>
+        <div className="tool-actions">
+          <button
+            className="btn solid"
+            disabled={disabled}
+            onClick={() => chars.length && lockLimb({ id: chars[0], limb, t0, t1, rotation, blend })}
+            title={who ? `${who}'s ${limbLabel(limb).toLowerCase()} stays where it is at ${t0.toFixed(2)} s until ${t1.toFixed(2)} s` : 'Select a character first'}
+          >
+            {running ? `Locking ${limbLabel(running).toLowerCase()}… ${Math.round(progress * 100)}%` : !chars.length ? 'Select a character to lock' : `Lock ${limbLabel(limb).toLowerCase()}, ${t0.toFixed(2)}–${t1.toFixed(2)} s`}
+          </button>
+        </div>
+      </div>
+    </section>
   );
 }
 

@@ -157,13 +157,14 @@ function SubPage({ max = 760, children }: { max?: number; children: React.ReactN
 }
 
 // ---------------------------------------------------------------------------
-// Animate: scene | Timeline / Face / Motion clips + transport | keys, cleanup, selected object
+// Animate: scene | Timeline / Motion builder / Face / Motion clips / Cleanup + transport | keys, selected object
 // ---------------------------------------------------------------------------
 const ANIMATE_TABS: SubTab[] = [
   { id: 'timeline', label: 'Timeline', icon: 'tracks', hint: 'Dope sheet and graph editor (Tab switches)' },
   { id: 'motion', label: 'Motion builder', icon: 'animate', hint: 'Line up Studio clips and poses on a character, blend them, and get keys' },
   { id: 'face', label: 'Face', icon: 'target', hint: 'Animate a face: expressions keyed at the playhead, lip-sync, blinks' },
   { id: 'clips', label: 'Motion clips', icon: 'scissors', hint: 'Save a stretch of animation and reuse it on any character' },
+  { id: 'cleanup', label: 'Cleanup', icon: 'sliders', hint: 'Lock a foot or hand, smooth, retime, loop, and find sudden moves or sliding feet' },
 ];
 
 export function AnimateWorkspace() {
@@ -195,6 +196,11 @@ export function AnimateWorkspace() {
             {tab === 'clips' && (
               <SubPage max={1100}>
                 <ClipsPanel wide />
+              </SubPage>
+            )}
+            {tab === 'cleanup' && (
+              <SubPage max={1100}>
+                <CleanupPanel />
               </SubPage>
             )}
           </ErrorBoundary>
@@ -239,9 +245,6 @@ function AnimateInspector() {
           <CharacterAnimationPanel id={node.id} />
         </Group>
       )}
-      <Group ws="animate" id="cleanup" icon="sliders" title="Cleanup" defaultOpen={false}>
-        <CleanupPanel />
-      </Group>
       {node && (
         <Group
           ws="animate"

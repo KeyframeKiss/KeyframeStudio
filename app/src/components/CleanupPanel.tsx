@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Help } from './Help';
+import { Icon } from './Icon';
 import { bridge } from '../bridge/client';
 import type { WireTrack } from '../bridge/types';
 import { findPops, footSlides, popCulprits, smoothKeys, type Attrs, type KeyVal, type SlideRange } from '../lib/motion';
-import { call, displayName, editTimeline, keyId, liveTime, parseKeyId, seek, selectedCharacters, selectKeys, toast, useStore } from '../state/store';
+import { call, displayName, editTimeline, keyId, liveTime, parseKeyId, seek, selectedCharacters, selectKeys, selectTracks, showTab, toast, useStore } from '../state/store';
 import { Slider } from './CharacterPanel';
 import { LimbLockSection, LockSlideButton } from './LimbLock';
+import { IconTile } from './EditorBits';
 
 type Values = Record<string, [number, Attrs][]>;
 
@@ -34,7 +35,10 @@ const toKeys = (rows: [number, Attrs][] | undefined): KeyVal[] => (rows ?? []).m
 const sameT = (a: number, b: number) => Math.abs(a - b) < 1e-4;
 const numeric = (k: KeyVal[]) => k.length > 0 && Object.keys(k[0].attrs).length > 0;
 
-/** Motion cleanup: smooth, retime, make loops, find sudden moves and foot sliding. Every fix is one undo step. */
+/**
+ * Animate › Cleanup: lock a foot or hand, smooth, retime, make loops, find sudden moves and foot sliding.
+ * Each tool is a row: what it does on the left, its settings and button on the right. Every fix is one undo step.
+ */
 export function CleanupPanel() {
   const scope = useScope();
   const tl = useStore((s) => s.tl);
@@ -148,155 +152,223 @@ export function CleanupPanel() {
     if (n) setSampling(true);
   };
 
-  const scopeText = scope.list.length
-    ? `${scope.keys} key${scope.keys === 1 ? '' : 's'} on ${scope.list.length} track${scope.list.length > 1 ? 's' : ''}${scope.fromKeys ? '' : ' (all keys of the selected tracks)'}`
-    : 'Select keys in the dope sheet, or click track names to select whole tracks.';
+  const scopeTitle = scope.list.length ? `${scope.keys} key${scope.keys === 1 ? '' : 's'} on ${scope.list.length} track${scope.list.length > 1 ? 's' : ''}` : 'Nothing selected';
+  const scopeSub = scope.list.length
+    ? scope.fromKeys
+      ? 'The selected keys: Smooth, Retime and Loop work on these'
+      : 'Every key of the selected tracks: Smooth and Loop work on these (Retime needs keys)'
+    : 'Smooth, Retime and Loop work on the keys you select in the timeline';
   const boneLabel = (b: string) => ({ cf_j_foot_L: 'Left foot', cf_j_foot_R: 'Right foot', cf_j_toes_L: 'Left toes', cf_j_toes_R: 'Right toes' })[b] ?? b;
   const slideVerb = (b: string) => (b.includes('toes') ? 'slide' : 'slides');
+  const tracks = useStore((s) => s.tracks);
+  const charTracks = chars.length ? tracks.filter((t) => t.oci === chars[0] && t.keys.length > 1) : [];
 
   return (
-    <div className="panel-body cleanup">
-      <LimbLockSection />
-
-      <div className="section">
-        <h3>Works on</h3>
-        <div className="hint" style={{ margin: 0 }}>
-          {scopeText}
+    <div className="cleanup-page">
+      <header className="ed-head cleanup-scope">
+        <IconTile name="key" />
+        <div className="ed-title">
+          <b>{scopeTitle}</b>
+          <span className="sub">{scopeSub}</span>
         </div>
-      </div>
-
-      <div className="section">
-        <h3>Smooth</h3>
-        <div className="cleanup-row">
-          <span>Strength</span>
-          <Slider value={strength} min={0.1} max={1} step={0.05} onChange={setStrength} />
-        </div>
-        <div className="cleanup-row">
-          <span>Passes</span>
-          <div className="seg">
-            {[1, 2, 3, 5].map((p) => (
-              <button key={p} className={passes === p ? 'on' : ''} onClick={() => setPasses(p)}>
-                {p}
-              </button>
-            ))}
-          </div>
-        </div>
-        <button className="btn solid wide" disabled={busy || !scope.list.length} onClick={() => smooth()} title="Each key moves toward the line between its neighbours. A track's first and last keys stay put.">
-          Smooth {scope.list.length ? `${scope.keys} key${scope.keys === 1 ? '' : 's'}` : ''}
-        </button>
-      </div>
-
-      <div className="section">
-        <h3>
-          Retime
-          <Help text="Stretch or squeeze the selected keys in time around the first key or the playhead. Longer than 100% = slower. Keys snap to frames." />
-        </h3>
-        <div className="cleanup-row">
-          <span>Around</span>
-          <div className="seg">
-            <button className={pivotAt === 'first' ? 'on' : ''} onClick={() => setPivotAt('first')} title="The first selected key stays where it is">
-              First key
+        <div className="ed-pair">
+          {charTracks.length > 0 && (
+            <button className="btn small solid" onClick={() => selectTracks(charTracks.map((t) => t.id))} title="Select every animated track of this character">
+              All of {displayName(nodes[chars[0]])}'s tracks
             </button>
-            <button className={pivotAt === 'playhead' ? 'on' : ''} onClick={() => setPivotAt('playhead')} title="Keys stretch away from / toward the playhead">
-              Playhead
-            </button>
-          </div>
-        </div>
-        <div className="cleanup-presets">
-          {[50, 75, 125, 150, 200].map((p) => (
-            <button key={p} className="btn solid" disabled={busy || !scope.fromKeys} onClick={() => retime(p)} title={p > 100 ? `Take ${p / 100}× as long (slower)` : `Take ${p / 100}× as long (faster)`}>
-              {p}%
-            </button>
-          ))}
-        </div>
-        <div className="cleanup-row">
-          <span>Custom</span>
-          <input className="input mono" type="number" min={5} max={1000} step={5} value={factor} onChange={(e) => setFactor(Number(e.target.value))} style={{ width: 70 }} />
-          <span className="hint" style={{ margin: 0 }}>
-            %
-          </span>
-          <button className="btn solid" disabled={busy || !scope.fromKeys || !(factor > 0) || factor === 100} onClick={() => retime(factor)}>
-            Apply
+          )}
+          <button className="btn small solid" onClick={() => showTab('animate', 'timeline')} title="Open the timeline to select keys or tracks">
+            <Icon name="tracks" size={12} />
+            Select in the timeline
           </button>
         </div>
-      </div>
+      </header>
 
-      <div className="section">
-        <h3>Loop</h3>
-        <div className="cleanup-row">
-          <span>End at</span>
-          <div className="seg">
-            <button className={loopEnd === 'last' ? 'on' : ''} onClick={() => setLoopEnd('last')} title="The latest key of the selected tracks">
-              Last key
-            </button>
-            <button className={loopEnd === 'end' ? 'on' : ''} onClick={() => setLoopEnd('end')} title="The end of the timeline">
-              Timeline end
+      <LimbLockSection />
+
+      <section className="tool">
+        <div className="tool-about">
+          <IconTile name="pulse" />
+          <div>
+            <h3>Smooth</h3>
+            <p>Each key moves toward the line between its neighbours, taking out jitter. A track's first and last keys stay put.</p>
+          </div>
+        </div>
+        <div className="tool-body">
+          <div className="ed-fields">
+            <label className="tool-slider">
+              Strength
+              <Slider value={strength} min={0.1} max={1} step={0.05} onChange={setStrength} />
+            </label>
+            <label>
+              Passes
+              <div className="seg">
+                {[1, 2, 3, 5].map((p) => (
+                  <button key={p} className={passes === p ? 'on' : ''} onClick={() => setPasses(p)}>
+                    {p}
+                  </button>
+                ))}
+              </div>
+            </label>
+          </div>
+          <div className="tool-actions">
+            <button className="btn solid" disabled={busy || !scope.list.length} onClick={() => smooth()}>
+              {scope.list.length ? `Smooth ${scope.keys} key${scope.keys === 1 ? '' : 's'}` : 'Smooth (select keys first)'}
             </button>
           </div>
         </div>
-        <button className="btn solid wide" disabled={busy || !scope.list.length} onClick={makeLoop} title="Each track ends on the value it starts with, so the animation repeats without a jump">
-          Make loop
-        </button>
-      </div>
+      </section>
 
-      <div className="section">
-        <h3>
-          Find problems
-          <Help text="Sudden moves: keys that jump much more than their neighbours (click one to go there and fix it). Foot sliding: ranges where a planted foot drifts — Lock keeps that foot on its spot for the range." />
-        </h3>
-        <button className="btn solid wide" disabled={busy} onClick={findSudden} title="Moves much faster than the rest of that track — usually a stray key">
-          Find sudden moves {scope.list.length ? 'in selection' : 'in all tracks'}
-        </button>
-        {pops && pops.length > 0 && (
-          <div className="cleanup-list">
-            {pops.slice(0, 50).map((p) => (
-              <div key={`${p.track.id}|${p.t}`} className="cleanup-item">
-                <button
-                  className="cleanup-jump"
-                  onClick={() => {
-                    seek(p.t);
-                    selectKeys([keyId(p.track.id, p.t)]);
-                  }}
-                  title="Go there and select the key"
-                >
-                  <b>{displayName(p.track)}</b>
-                  <small>
-                    key at {p.t.toFixed(2)}s · moves {p.ratio.toFixed(0)}× faster than usual
-                  </small>
+      <section className="tool">
+        <div className="tool-about">
+          <IconTile name="sliders" />
+          <div>
+            <h3>Retime</h3>
+            <p>Stretch or squeeze the selected keys in time. Over 100% is slower. Keys snap to frames.</p>
+          </div>
+        </div>
+        <div className="tool-body">
+          <div className="ed-fields">
+            <label>
+              Around
+              <div className="seg">
+                <button className={pivotAt === 'first' ? 'on' : ''} onClick={() => setPivotAt('first')} title="The first selected key stays where it is">
+                  First key
                 </button>
-                <button className="btn small" onClick={() => fixPop(p)} title="Put this key back on the line between its neighbours">
-                  Fix
+                <button className={pivotAt === 'playhead' ? 'on' : ''} onClick={() => setPivotAt('playhead')} title="Keys stretch away from or toward the playhead">
+                  Playhead
                 </button>
               </div>
-            ))}
-            {pops.length > 1 && (
-              <button className="btn wide" onClick={() => smooth(pops.map((p) => ({ track: p.track.id, times: [p.t] })), true).then(() => setPops([]))}>
-                Fix all {pops.length}
+            </label>
+            <label>
+              Length
+              <div className="ed-pair">
+                {[50, 75, 125, 150, 200].map((p) => (
+                  <button key={p} className="btn small solid" disabled={busy || !scope.fromKeys} onClick={() => retime(p)} title={p > 100 ? `Take ${p / 100}× as long (slower)` : `Take ${p / 100}× as long (faster)`}>
+                    {p}%
+                  </button>
+                ))}
+              </div>
+            </label>
+            <label>
+              Other
+              <div className="ed-pair">
+                <input className="input mono small" type="number" min={5} max={1000} step={5} value={factor} onChange={(e) => setFactor(Number(e.target.value))} style={{ width: 64 }} aria-label="Length in percent" />
+                <button className="btn small solid" disabled={busy || !scope.fromKeys || !(factor > 0) || factor === 100} onClick={() => retime(factor)}>
+                  Apply {factor > 0 ? `${factor}%` : ''}
+                </button>
+              </div>
+            </label>
+          </div>
+          {!scope.fromKeys && <div className="tool-hint">Select keys in the timeline to retime them (drag a box in the dope sheet).</div>}
+        </div>
+      </section>
+
+      <section className="tool">
+        <div className="tool-about">
+          <IconTile name="redo" />
+          <div>
+            <h3>Loop</h3>
+            <p>Each track ends on the value it starts with, so the animation repeats without a jump.</p>
+          </div>
+        </div>
+        <div className="tool-body">
+          <div className="ed-fields">
+            <label>
+              End at
+              <div className="seg">
+                <button className={loopEnd === 'last' ? 'on' : ''} onClick={() => setLoopEnd('last')} title="The latest key of the selected tracks">
+                  Last key
+                </button>
+                <button className={loopEnd === 'end' ? 'on' : ''} onClick={() => setLoopEnd('end')} title="The end of the timeline">
+                  Timeline end
+                </button>
+              </div>
+            </label>
+          </div>
+          <div className="tool-actions">
+            <button className="btn solid" disabled={busy || !scope.list.length} onClick={makeLoop}>
+              {scope.list.length ? `Make ${scope.list.length} track${scope.list.length > 1 ? 's' : ''} loop` : 'Make loop (select tracks first)'}
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section className="tool">
+        <div className="tool-about">
+          <IconTile name="search" />
+          <div>
+            <h3>Find problems</h3>
+            <p>Keys that jump much faster than their neighbours, and feet that drift while they're on the ground. Click one to go there.</p>
+          </div>
+        </div>
+        <div className="tool-body tool-finds">
+          <div className="ed-group">
+            <h4>Sudden moves</h4>
+            <div className="tool-actions">
+              <button className="btn solid" disabled={busy} onClick={findSudden} title="Moves much faster than the rest of that track: usually a stray key">
+                {scope.list.length ? 'Check the selection' : 'Check all tracks'}
               </button>
-            )}
-          </div>
-        )}
-        <button className="btn solid wide" style={{ marginTop: 8 }} disabled={busy || sampling || !chars.length} onClick={checkFeet} title="Plays through the timeline (Studio pauses for a moment) and looks for feet that slide while on the ground">
-          {sampling ? 'Checking feet…' : chars.length ? 'Check foot sliding' : 'Check foot sliding (select a character)'}
-        </button>
-        {slides && slides.length > 0 && (
-          <div className="cleanup-list">
-            {slides.map((s, i) => (
-              <div key={i} className="cleanup-item">
-                <button className="cleanup-jump" onClick={() => seek(s.t0)} title="Go there">
-                  <b>
-                    {boneLabel(s.bone)} {slideVerb(s.bone)}
-                  </b>
-                  <small>
-                    {s.t0.toFixed(2)}s – {s.t1.toFixed(2)}s · {s.distance.toFixed(3)} units
-                  </small>
+              {pops && pops.length > 1 && (
+                <button className="btn solid" onClick={() => smooth(pops.map((p) => ({ track: p.track.id, times: [p.t] })), true).then(() => setPops([]))}>
+                  Fix all {pops.length}
                 </button>
-                {sampledFor != null && <LockSlideButton id={sampledFor} bone={s.bone} t0={s.t0} t1={s.t1} />}
+              )}
+            </div>
+            {pops && pops.length > 0 && (
+              <div className="ed-list">
+                {pops.slice(0, 50).map((p) => (
+                  <div key={`${p.track.id}|${p.t}`} className="ed-item">
+                    <button
+                      className="ed-jump"
+                      onClick={() => {
+                        seek(p.t);
+                        selectKeys([keyId(p.track.id, p.t)]);
+                      }}
+                      title="Go there and select the key"
+                    >
+                      <b>{displayName(p.track)}</b>
+                      <small>
+                        Key at {p.t.toFixed(2)} s, {p.ratio.toFixed(0)}× faster than usual
+                      </small>
+                    </button>
+                    <button className="btn small solid" onClick={() => fixPop(p)} title="Put this key back on the line between its neighbours">
+                      Fix
+                    </button>
+                  </div>
+                ))}
               </div>
-            ))}
+            )}
+            {pops && pops.length === 0 && <div className="tool-hint">No sudden moves.</div>}
           </div>
-        )}
-      </div>
+          <div className="ed-group">
+            <h4>Foot sliding</h4>
+            <div className="tool-actions">
+              <button className="btn solid" disabled={busy || sampling || !chars.length} onClick={checkFeet} title="Plays through the timeline (Studio pauses for a moment) and looks for feet that slide while on the ground">
+                {sampling ? 'Checking feet…' : chars.length ? `Check ${displayName(nodes[chars[0]])}'s feet` : 'Check feet (select a character)'}
+              </button>
+            </div>
+            {slides && slides.length > 0 && (
+              <div className="ed-list">
+                {slides.map((s, i) => (
+                  <div key={i} className="ed-item">
+                    <button className="ed-jump" onClick={() => seek(s.t0)} title="Go there">
+                      <b>
+                        {boneLabel(s.bone)} {slideVerb(s.bone)}
+                      </b>
+                      <small>
+                        {s.t0.toFixed(2)} – {s.t1.toFixed(2)} s, {s.distance.toFixed(3)} units
+                      </small>
+                    </button>
+                    {sampledFor != null && <LockSlideButton id={sampledFor} bone={s.bone} t0={s.t0} t1={s.t1} />}
+                  </div>
+                ))}
+              </div>
+            )}
+            {slides && slides.length === 0 && <div className="tool-hint">No foot sliding.</div>}
+          </div>
+        </div>
+      </section>
     </div>
   );
 }

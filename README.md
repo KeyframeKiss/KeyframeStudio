@@ -128,7 +128,7 @@ Missed a popup? Everything that popped up is kept in **Messages** in the status 
 
 | Workspace | What's there |
 | --- | --- |
-| **Animate** (`Ctrl+1`) | Timeline (dope sheet / graph) · Motion builder · Face · Motion clips — the transport bar underneath; keyframe or track details, Cleanup on the right |
+| **Animate** (`Ctrl+1`) | Timeline (dope sheet / graph) · Motion builder · Face · Motion clips · Cleanup — the transport bar underneath; keyframe or track details on the right |
 | **Pose** (`Ctrl+2`) | Pose library · Animations · Face Studio · Outfit — the selected character's animation, FK/IK, hands, body sliders, attachments, transform |
 | **Look** (`Ctrl+3`) | Presets · Settings · Effects · Materials · Lighting |
 | **Shoot** (`Ctrl+4`) | Shots & camera · Audio · Render · Stills · Templates |
@@ -153,7 +153,7 @@ window kept on top of Studio) and saved layouts.
 | **Motion paths & ghosts** (bottom bar › View) | Paths of hands, feet, head, objects and the camera target over the timeline; onion-skin ghosts at neighbouring keys |
 | **Organizing tracks** | Group the list by **Objects** or your own **Folders** (Timeline's, saved in the scene) from the timeline toolbar. **Folder** makes one from the selected tracks and names it; drag tracks onto a folder to move them in, onto the Tracks header to take them out; rename, ungroup, open / close all. **Search** (`Ctrl+F`) matches track, object, folder and type names (several words narrow it down); the **type filter** shows only bones, transform, face, character, camera, lights, items, look & effects or other |
 | **Foot & hand locking** (Animate › Cleanup) | Keep a foot or hand on one spot over a time range while the body moves: no sliding feet, a hand that stays on the table. Keys the limb's IK target only where needed (within ~2 mm), eases back into its own motion afterwards (0–0.5 s), and warns when the body moves further than the arm or leg reaches. A limb posed with FK switches to IK with its motion kept. **Check foot sliding** offers **Lock** on each slide it finds. One undo step |
-| **Cleanup** (Animate) | Smooth, retime, make loop, find and fix sudden moves, check foot sliding — each one undo step |
+| **Cleanup** (Animate › Cleanup) | Lock a foot or hand, smooth, retime, make loop, find and fix sudden moves, check foot sliding — each one undo step. Works on the keys selected in the timeline, or a character's whole tracks in one click |
 | **Motion builder** (Animate) | Longer motions from Studio's animations, poses and your motion clips in a row on a lane per character, blended into each other (smooth or linear). Drag to move, trim either end, blend; edges snap to other blocks, the playhead and the ends; ripple, nudge, zoom. Per block: speed, in-point, **mirror**, and **feet planted** (a foot on the ground stays put; Studio's on-the-spot walks and runs travel across the floor). Built into ordinary keys in a Motion folder as one undo step; your edits to those keys are kept through rebuilds; saved with the scene |
 | **Motion clips** (Animate) | Save the selected keys of one character as a clip (body, face, any track type); apply it at the playhead on any character — replace or add on top, strength, blend, speed, repeats; one undo step |
 | **Face** (Animate) & **Lip-sync** | Expressions keyed at the playhead; lip-sync from audio (loudness + A/I/U/E/O vowel shapes) with voice per character, part of a clip, style presets, vowel map and all speakers at once; natural blinks |

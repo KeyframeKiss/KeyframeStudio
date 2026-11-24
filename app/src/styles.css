@@ -2696,10 +2696,6 @@ html.compact .btn {
 }
 
 /* Animate › Cleanup group */
-.cleanup .btn.wide {
-  width: 100%;
-  justify-content: center;
-}
 .cleanup-row {
   display: flex;
   align-items: center;
@@ -2715,48 +2711,6 @@ html.compact .btn {
 .cleanup-row > :nth-child(2) {
   flex: 1;
   min-width: 0;
-}
-.cleanup-presets {
-  display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  gap: 4px;
-  margin-bottom: 8px;
-}
-.cleanup-list {
-  margin-top: 8px;
-  display: grid;
-  gap: 4px;
-}
-.cleanup-item {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.cleanup-jump {
-  flex: 1;
-  min-width: 0;
-  text-align: left;
-  border: 1px solid var(--line-soft);
-  background: var(--bg-1);
-  border-radius: 6px;
-  padding: 5px 8px;
-  color: var(--text-1);
-  cursor: pointer;
-}
-.cleanup-jump:hover {
-  border-color: var(--accent-2);
-}
-.cleanup-jump b {
-  display: block;
-  font-size: 11px;
-  font-weight: 600;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.cleanup-jump small {
-  color: var(--text-3);
-  font-size: 10px;
 }
 
 /* Shoot › Camera › Camera moves */
@@ -7122,32 +7076,6 @@ a.btn {
   margin: 2px 0 0;
 }
 
-/* Animate › Cleanup › Lock a foot or hand */
-.limb-lock .limb-pick {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  margin-bottom: 8px;
-}
-.limb-lock .limb-pick > button {
-  justify-content: center;
-}
-.limb-lock .cleanup-row .input {
-  width: auto;
-}
-.limb-lock .limb-range {
-  width: 100%;
-  justify-content: center;
-  margin-bottom: 8px;
-}
-.limb-lock .limb-rot {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--text-2);
-  font-size: 11px;
-  margin-bottom: 8px;
-}
-
 /* ======================================================================
    Shoot › Shots & camera: shot track / storyboard + inspector, camera column
    ====================================================================== */
@@ -8458,9 +8386,6 @@ a.btn {
   border-bottom: 1px solid var(--line);
 }
 .mo-toolbar .spacer,
-.mo-insp-head .spacer {
-  flex: 1;
-}
 .mo-who {
   margin-right: 4px;
 }
@@ -8641,6 +8566,213 @@ a.btn {
   pointer-events: none;
   z-index: 4;
 }
+/* ---- the editor look, shared by the Motion builder inspector, Animate › Cleanup and later pages ----
+   a header (tinted icon tile, bold name, muted sub-line), settings in named groups with thin dividers,
+   labelled fields side by side, and on/off options as switch cards that say what they do.
+   --kind tints the icon tile (and the inspector's edge). */
+.ed-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.ed-icon {
+  --kind: var(--accent-2);
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius);
+  color: var(--kind);
+  background: color-mix(in srgb, var(--kind) 16%, var(--bg-2));
+  border: 1px solid color-mix(in srgb, var(--kind) 35%, transparent);
+}
+.ed-title {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.ed-title b {
+  font-size: 13px;
+  color: var(--text-0);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ed-title .sub {
+  color: var(--text-2);
+  font-size: 11px;
+}
+.ed-meta {
+  margin-left: 8px;
+  padding-left: 8px;
+  border-left: 1px solid var(--line);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-1);
+}
+.ed-head .spacer {
+  flex: 1;
+}
+.ed-head .btn {
+  gap: 5px;
+}
+/* groups side by side with a divider between; when they wrap, the divider of a row's first group falls
+   outside the box and is clipped */
+.ed-groups {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: 12px 37px;
+  overflow: hidden;
+}
+.ed-group {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.ed-group::before {
+  content: '';
+  position: absolute;
+  left: -19px;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--line);
+}
+.ed-group h4 {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-1);
+}
+.ed-fields {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px;
+}
+.ed-fields > label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 10.5px;
+  color: var(--text-2);
+}
+.ed-fields .input {
+  width: 84px;
+}
+.ed-pair {
+  display: flex;
+  gap: 4px;
+}
+.ed-option {
+  appearance: none;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 200px;
+  padding: 5px 10px 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-2);
+  color: var(--text-1);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color var(--t-med) var(--ease-out),
+    background-color var(--t-med) var(--ease-out);
+}
+.ed-option:hover:not(:disabled) {
+  border-color: var(--bg-4);
+  background: var(--bg-3);
+}
+.ed-option.on {
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  background: var(--accent-soft);
+}
+.ed-option:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.ed-option:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.ed-option .switch {
+  flex: none;
+  pointer-events: none;
+}
+.ed-option-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+}
+.ed-option-text b {
+  font-size: 12px;
+  color: var(--text-0);
+}
+.ed-option-text span {
+  font-size: 10.5px;
+  color: var(--text-2);
+}
+.ed-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: var(--radius);
+  background: var(--accent-2-soft);
+  font-size: 11px;
+  color: var(--text-1);
+}
+.ed-note .btn {
+  margin-left: auto;
+}
+/* a list of findings: each row jumps there, with its fix beside it */
+.ed-list {
+  display: grid;
+  gap: 4px;
+}
+.ed-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.ed-jump {
+  appearance: none;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  text-align: left;
+  border: 1px solid var(--line-soft);
+  background: var(--bg-2);
+  border-radius: var(--radius);
+  padding: 5px 9px;
+  color: var(--text-1);
+  cursor: pointer;
+  transition: border-color var(--t-fast) var(--ease-out);
+}
+.ed-jump:hover {
+  border-color: var(--accent-2);
+}
+.ed-jump b {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-0);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ed-jump small {
+  color: var(--text-2);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+}
+
 /* the selected block: a coloured edge for its kind, then its settings in groups */
 .mo-inspector {
   --kind: #4f8fff;
@@ -8655,6 +8787,9 @@ a.btn {
 .mo-inspector.mclip {
   --kind: #3fbf8f;
 }
+.mo-inspector .ed-icon {
+  --kind: inherit;
+}
 .mo-inspector::before {
   content: '';
   position: absolute;
@@ -8664,93 +8799,8 @@ a.btn {
   width: 3px;
   background: var(--kind);
 }
-.mo-insp-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+.mo-inspector > .ed-head {
   margin-bottom: 12px;
-}
-.mo-insp-icon {
-  display: inline-grid;
-  place-items: center;
-  width: 30px;
-  height: 30px;
-  border-radius: var(--radius);
-  color: var(--kind);
-  background: color-mix(in srgb, var(--kind) 16%, var(--bg-2));
-  border: 1px solid color-mix(in srgb, var(--kind) 35%, transparent);
-}
-.mo-insp-title {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  min-width: 0;
-}
-.mo-insp-title b {
-  font-size: 13px;
-  color: var(--text-0);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.mo-insp-title .sub {
-  color: var(--text-2);
-  font-size: 11px;
-}
-.mo-insp-range {
-  margin-left: 8px;
-  padding-left: 8px;
-  border-left: 1px solid var(--line);
-  font-variant-numeric: tabular-nums;
-  color: var(--text-1);
-}
-.mo-insp-head .btn {
-  gap: 5px;
-}
-/* groups side by side with a divider between; when they wrap, the divider of a row's first group falls
-   outside the box and is clipped */
-.mo-groups {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: stretch;
-  gap: 12px 37px;
-  overflow: hidden;
-}
-.mo-group {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
-}
-.mo-group::before {
-  content: '';
-  position: absolute;
-  left: -19px;
-  top: 0;
-  bottom: 0;
-  width: 1px;
-  background: var(--line);
-}
-.mo-group h4 {
-  margin: 0;
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text-1);
-}
-.mo-row-fields {
-  display: flex;
-  align-items: flex-end;
-  gap: 10px;
-}
-.mo-row-fields label {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  font-size: 10.5px;
-  color: var(--text-2);
-}
-.mo-row-fields .input {
-  width: 84px;
 }
 .mo-fit {
   gap: 5px;
@@ -8769,65 +8819,8 @@ a.btn {
 .mo-ease button.on svg path {
   stroke: var(--accent);
 }
-.mo-option {
-  appearance: none;
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  min-width: 200px;
-  padding: 5px 10px 5px 8px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--bg-2);
-  color: var(--text-1);
-  text-align: left;
-  cursor: pointer;
-  transition:
-    border-color var(--t-med) var(--ease-out),
-    background-color var(--t-med) var(--ease-out);
-}
-.mo-option:hover {
-  border-color: var(--bg-4);
-  background: var(--bg-3);
-}
-.mo-option.on {
-  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
-  background: var(--accent-soft);
-}
-.mo-option:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
-}
-.mo-option .switch {
-  flex: none;
-  pointer-events: none;
-}
-.mo-option-text {
-  display: flex;
-  flex-direction: column;
-  line-height: 1.25;
-}
-.mo-option-text b {
-  font-size: 12px;
-  color: var(--text-0);
-}
-.mo-option-text span {
-  font-size: 10.5px;
-  color: var(--text-2);
-}
 .mo-tweaks {
-  display: flex;
-  align-items: center;
-  gap: 8px;
   margin-top: 12px;
-  padding: 6px 10px;
-  border-radius: var(--radius);
-  background: var(--accent-2-soft);
-  font-size: 11px;
-  color: var(--text-1);
-}
-.mo-tweaks .btn {
-  margin-left: auto;
 }
 .mo-pose-picker {
   width: min(900px, calc(100vw - 32px));
@@ -9148,4 +9141,98 @@ a.btn {
   justify-content: flex-end;
   gap: 10px;
   min-width: 0;
+}
+
+/* ---- tool pages (Animate › Cleanup): one row per tool, what it does on the left, its settings and button
+   on the right; one column when narrow. Same pieces as the editor look (.ed-*). ---- */
+.cleanup-page {
+  container-type: inline-size;
+}
+.cleanup-scope {
+  padding: 10px 12px;
+  margin-bottom: 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-1);
+}
+.tool {
+  display: grid;
+  grid-template-columns: minmax(220px, 300px) 1fr;
+  gap: 12px 28px;
+  padding: 18px 2px;
+  border-top: 1px solid var(--line-soft);
+}
+.cleanup-scope {
+  flex-wrap: wrap;
+}
+.cleanup-scope .ed-title {
+  flex: 1 1 240px;
+}
+.cleanup-scope .ed-pair {
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.cleanup-scope .btn {
+  white-space: nowrap;
+}
+.cleanup-scope + .tool {
+  border-top: 0;
+}
+.tool-about {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.tool-about h3 {
+  margin: 1px 0 3px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-0);
+}
+.tool-about p {
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--text-2);
+  max-width: 38ch;
+}
+.tool-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+.tool-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.tool-hint {
+  font-size: 11px;
+  color: var(--text-2);
+}
+.tool-slider {
+  width: 220px;
+}
+.tool-finds {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px 37px;
+  overflow: hidden;
+}
+.tool-finds .ed-group {
+  gap: 8px;
+  min-width: 0;
+}
+.tool-finds .ed-list {
+  max-height: 320px;
+  overflow: auto;
+}
+@container (max-width: 720px) {
+  .tool {
+    grid-template-columns: 1fr;
+  }
+  .tool-finds {
+    grid-template-columns: 1fr;
+  }
 }
