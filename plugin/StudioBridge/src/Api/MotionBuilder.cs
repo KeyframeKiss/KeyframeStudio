@@ -82,11 +82,78 @@ namespace StudioEX.Bridge.Api
             var c = CharaApi.Chara(a.GetInt("id"));
             if (c.charInfo == null || c.charAnimeCtrl?.animator == null) throw new BridgeException("That character isn't loaded");
             var seq = a.GetObject("seq") ?? throw new BridgeException("No sequence");
+            ResolvePoses(seq);
             Validate(seq);
             int id = c.objectInfo.dicKey;
             BuildQueue[id] = new Job { Seq = seq, Label = a.GetString("label") ?? "Edit motion", Token = a.TryGetValue("token", out var tk) ? tk : null };
             if (!_building) StudioBridgePlugin.Instance.StartCoroutine(BuildLoop());
             return new Dictionary<string, object> { { "queued", true } };
+        }
+
+        /// <summary>
+        /// Pose blocks keep the pose file's full path, which differs on another PC: each also keeps it relative to
+        /// the game folder ("UserData/studio/pose/…"). A path that doesn't exist here is found again from that,
+        /// from the "UserData/" part of the old path, or by the file's name in the pose folder.
+        /// </summary>
+        private static void ResolvePoses(Dictionary<string, object> seq)
+        {
+            foreach (var b in seq.GetList("blocks").OfType<Dictionary<string, object>>())
+            {
+                var pose = b.GetString("kind") == "pose" ? b.GetObject("pose") : null;
+                if (pose == null) continue;
+                string path = pose.GetString("path");
+                string found = FindPose(path, pose.GetString("rel"));
+                if (found != null) pose["path"] = found;
+                string rel = ScenePackage.Rel(found ?? path);
+                if (rel != null) pose["rel"] = rel;
+            }
+        }
+
+        private static string FindPose(string path, string rel)
+        {
+            if (!string.IsNullOrEmpty(path) && File.Exists(path)) return path;
+            string game = Path.GetFullPath(Path.Combine(UserData.Path, ".."));
+            var tries = new List<string>();
+            if (!string.IsNullOrEmpty(rel)) tries.Add(Path.Combine(game, rel.Replace('/', Path.DirectorySeparatorChar)));
+            if (!string.IsNullOrEmpty(path))
+            {
+                string norm = path.Replace('\\', '/');
+                int at = norm.IndexOf("/UserData/", StringComparison.OrdinalIgnoreCase);
+                if (at >= 0) tries.Add(Path.Combine(game, norm.Substring(at + 1).Replace('/', Path.DirectorySeparatorChar)));
+            }
+            foreach (var t in tries) if (File.Exists(t)) return t;
+            string name = string.IsNullOrEmpty(path) ? null : Path.GetFileName(path.Replace('\\', '/'));
+            string dir = Path.Combine(UserData.Path, "studio/pose");
+            if (!string.IsNullOrEmpty(name) && Directory.Exists(dir))
+                try { return Directory.GetFiles(dir, name, SearchOption.AllDirectories).FirstOrDefault(); }
+                catch { }
+            return null;
+        }
+
+        /// <summary>For a scene package: the pose and motion clip files the scene's sequences use (path → what).</summary>
+        internal static List<KeyValuePair<string, string>> MotionUsedFiles()
+        {
+            var list = new List<KeyValuePair<string, string>>();
+            foreach (var seq in Seqs.Values)
+                foreach (var b in seq.GetList("blocks").OfType<Dictionary<string, object>>())
+                {
+                    string kind = b.GetString("kind");
+                    if (kind == "pose")
+                    {
+                        string p = b.GetObject("pose")?.GetString("path");
+                        if (!string.IsNullOrEmpty(p)) list.Add(new KeyValuePair<string, string>(p, "pose"));
+                    }
+                    else if (kind == "mclip")
+                    {
+                        string file = b.GetObject("mclip")?.GetString("file");
+                        if (string.IsNullOrEmpty(file)) continue;
+                        string xml = ClipPath(file);
+                        list.Add(new KeyValuePair<string, string>(xml, "motion clip"));
+                        string jpg = Path.ChangeExtension(xml, ".jpg");
+                        if (File.Exists(jpg)) list.Add(new KeyValuePair<string, string>(jpg, "motion clip picture"));
+                    }
+                }
+            return list;
         }
 
         private static void Validate(Dictionary<string, object> seq)
@@ -1160,7 +1227,10 @@ namespace StudioEX.Bridge.Api
                     if (Json.Parse(json) is Dictionary<string, object> all)
                         foreach (var kv in all)
                             if (int.TryParse(kv.Key, out int old) && kv.Value is Dictionary<string, object> seq && loadedItems.TryGetValue(old, out var oci) && oci is OCIChar)
+                            {
+                                ResolvePoses(seq); // made on another PC, or the game folder moved
                                 Seqs[oci.objectInfo.dicKey] = seq;
+                            }
                 }
                 catch (Exception e) { StudioBridgePlugin.Logger.LogWarning("Motion sequences not loaded: " + e.Message); }
                 SeqChanged(-1);

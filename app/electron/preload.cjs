@@ -32,6 +32,14 @@ contextBridge.exposeInMainWorld('studioEx', {
   savePng: (name, dataUrl) => ipcRenderer.invoke('dialog:savePng', name, dataUrl),
   openFolder: (p) => ipcRenderer.invoke('shell:openFolder', p),
   showItem: (p) => ipcRenderer.invoke('shell:showItem', p),
+  // scene packages and library backups (zips laid out like the Koikatsu folder)
+  pkg: {
+    exportScene: (info) => ipcRenderer.invoke('pkg:exportScene', info),
+    exportLibrary: () => ipcRenderer.invoke('pkg:exportLibrary'),
+    open: () => ipcRenderer.invoke('pkg:open'),
+    apply: (token, replace) => ipcRenderer.invoke('pkg:apply', token, replace),
+    cancel: (token) => ipcRenderer.invoke('pkg:cancel', token),
+  },
   translate: {
     batch: (engine, items, settings) => ipcRenderer.invoke('translate:batch', engine, items, settings),
     models: (settings) => ipcRenderer.invoke('translate:models', settings),

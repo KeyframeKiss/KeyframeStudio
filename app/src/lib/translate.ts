@@ -79,6 +79,13 @@ declare global {
       openFolder?(path: string): Promise<string>;
       /** Show a scene file in Explorer, selected. */
       showItem?(path: string): Promise<string>;
+      pkg?: {
+        exportScene(info: { scene: string; files: string[] }): Promise<PkgWritten | null>;
+        exportLibrary(): Promise<PkgWritten | null>;
+        open(): Promise<PkgInspect | null>;
+        apply(token: string, replace: boolean): Promise<{ copied: number; kept: number; scenePath: string | null }>;
+        cancel(token: string): Promise<boolean>;
+      };
       setup?: {
         status(dir?: string): Promise<BridgeSetup>;
         install(dir: string): Promise<BridgeSetup>;
@@ -242,4 +249,22 @@ export function startAutoTranslate() {
   });
   autoTimer = window.setInterval(tick, 15000);
   window.setTimeout(tick, 4000);
+}
+
+/** A package or backup written (scene packages and library backups). */
+export interface PkgWritten {
+  path: string;
+  files: number;
+  bytes: number;
+}
+/** What a package would bring in: new files, ones already here, and ones that differ (asked about). */
+export interface PkgInspect {
+  token: string;
+  kind: 'scene' | 'library';
+  scene: string | null;
+  fresh: number;
+  same: number;
+  differ: string[];
+  rejected: string[];
+  made: string | null;
 }

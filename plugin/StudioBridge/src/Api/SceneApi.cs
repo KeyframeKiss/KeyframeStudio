@@ -26,6 +26,8 @@ namespace StudioEX.Bridge.Api
         }
 
         internal static string CurrentFile;
+        /// <summary>The open scene's file, full path (null for a new scene).</summary>
+        internal static string CurrentPath;
         internal static int SaveCount;
 
         public static void Register(CommandRouter r)

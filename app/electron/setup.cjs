@@ -113,4 +113,9 @@ function register(ipcMain) {
   });
 }
 
-module.exports = { register };
+/** The Koikatsu folder in use (remembered, else found), or null. */
+function gameDir() {
+  return status().gameDir || null;
+}
+
+module.exports = { register, gameDir };

@@ -50,6 +50,7 @@ namespace StudioEX.Bridge
             LibraryMeta.Register(_router);
             LightRigs.Register(_router);
             PresetStore.Register(_router);
+            ScenePackage.Register(_router);
             AudioTrack.OutputDelay = Config.Bind("Audio", "Output delay (ms)", 0,
                 "Play the audio this much early while the timeline plays, to make up for headphones or speakers that are heard late (Bluetooth adds 150–500 ms). Renders don't use it.");
             gameObject.AddComponent<AudioTrack>();

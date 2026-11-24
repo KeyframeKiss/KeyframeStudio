@@ -294,6 +294,13 @@ const SECTIONS: Section[] = [
         <li>
           <b>App settings</b> and the bridge's key are in <code>%APPDATA%\studio-ex</code>. Updating the app keeps both of these.
         </li>
+        <li>
+          <b>Moving to another PC, or sharing a scene?</b> A scene keeps its animation, shots, effects and audio settings inside
+          itself, but its audio files, and the poses and motion clips the Motion builder used, are separate. Library › Scenes ›{' '}
+          <b>Move or share</b> packs the open scene with all of those into one zip, and <b>Import</b> puts a zip's files in the
+          right folders (asking before replacing anything). <b>Back up my library</b> zips your looks, rigs, clips, faces,
+          outfits, templates and translations; import the zip on the new PC to restore them.
+        </li>
       </ul>
     ),
   },

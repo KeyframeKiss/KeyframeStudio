@@ -161,6 +161,24 @@ export default async function (t) {
     await sleep(300);
   });
 
+  await t.step('another PC: a pose path from a different Koikatsu folder is found again; the scene package lists it', async () => {
+    const poses = await ok('pose.list');
+    const pose = poses.find((x) => /[\\/]UserData[\\/]studio[\\/]pose[\\/]/i.test(x.path)) ?? poses[0];
+    if (!pose) return t.say('no saved poses: skipped');
+    // the same pose, as the scene would remember it from a PC with the game somewhere else
+    const at = pose.path.search(/[\\/]UserData[\\/]/i);
+    const elsewhere = 'X:\\Old PC\\Koikatsu' + pose.path.slice(at).replace(/\//g, '\\');
+    const seq = { blocks: [{ id: 'p', kind: 'pose', start: 0, len: 1, blend: 0, ease: 'smooth', pose: { path: elsewhere, name: pose.name } }] };
+    const r = await build(seq, 'Pose from another PC');
+    check('it builds', !r.error, JSON.stringify(r));
+    const got = (await ok('motion.seq.get', { id })).blocks[0].pose;
+    check('…with the pose found in this game folder, and its path relative to it kept', got.path.toLowerCase() === pose.path.toLowerCase() && /^UserData\/studio\/pose\//.test(got.rel), JSON.stringify(got));
+    const pk = await ok('package.collect');
+    check('the scene package lists the pose (as a game-folder path)', pk.files.some((f) => f.what === 'pose' && f.rel === got.rel), JSON.stringify(pk.files));
+    await ok('undo'); // back to the walk and run the next steps build on
+    await sleep(300);
+  });
+
   await t.step('a saved Motion clip as a block: plays back the motion it was saved from', async () => {
     const tl = await ok('timeline.get');
     const folder = (tl.groups ?? []).find((g) => g.name.startsWith('Motion: '));

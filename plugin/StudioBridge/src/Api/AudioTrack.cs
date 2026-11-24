@@ -57,6 +57,9 @@ namespace StudioEX.Bridge.Api
 
         private static AudioTrack _i;
         private static readonly List<Clip> Clips = new List<Clip>();
+
+        /// <summary>The WAV files the scene's clips play (for a scene package).</summary>
+        internal static List<string> UsedFiles() => Clips.Select(c => System.IO.Path.Combine(AudioDir, c.File)).ToList();
         private static int _nextId = 1;
         /// <summary>The clip playing on its own (Listen), not following the timeline.</summary>
         private static Clip _preview;

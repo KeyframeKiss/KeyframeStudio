@@ -111,6 +111,9 @@ GitHub for the newest release, and you can turn it off). Updating: replace the f
 diagnostics › Update the bridge**, and restart CharaStudio. **Settings › Help & guide** (`F1`) covers getting
 started, good habits and common fixes.
 Your presets live in `Koikatsu\UserData\StudioEX` and app settings in `%APPDATA%\studio-ex`, so updates keep them.
+**Moving to another PC or sharing a scene:** Library › Scenes › **Move or share** packs the open scene with the audio, poses and
+motion clips it uses into one zip (and imports one), and backs up your library (looks, rigs, clips, faces, outfits, templates,
+translations) for restoring on the new PC.
 
 ## Testing and reporting bugs
 

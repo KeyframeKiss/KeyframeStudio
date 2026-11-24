@@ -252,6 +252,7 @@ app.whenReady().then(() => {
   require('./log.cjs').register(ipcMain);
   require('./translate.cjs').register(ipcMain);
   require('./setup.cjs').register(ipcMain);
+  require('./packages.cjs').register();
   require('./updates.cjs').register(ipcMain);
   createWindow();
 });

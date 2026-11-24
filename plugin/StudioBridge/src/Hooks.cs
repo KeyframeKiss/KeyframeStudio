@@ -11,6 +11,7 @@ namespace StudioEX.Bridge
         {
             // Never let our bookkeeping break Studio's own scene load.
             SceneApi.CurrentFile = null;
+            SceneApi.CurrentPath = null;
             Try(UndoStack.Clear);
             Try(TimelineApi.ResetVolatility);
             Try(TimelineApi.PruneDeadTracks); // Timeline keeps old tracks when the next scene has no Timeline data
@@ -45,6 +46,7 @@ namespace StudioEX.Bridge
         {
             if (info != SceneApi.Studio.sceneInfo) return;
             SceneApi.CurrentFile = System.IO.Path.GetFileName(path);
+            try { SceneApi.CurrentPath = System.IO.Path.GetFullPath(path); } catch { SceneApi.CurrentPath = null; }
             if (saved) SceneApi.SaveCount++;
             StudioBridgePlugin.Instance?.Broadcast("scene.file", SceneApi.CurrentFile);
         }

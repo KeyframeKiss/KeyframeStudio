@@ -6,6 +6,9 @@ import { ContextMenu, type MenuItem } from './ContextMenu';
 import { PromptDialog, type PromptState } from './PromptDialog';
 import { StarIcon } from './StarIcon';
 import { SwitchCard } from './EditorBits';
+import { Popover } from './Shell';
+import { Icon } from './Icon';
+import { canPackage, exportLibrary, exportScenePackage, importPackage } from '../lib/packages';
 
 type Show = 'all' | 'fav' | 'recent';
 type Sort = 'modified' | 'opened' | 'name';
@@ -138,6 +141,49 @@ export function SceneBrowser() {
           )}
           {canThumb && <SwitchCard on={blur} label="Blur pictures" help="Blurs the scene pictures, for example while sharing your screen. Names and the rest stay readable." onChange={setBlur} />}
           <span className="spacer" style={{ flex: 1 }} />
+          {canPackage() && (
+            <Popover
+              align="right"
+              placement="down"
+              width={290}
+              trigger={(open, toggle) => (
+                <button className={`btn solid ${open ? 'on' : ''}`} onClick={toggle} title="Take scenes and your library to another PC, or share a scene">
+                  <Icon name="download" size={13} /> Move or share
+                </button>
+              )}
+            >
+              {(closeMenu) => (
+                <div className="layout-menu">
+                  <button className="menu-item" onClick={() => (closeMenu(), void exportScenePackage().then(() => window.setTimeout(load, 1500)))}>
+                    Export this scene as a package…
+                  </button>
+                  <button
+                    className="menu-item"
+                    onClick={async () => {
+                      closeMenu();
+                      const scene = await importPackage();
+                      await load();
+                      if (scene) {
+                        const name = scene.split(/[\\/]/).pop() ?? scene;
+                        ask(`Load the imported scene “${name.replace(/\.png$/i, '')}”?`, 'Load scene', async () => {
+                          if ((await call('scene.load', { path: scene })) !== undefined) {
+                            toast('Loading scene…');
+                            close();
+                          }
+                        });
+                      }
+                    }}
+                  >
+                    Import a package or backup…
+                  </button>
+                  <div className="menu-sep" />
+                  <button className="menu-item" onClick={() => (closeMenu(), void exportLibrary())}>
+                    Back up my library…
+                  </button>
+                </div>
+              )}
+            </Popover>
+          )}
           <button
             className="btn solid"
             onClick={() =>
