@@ -512,15 +512,13 @@ export function MotionPage() {
                 <SwitchCard
                   on={!!selBlock.feet}
                   label="Feet planted"
-                  hint="No sliding while a foot is down"
-                  title="A foot on the ground stays on its spot while it's down: no sliding, and a walk or run on the spot moves across the floor"
+                  help="A foot on the ground stays on its spot while it's down: no sliding, and Studio's walks and runs on the spot move across the floor."
                   onChange={(on) => update({ feet: on }, on ? 'Plant feet' : 'Unplant feet')}
                 />
                 <SwitchCard
                   on={!!selBlock.mirror}
                   label="Mirror"
-                  hint="Left and right swapped"
-                  title="Play it as in a mirror: left and right swapped (a right-foot step becomes a left-foot one)"
+                  help="Play it as in a mirror: left and right swapped (a right-foot step becomes a left-foot one)."
                   onChange={(on) => update({ mirror: on }, on ? 'Mirror block' : 'Unmirror block')}
                 />
               </div>
@@ -529,7 +527,8 @@ export function MotionPage() {
           {selBlock.tweaks && Object.keys(selBlock.tweaks).length > 0 && (
             <div className="ed-note mo-tweaks" title={Object.keys(selBlock.tweaks).join(', ')}>
               <Icon name="key" size={12} />
-              Your key edits on {Object.keys(selBlock.tweaks).length} bone{Object.keys(selBlock.tweaks).length > 1 ? 's' : ''} are kept through rebuilds.
+              Your key edits on {Object.keys(selBlock.tweaks).length} bone{Object.keys(selBlock.tweaks).length > 1 ? 's' : ''}
+              <Help text="Keys you changed by hand on this block are kept when the motion is built again. Clear them to go back to the clip as it is." />
               <button className="btn small solid" onClick={() => update({ tweaks: undefined, clearTweaks: true }, 'Clear key edits')}>
                 Clear them
               </button>

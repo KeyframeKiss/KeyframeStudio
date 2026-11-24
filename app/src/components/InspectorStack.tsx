@@ -26,7 +26,8 @@ export function revealGroup(ws: string, id: string) {
   requestAnimationFrame(() => window.dispatchEvent(new CustomEvent('kf:reveal-group', { detail: { ws, id } })));
 }
 
-export function Group({ ws, id, title, icon, extra, defaultOpen = true, children }: { ws: string; id: string; title: ReactNode; icon?: string; extra?: ReactNode; defaultOpen?: boolean; children: ReactNode }) {
+/** A collapsible group. `pinned`: stays at the bottom of the side panel, the other groups scroll behind it. */
+export function Group({ ws, id, title, icon, extra, defaultOpen = true, pinned = false, children }: { ws: string; id: string; title: ReactNode; icon?: string; extra?: ReactNode; defaultOpen?: boolean; pinned?: boolean; children: ReactNode }) {
   const key = groupKey(ws, id);
   const [open, setOpen] = useState(() => {
     try {
@@ -56,7 +57,7 @@ export function Group({ ws, id, title, icon, extra, defaultOpen = true, children
     return () => window.removeEventListener('kf:reveal-group', on);
   }, [ws, id]);
   return (
-    <div ref={ref} className={`group-box ${open ? 'open' : ''}`} data-group={id}>
+    <div ref={ref} className={`group-box ${open ? 'open' : ''} ${pinned ? 'pinned' : ''}`} data-group={id}>
       <div className="group-head" role="button" tabIndex={0} aria-expanded={open} onClick={toggle} onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), toggle())}>
         <Icon name={open ? 'chevronDown' : 'chevronRight'} size={12} />
         {icon && <Icon name={icon} size={13} />}

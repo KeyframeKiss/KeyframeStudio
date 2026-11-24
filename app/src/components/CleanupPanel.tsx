@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Help } from './Help';
 import { Icon } from './Icon';
 import { bridge } from '../bridge/client';
 import type { WireTrack } from '../bridge/types';
@@ -153,11 +154,6 @@ export function CleanupPanel() {
   };
 
   const scopeTitle = scope.list.length ? `${scope.keys} key${scope.keys === 1 ? '' : 's'} on ${scope.list.length} track${scope.list.length > 1 ? 's' : ''}` : 'Nothing selected';
-  const scopeSub = scope.list.length
-    ? scope.fromKeys
-      ? 'The selected keys: Smooth, Retime and Loop work on these'
-      : 'Every key of the selected tracks: Smooth and Loop work on these (Retime needs keys)'
-    : 'Smooth, Retime and Loop work on the keys you select in the timeline';
   const boneLabel = (b: string) => ({ cf_j_foot_L: 'Left foot', cf_j_foot_R: 'Right foot', cf_j_toes_L: 'Left toes', cf_j_toes_R: 'Right toes' })[b] ?? b;
   const slideVerb = (b: string) => (b.includes('toes') ? 'slide' : 'slides');
   const tracks = useStore((s) => s.tracks);
@@ -168,8 +164,10 @@ export function CleanupPanel() {
       <header className="ed-head cleanup-scope">
         <IconTile name="key" />
         <div className="ed-title">
-          <b>{scopeTitle}</b>
-          <span className="sub">{scopeSub}</span>
+          <b>
+            {scopeTitle}
+            <Help text="Smooth, Retime and Loop work on the keys selected in the timeline, or on every key of the selected tracks (Retime needs keys). Lock and Find problems work on the selected character." />
+          </b>
         </div>
         <div className="ed-pair">
           {charTracks.length > 0 && (
@@ -189,10 +187,10 @@ export function CleanupPanel() {
       <section className="tool">
         <div className="tool-about">
           <IconTile name="pulse" />
-          <div>
-            <h3>Smooth</h3>
-            <p>Each key moves toward the line between its neighbours, taking out jitter. A track's first and last keys stay put.</p>
-          </div>
+          <h3>
+            Smooth
+            <Help text="Each key moves toward the line between its neighbours, taking out jitter. A track's first and last keys stay put." />
+          </h3>
         </div>
         <div className="tool-body">
           <div className="ed-fields">
@@ -222,10 +220,10 @@ export function CleanupPanel() {
       <section className="tool">
         <div className="tool-about">
           <IconTile name="sliders" />
-          <div>
-            <h3>Retime</h3>
-            <p>Stretch or squeeze the selected keys in time. Over 100% is slower. Keys snap to frames.</p>
-          </div>
+          <h3>
+            Retime
+            <Help text="Stretch or squeeze the selected keys in time, around the first key or the playhead. Over 100% is slower. Keys snap to frames. Select the keys in the timeline first (drag a box in the dope sheet)." />
+          </h3>
         </div>
         <div className="tool-body">
           <div className="ed-fields">
@@ -260,17 +258,16 @@ export function CleanupPanel() {
               </div>
             </label>
           </div>
-          {!scope.fromKeys && <div className="tool-hint">Select keys in the timeline to retime them (drag a box in the dope sheet).</div>}
         </div>
       </section>
 
       <section className="tool">
         <div className="tool-about">
           <IconTile name="redo" />
-          <div>
-            <h3>Loop</h3>
-            <p>Each track ends on the value it starts with, so the animation repeats without a jump.</p>
-          </div>
+          <h3>
+            Loop
+            <Help text="Each track ends on the value it starts with, so the animation repeats without a jump." />
+          </h3>
         </div>
         <div className="tool-body">
           <div className="ed-fields">
@@ -297,10 +294,10 @@ export function CleanupPanel() {
       <section className="tool">
         <div className="tool-about">
           <IconTile name="search" />
-          <div>
-            <h3>Find problems</h3>
-            <p>Keys that jump much faster than their neighbours, and feet that drift while they're on the ground. Click one to go there.</p>
-          </div>
+          <h3>
+            Find problems
+            <Help text="Keys that jump much faster than their neighbours, and feet that drift while they're on the ground. Click one to go there." />
+          </h3>
         </div>
         <div className="tool-body tool-finds">
           <div className="ed-group">

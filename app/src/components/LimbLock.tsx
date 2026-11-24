@@ -3,6 +3,7 @@ import { create } from 'zustand';
 import { bridge } from '../bridge/client';
 import { call, displayName, liveTime, parseKeyId, refreshTimeline, selectedCharacters, toast, useStore } from '../state/store';
 import { NumberField } from './TopBar';
+import { Help } from './Help';
 import { IconTile, SwitchCard } from './EditorBits';
 
 export type Limb = 'footL' | 'footR' | 'handL' | 'handR';
@@ -125,10 +126,10 @@ export function LimbLockSection() {
     <section className="tool">
       <div className="tool-about">
         <IconTile name="pin" />
-        <div>
-          <h3>Lock a foot or hand</h3>
-          <p>Keeps it on one spot while the body moves: no sliding feet, a hand that stays on the table. Keys its IK target; a limb posed with FK switches to IK with its motion kept.</p>
-        </div>
+        <h3>
+          Lock a foot or hand
+          <Help text="Keeps it on one spot while the body moves: no sliding feet, a hand that stays on the table. Steps through the range (Studio pauses for a moment) and keys the limb's IK target. A limb posed with FK switches to IK with its motion kept. One undo step." />
+        </h3>
       </div>
       <div className="tool-body">
         <div className="ed-fields">
@@ -184,7 +185,7 @@ export function LimbLockSection() {
               ))}
             </div>
           </label>
-          <SwitchCard on={rotation} label="Keep its angle too" hint="Holds how it's turned, not only where it is" onChange={setRotation} />
+          <SwitchCard on={rotation} label="Keep its angle too" help="Holds how the foot or hand is turned as well as where it is." onChange={setRotation} />
         </div>
         <div className="tool-actions">
           <button

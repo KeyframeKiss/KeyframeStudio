@@ -3071,8 +3071,32 @@ html.compact .btn {
   overflow: visible;
   min-height: auto;
 }
+.panel-body.stack {
+  display: flex;
+  flex-direction: column;
+}
+.panel-body.stack > * {
+  flex: none;
+}
 .group-box {
   border-bottom: 1px solid var(--line);
+}
+.group-box.pinned {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  margin-top: auto;
+  border-top: 1px solid var(--line);
+  border-bottom: 0;
+  background: var(--bg-1);
+  box-shadow: 0 -10px 18px -6px rgba(0, 0, 0, 0.45);
+}
+.group-box.pinned .group-head {
+  position: static;
+}
+.group-box.pinned > .group-content {
+  max-height: 55vh;
+  overflow: auto;
 }
 .group-head {
   position: sticky;
@@ -8594,6 +8618,8 @@ a.btn {
   min-width: 0;
 }
 .ed-title b {
+  display: flex;
+  align-items: center;
   font-size: 13px;
   color: var(--text-0);
   white-space: nowrap;
@@ -8668,23 +8694,19 @@ a.btn {
   gap: 4px;
 }
 .ed-option {
-  appearance: none;
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 9px;
-  min-width: 200px;
-  padding: 5px 10px 5px 8px;
+  gap: 2px;
+  height: 30px;
+  padding: 0 8px 0 2px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--bg-2);
-  color: var(--text-1);
-  text-align: left;
-  cursor: pointer;
   transition:
     border-color var(--t-med) var(--ease-out),
     background-color var(--t-med) var(--ease-out);
 }
-.ed-option:hover:not(:disabled) {
+.ed-option:hover:not(.off) {
   border-color: var(--bg-4);
   background: var(--bg-3);
 }
@@ -8692,30 +8714,37 @@ a.btn {
   border-color: color-mix(in srgb, var(--accent) 45%, transparent);
   background: var(--accent-soft);
 }
-.ed-option:disabled {
+.ed-option.off {
   opacity: 0.5;
+}
+.ed-option-btn {
+  appearance: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 100%;
+  padding: 0 4px 0 6px;
+  border: 0;
+  background: none;
+  color: var(--text-0);
+  font: inherit;
+  cursor: pointer;
+}
+.ed-option-btn:disabled {
   cursor: default;
 }
-.ed-option:focus-visible {
+.ed-option-btn:focus-visible {
   outline: 2px solid var(--accent);
-  outline-offset: 1px;
+  outline-offset: -2px;
+  border-radius: 4px;
 }
-.ed-option .switch {
+.ed-option-btn .switch {
   flex: none;
   pointer-events: none;
 }
-.ed-option-text {
-  display: flex;
-  flex-direction: column;
-  line-height: 1.25;
-}
-.ed-option-text b {
+.ed-option-btn b {
   font-size: 12px;
-  color: var(--text-0);
-}
-.ed-option-text span {
-  font-size: 10.5px;
-  color: var(--text-2);
+  font-weight: 600;
 }
 .ed-note {
   display: flex;
@@ -9157,9 +9186,9 @@ a.btn {
 }
 .tool {
   display: grid;
-  grid-template-columns: minmax(220px, 300px) 1fr;
-  gap: 12px 28px;
-  padding: 18px 2px;
+  grid-template-columns: 190px 1fr;
+  gap: 12px 24px;
+  padding: 16px 2px;
   border-top: 1px solid var(--line-soft);
 }
 .cleanup-scope {
@@ -9180,21 +9209,18 @@ a.btn {
 }
 .tool-about {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
+  align-self: start;
   gap: 10px;
 }
 .tool-about h3 {
-  margin: 1px 0 3px;
+  display: flex;
+  align-items: center;
+  margin: 0;
+  min-height: 30px;
   font-size: 13px;
   font-weight: 700;
   color: var(--text-0);
-}
-.tool-about p {
-  margin: 0;
-  font-size: 11.5px;
-  line-height: 1.45;
-  color: var(--text-2);
-  max-width: 38ch;
 }
 .tool-body {
   display: flex;

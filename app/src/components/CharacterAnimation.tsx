@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { bridge } from '../bridge/client';
-import { displayName, showTab, useStore } from '../state/store';
+import { displayName, useStore } from '../state/store';
 import { openAnimations } from '../lib/animation';
 import { listenMotion, loadSeq, seqEnd, useMotion } from '../lib/motionSeq';
 
@@ -10,7 +10,7 @@ interface Anime {
   speed: number;
 }
 
-/** Animate › Character animation: the selected character's Studio clip, and its motion in the Motion builder. */
+/** Animate › Character animation: the selected character's Studio clip, or its motion from the Motion builder. */
 export function CharacterAnimationPanel({ id }: { id: number }) {
   const status = useStore((s) => s.status);
   const revision = useStore((s) => s.revision);
@@ -32,18 +32,13 @@ export function CharacterAnimationPanel({ id }: { id: number }) {
     };
   }, [id, status, revision]);
 
-  const open = () => {
-    useMotion.setState({ sel: { chara: id, block: null } });
-    showTab('animate', 'motion');
-  };
-
   return (
     <div className="char-anim">
       <div className="char-anim-clip">
         <div className="char-anim-name" title={anime?.name}>
           {seq?.blocks.length ? `Motion · ${seq.blocks.length} block${seq.blocks.length > 1 ? 's' : ''}` : anime ? displayName(anime) : '…'}
           <span className="char-anim-state">
-            {seq?.blocks.length ? `Built from the Motion builder (${seqEnd(seq).toFixed(2)} s)` : anime && anime.speed > 0.001 ? 'Studio clip, playing on its own' : 'Studio clip'}
+            {seq?.blocks.length ? `Motion builder, ${seqEnd(seq).toFixed(2)} s` : anime && anime.speed > 0.001 ? 'Studio clip, playing' : 'Studio clip'}
           </span>
         </div>
         {!seq?.blocks.length && (
@@ -52,9 +47,6 @@ export function CharacterAnimationPanel({ id }: { id: number }) {
           </button>
         )}
       </div>
-      <button className="btn primary wide" disabled={status !== 'open'} onClick={open} title="Line up clips and poses, blend them, and get keys you can play, scrub and render">
-        {seq?.blocks.length ? 'Edit in the Motion builder' : 'Open in the Motion builder'}
-      </button>
     </div>
   );
 }

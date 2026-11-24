@@ -256,6 +256,7 @@ function AnimateInspector() {
             </>
           }
           defaultOpen={false}
+          pinned
         >
           <ObjectPanel bare />
         </Group>
@@ -314,7 +315,7 @@ function PoseInspector() {
         <AttachmentPanel key={item} id={item} />
       </Group>}
       {any && (
-        <Group ws="pose" id={isChar ? 'object' : 'object-item'} icon="target" title="Transform" defaultOpen={!isChar}>
+        <Group ws="pose" id={isChar ? 'object' : 'object-item'} icon="target" title="Transform" defaultOpen={!isChar} pinned>
           <ObjectPanel bare />
         </Group>
       )}
