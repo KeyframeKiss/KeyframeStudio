@@ -67,14 +67,14 @@ paths and onion-skin ghosts, folders (an eye mutes a whole folder or object), se
 <table>
   <tr>
     <td width="50%"><img src="docs/images/app-face.png" alt="Animate › Face: expressions keyed at the playhead with a close-up"></td>
-    <td width="50%"><img src="docs/images/app-look-effects.png" alt="Look › Effects: fog, colour correction, depth of field, vignette, grain"></td>
+    <td width="50%"><img src="docs/images/app-look-effects.png" alt="Look › Picture: Studio's settings and Keyframe Studio's effects, grouped into colour, lens and atmosphere"></td>
   </tr>
   <tr>
     <td><b>Face</b> — expressions keyed at the playhead, lip-sync from audio with vowel shapes, natural blinks.</td>
     <td><b>Look</b> — every render setting, built-in effects (fog, colour, depth of field, grain…), materials, lighting rigs, presets.</td>
   </tr>
   <tr>
-    <td><img src="docs/images/app-render.png" alt="Shoot › Render: sizes, frame rate, file type and framing"></td>
+    <td><img src="docs/images/app-render.png" alt="Shoot › Output: a video's sizes, frame rate, file type and framing"></td>
     <td><img src="docs/images/app-view-options.png" alt="The View options: overlays, handles, paths and ghosts"></td>
   </tr>
   <tr>
@@ -131,12 +131,12 @@ Missed a popup? Everything that popped up is kept in **Messages** in the status 
 
 | Workspace | What's there |
 | --- | --- |
-| **Animate** (`Ctrl+1`) | Timeline (dope sheet / graph) · Motion builder · Face · Motion clips · Cleanup — the transport bar underneath; keyframe or track details on the right |
-| **Pose** (`Ctrl+2`) | Pose library · Animations · Face Studio · Outfit — the selected character's animation, FK/IK, hands, body sliders, attachments, transform |
-| **Look** (`Ctrl+3`) | Presets · Settings · Effects · Materials · Lighting |
-| **Shoot** (`Ctrl+4`) | Shots & camera · Audio · Render · Stills · Templates |
-| **Library** (`Ctrl+5`) | Scenes · Characters · Objects (every item with pictures) · Quick actions |
-| **Settings** (`Ctrl+,`) | Help & guide (`F1`) · Mod settings · Studio window · Translations · Shortcuts · About & diagnostics (updates, bug reports) |
+| **Animate** (`Ctrl+1`) | Timeline (dope sheet / graph) · Motion builder (with its motion clip shelf) · Face · Cleanup — the transport bar underneath; keyframe or track details on the right |
+| **Character** (`Ctrl+2`) | Poses · Animations · Face shape · Outfit · Body — the selected character's animation, FK/IK, hands, attachments, transform on the right |
+| **Look** (`Ctrl+3`) | Presets · Picture (colour, lens, atmosphere, toon — Studio's settings and Keyframe Studio's effects together) · Lighting · Materials — the selected object on the right |
+| **Shoot** (`Ctrl+4`) | Shots & camera · Audio · Output (a video or pictures) — the selected object on the right |
+| **Library** (`Ctrl+5`) | Scenes · Characters · Objects (every item with pictures) · Templates |
+| **Settings** (`Ctrl+,`) | Help & guide (`F1`) · Appearance (dark or light, accent colour) · Mod settings · Studio window · Translations · Shortcuts · About & diagnostics (updates, bug reports) |
 
 The ⚙ menu also has keep-on-top, compact mode, **mini mode** (`Ctrl+Shift+M` — just the timeline in a small
 window kept on top of Studio) and saved layouts.
@@ -158,23 +158,25 @@ window kept on top of Studio) and saved layouts.
 | **Foot & hand locking** (Animate › Cleanup) | Keep a foot or hand on one spot over a time range while the body moves: no sliding feet, a hand that stays on the table. Keys the limb's IK target only where needed (within ~2 mm), eases back into its own motion afterwards (0–0.5 s), and warns when the body moves further than the arm or leg reaches. A limb posed with FK switches to IK with its motion kept. **Check foot sliding** offers **Lock** on each slide it finds. One undo step |
 | **Cleanup** (Animate › Cleanup) | Lock a foot or hand, smooth, retime, make loop, find and fix sudden moves, check foot sliding — each one undo step. Works on the keys selected in the timeline, or a character's whole tracks in one click |
 | **Motion builder** (Animate) | Longer motions from Studio's animations, poses and your motion clips in a row on a lane per character, blended into each other (smooth or linear). Drag to move, trim either end, blend; edges snap to other blocks, the playhead and the ends; ripple, nudge, zoom. Per block: speed, in-point, **mirror**, and **feet planted** (a foot on the ground stays put; Studio's on-the-spot walks and runs travel across the floor). Built into ordinary keys in a Motion folder as one undo step; your edits to those keys are kept through rebuilds; saved with the scene |
-| **Motion clips** (Animate) | Save the selected keys of one character as a clip (body, face, any track type); apply it at the playhead on any character — replace or add on top, strength, blend, speed, repeats; one undo step |
+| **Motion clips** (Animate › Motion builder › Clips) | Save the selected keys of one character as a clip (body, face, any track type); apply it at the playhead on any character — replace or add on top, strength, blend, speed, repeats; one undo step |
 | **Face** (Animate) & **Lip-sync** | Expressions keyed at the playhead; lip-sync from audio (loudness + A/I/U/E/O vowel shapes) with voice per character, part of a clip, style presets, vowel map and all speakers at once; natural blinks |
-| **Character** (Pose) | Animation browser (33k+ clips incl. mods, searchable; also Ctrl+K › Change animation, or right-click a character in the scene list — picking a clip makes it play: FK / IK that would hold the body still go off and a stopped animation starts, one undo), speed/options, FK/IK + parts, eyebrows/eyes/mouth, eye & neck look, blush/tears, hands, outfit + per-slot clothing state, accessories (MoreAccessories slots), ABMX bone sliders. Multi-select applies to all selected characters |
-| **Pose library** (Pose) | Studio-compatible pose library (`.dat` and PNG poses, folders, thumbnails), save, apply, **mirror** (`M`), copy pose between characters |
-| **Face Studio** (Pose) | KKPE face parts and shapes on a close-up, saved faces and expressions with tags, before/after |
-| **Outfit** (Pose) | Saved outfits, accessories by body area with Solo, clipping checks |
-| **Prop attachments** (Pose) | Right-click an item → **Attach to…** a scene object or a character joint; adjust grip, pause, resume, detach. Requires NodesConstraints |
+| **Character** | Animation browser (33k+ clips incl. mods, searchable; also Ctrl+K › Change animation, or right-click a character in the scene list — picking a clip makes it play: FK / IK that would hold the body still go off and a stopped animation starts, one undo), speed/options, FK/IK + parts, eyebrows/eyes/mouth, eye & neck look, blush/tears, hands, outfit + per-slot clothing state, accessories (MoreAccessories slots). Multi-select applies to all selected characters |
+| **Poses** (Character) | Studio-compatible pose library (`.dat` and PNG poses, folders, thumbnails), save, apply, **mirror** (`M`), copy pose between characters |
+| **Face shape** (Character) | KKPE face parts and shapes on a close-up, saved faces and expressions with tags, before/after |
+| **Outfit** (Character) | Saved outfits, accessories by body area with Solo, clipping checks |
+| **Body** (Character) | ABMX body sliders grouped by region (head & neck, bust, torso & hips, arms & hands, legs & feet, accessories) with readable names, left and right together; scale, position, rotation and length, drag to scrub or click to type; search adds a bone |
+| **Prop attachments** (Character) | Right-click an item → **Attach to…** a scene object or a character joint; adjust grip, pause, resume, detach. Requires NodesConstraints |
 | **Transform / Object** | Transform for any object (multi-select edits only the axis you touch), item colors/alpha/glow/FK/anim speed, light color/intensity/range/spot/shadows, folder & camera names, view-through-camera |
-| **Look** | Every render setting in one place (color grade + LUTs, bloom, depth of field, SSAO, vignette, fog, sun shafts, shadows, toon shading, character & map light). **Look presets**: 19 built-in looks (times of day, weather, mood lighting, film styles, Noir, Neon Night, Underwater…), each a colour gradient until its first use; save your own, apply all or some groups at any strength. **Effects**: two-tone fog, colour correction, sharpening, vignette, lens fringes, grain, bokeh depth of field (or xukmi FX when installed). **Materials** through KK_MaterialEditor. **Lighting**: rigs around a character (each drawn from above and from the side), projectors (window light, blinds, leaf shadows), lights that aim at a character, and one list of everything added to switch off, select or remove |
+| **Look** | **Picture**: Studio's render settings (color grade + LUTs, bloom, depth of field, SSAO, vignette, fog, sun shafts, toon shading) and Keyframe Studio's effects side by side, grouped into colour, lens, atmosphere and characters, each tagged with where it comes from. **Look presets**: 19 built-in looks (times of day, weather, mood lighting, film styles, Noir, Neon Night, Underwater…), each a colour gradient until its first use; save your own, apply all or some groups at any strength. Keyframe Studio's effects: two-tone fog, colour correction, sharpening, vignette, lens fringes, grain, bokeh depth of field (and xukmi FX when installed). **Materials** through KK_MaterialEditor: one material at a time, or one value across every material of a shader. **Lighting**: Studio's character and map lights, rigs around a character (each drawn from above and from the side), projectors (window light, blinds, leaf shadows), lights that aim at a character, and one list of everything added to switch off, select or remove |
 | **Shots** (Shoot › Shots & camera) | A **shot track** along the timeline: drag shots to move them, drag an edge to trim, drag the edge two shots share to move the cut, drag past a neighbour to swap; split at the playhead, duplicate, snapping to frames, cuts and the playhead; gaps and overlaps shown (one click fixes overlaps). Or a **storyboard** of big pictures with notes, drag to reorder, saved as one picture to share. Each shot has a status (idea, blocked, framed, final), notes, a frame shape, and a camera type: **still** (Studio's view or an angle), **camera keys** (with a camera move across the shot), **first person** through a character's eyes, or **follow** a body part. A **monitor** shows the edit at the playhead through each shot's own camera (your Studio view isn't moved), with the shot's name, timecode, frame and guides. **Angles** keep camera setups to reuse: drag one onto a shot, or onto the empty track for a new shot; each is mirrored in one of Studio's saved views. **Play the edit**: the monitor and renders follow the shots — nothing keyed; a shot with camera keys plays its keys. Studio's own view stays your work camera unless you turn on **In Studio's view too**; a chip in the status bar says when first person or follow has Studio's camera, with Stop. **Transitions** per cut: a hard **cut**, a **glide** (the camera travels between the two shots' cameras; short = a whip pan), a **dip to black / white**, or a **dissolve** — centred on the cut, any length, smooth or linear; shown as a marker and a shaded window on the track, and played in Studio, on the monitor and in renders (Play the edit). **Bake cuts** writes cuts and glides as camera keys (dips and dissolves keep playing from Play the edit). Shots are also draggable on the dope sheet's ruler. Every change is one undo step |
 | **Camera** (Shoot › Shots & camera › monitor) | **Camera** menu: Studio's lens, **Key camera** / **Cut here**, camera moves (orbit, dolly, crane…), first person, follow, scene cameras. **Guides** menu: thirds, golden ratio, diagonals, spiral, safe areas, aspect frames — drawn on the monitor and in Studio's window |
 | **Audio** (Shoot) | Any number of clips synced to the timeline, each with volume, balance, speed, fades and trims; lanes in the dope sheet; headphone (Bluetooth) delay; saved with the scene |
-| **Render** (Shoot) | Video through VideoExport: plays the timeline **through the shots** when Play the edit is on (their cameras, cuts and transitions; shots with camera keys play their keys), audio mixed in, other shapes framed (not squished), several **versions** (sizes and framings) from one render, render queue per shot. **Straight to video** sends frames into the encoder as they render (no image files, no encoding wait); a quick warm-up for physics; **Draft** for fast checks; MP4 encoding balanced, smallest, or on the GPU |
-| **Stills** (Shoot) | Supersampled pictures, PNG/JPG, transparent background, one per saved view or shot, several versions in one press |
-| **Templates** (Shoot) | A scene's staging without its characters — timeline, shots and cameras, look, lighting rigs, render settings, audio — applied to another scene |
-| **Library** | Scene browser (`Ctrl+O`), character cards (add / swap), **Objects** (every item and mod with rendered pictures, big preview from any side, add with one click), quick actions (record and replay) |
+| **Video** (Shoot › Output) | Through VideoExport: plays the timeline **through the shots** when Play the edit is on (their cameras, cuts and transitions; shots with camera keys play their keys), audio mixed in, other shapes framed (not squished), several **versions** (sizes and framings) from one render, render queue per shot. **Straight to video** sends frames into the encoder as they render (no image files, no encoding wait); a quick warm-up for physics; **Draft** for fast checks; MP4 encoding balanced, smallest, or on the GPU |
+| **Pictures** (Shoot › Output) | Supersampled pictures, PNG/JPG, transparent background, one per saved view or shot, several versions in one press |
+| **Templates** (Library) | A scene's staging without its characters — timeline, shots and cameras, look, lighting rigs, render settings, audio — applied to another scene |
+| **Library** | Scene browser (`Ctrl+O`), character cards (add / swap), **Objects** (every item and mod with rendered pictures, big preview from any side, add with one click), templates. Quick actions (record and replay steps) from `Ctrl+K` |
 | **Undo everywhere** | One history for timeline, viewport handles, character panel, ABMX, transform, light, item and look edits; a slider or handle drag is one undo step |
+| **Appearance** (Settings) | Dark or light theme (or follow Windows) and an accent colour: orange, pink, blue, green or violet |
 | **Studio window** (Settings) | Hide Studio's menus and other plugins' panels so it's just the picture (HideAllUI when installed) |
 | **Mod settings** (Settings) | Every BepInEx plugin setting (100+ plugins) searchable in one window, typed editors, changed-only filter, reset to default |
 | **Translations** (Settings) | Every Japanese string Keyframe Studio has shown, tagged Yours / Machine / Game. **Auto-translate** new names with Google, DeepL or a local AI; results are pushed into AutoTranslator so the in-game UI improves too |
@@ -191,12 +193,12 @@ people); Keyframe Studio's own version fills in when it's missing.
 | Feature | Mod | Tested with |
 | --- | --- | --- |
 | Animation (dope sheet, graph, keys, auto-key, ghosts) | Timeline | 1.3.0 |
-| Face Studio: face parts, saved faces, shapes | KKPE | 2.17.0 |
+| Face shape: face parts, saved faces, shapes | KKPE | 2.17.0 |
 | Bone sliders (ABMX) | KKABMX | 5.2 |
 | Look: material tweaks, material rules in presets | Material Editor | 3.7.0 |
 | Look: second colour LUT | KK_TwoLut | — |
-| Render (video) | VideoExport | — |
-| Stills (transparent background) | Screencap (BepisPlugins) | — |
+| Output: video | VideoExport | — |
+| Output: pictures with a transparent background | Screencap (BepisPlugins) | — |
 | Prop attachments | NodesConstraints | — |
 | First person / follow / light aiming / clean window (used when installed) | RealPOV / LockOnPlugin / LightManager / HideAllUI | — |
 | FK and IK together on load (kept compatible) | KK_FKIK | — |
@@ -206,7 +208,7 @@ people); Keyframe Studio's own version fills in when it's missing.
 
 ```
 ┌──────────────── CharaStudio ────────────────┐                ┌────────── Keyframe Studio ──────────┐
-│ BepInEx · Timeline · KKPE · your mods        │   WebSocket    │ Animate · Pose · Look · Shoot · Lib │
+│ BepInEx · Timeline · KKPE · your mods        │   WebSocket    │ Animate · Character · Look · Shoot  │
 │ KKStudioEX.Bridge.dll (overlays & handles) ──┼── 127.0.0.1 ──▶│ Electron + React + TypeScript       │
 └──────────────────────────────────────────────┘     :47615     └─────────────────────────────────────┘
 ```
