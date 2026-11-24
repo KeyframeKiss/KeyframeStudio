@@ -8,6 +8,7 @@ import { call, displayName, editTimeline, keyId, liveTime, parseKeyId, seek, sel
 import { Slider } from './CharacterPanel';
 import { LimbLockSection, LockSlideButton } from './LimbLock';
 import { IconTile } from './EditorBits';
+import { DragNumber } from './DragNumber';
 
 type Values = Record<string, [number, Attrs][]>;
 
@@ -251,7 +252,7 @@ export function CleanupPanel() {
             <label>
               Other
               <div className="ed-pair">
-                <input className="input mono small" type="number" min={5} max={1000} step={5} value={factor} onChange={(e) => setFactor(Number(e.target.value))} style={{ width: 64 }} aria-label="Length in percent" />
+                <DragNumber value={factor} step={1} digits={0} unit="%" min={5} max={1000} title="Length in percent: drag sideways to change (Shift fine, Ctrl coarse) · click to type" onCommit={setFactor} />
                 <button className="btn small solid" disabled={busy || !scope.fromKeys || !(factor > 0) || factor === 100} onClick={() => retime(factor)}>
                   Apply {factor > 0 ? `${factor}%` : ''}
                 </button>

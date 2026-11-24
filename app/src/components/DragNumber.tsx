@@ -15,6 +15,10 @@ export function DragNumber(props: {
   min?: number;
   max?: number;
   title?: string;
+  /** greyed out; no dragging or typing */
+  disabled?: boolean;
+  /** a fixed width in px (it fills its row otherwise) */
+  width?: number;
   onPreview?: (v: number, first: boolean) => void;
   onCommit: (v: number) => void;
 }) {
@@ -27,7 +31,7 @@ export function DragNumber(props: {
   const shown = live ?? value;
 
   const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (text !== null || e.button !== 0) return;
+    if (text !== null || e.button !== 0 || props.disabled) return;
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
     drag.current = { x0: e.clientX, v0: value, moved: false, first: true, last: value };
   };
@@ -65,8 +69,8 @@ export function DragNumber(props: {
 
   return (
     <div
-      className={`dragnum ${live !== null ? 'dragging' : ''}`}
-      style={color ? ({ '--dn-color': color } as React.CSSProperties) : undefined}
+      className={`dragnum ${live !== null ? 'dragging' : ''} ${props.disabled ? 'disabled' : ''}`}
+      style={{ ...(color ? { '--dn-color': color } : {}), ...(props.width ? { width: props.width, flex: 'none' } : {}) } as React.CSSProperties}
       title={props.title ?? 'Drag sideways to change (Shift fine, Ctrl coarse) · click to type'}
     >
       {label && <span className="dn-label">{label}</span>}
@@ -86,14 +90,16 @@ export function DragNumber(props: {
       ) : (
         <div
           className="dn-value"
-          tabIndex={0}
+          tabIndex={props.disabled ? -1 : 0}
           role="spinbutton"
+          aria-disabled={props.disabled || undefined}
           aria-valuenow={shown}
           aria-label={label}
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
           onKeyDown={(e) => {
+            if (props.disabled) return;
             if (e.key === 'Enter') setText(String(Number(value.toFixed(digits))));
             if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
               e.preventDefault();

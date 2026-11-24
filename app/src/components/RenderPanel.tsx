@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { pressable } from '../lib/pressable';
 import { Help } from './Help';
+import { DragNumber } from './DragNumber';
 import { bridge } from '../bridge/client';
 import { call, lsSet, refreshShots, seekNow, setLiveCuts, toast, useStore } from '../state/store';
 import { lastVersions, needsVersions, sameSize, SIZES, toWire, useRenderVersions, type RenderVersion } from '../lib/renderVersions';
@@ -334,7 +335,7 @@ export function RenderPanel() {
                 {s.limit === 'Seconds' && (
                   <div className="cleanup-row">
                     <span />
-                    <input className="input mono" type="number" min={0.5} step={0.5} value={s.limitNumber} disabled={running} onChange={(e) => set({ limitNumber: Number(e.target.value) || 1 })} style={{ width: 80 }} />
+                    <DragNumber value={s.limitNumber} step={0.05} digits={2} unit=" s" min={0.5} width={90} disabled={running} onCommit={(v) => set({ limitNumber: v })} />
                     <span className="hint" style={{ margin: 0 }}>
                       seconds from {from.toFixed(2)} s
                     </span>

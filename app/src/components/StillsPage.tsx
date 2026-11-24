@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { bridge } from '../bridge/client';
 import { toast, useStore } from '../state/store';
 import { Help } from './Help';
+import { DragNumber } from './DragNumber';
 import { Switch } from './LookPanel';
 import { FramingCard } from './RenderFraming';
 import { lastVersions, sameSize, toWire, useRenderVersions, type RenderVersion } from '../lib/renderVersions';
@@ -253,7 +254,7 @@ export function StillsPage() {
             {format === 'jpg' && (
               <div className="cleanup-row">
                 <span>JPG quality</span>
-                <input className="input" type="number" min={50} max={100} value={quality} onChange={(e) => setQuality(Math.max(50, Math.min(100, Number(e.target.value) || 95)))} style={{ width: 70 }} />
+                <DragNumber value={quality} step={0.25} digits={0} min={50} max={100} width={70} onCommit={(v) => setQuality(Math.round(v))} />
               </div>
             )}
             <div className="cleanup-row">

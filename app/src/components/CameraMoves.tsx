@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Field, Panel } from './Page';
 import { call, liveTime, refreshTimeline, seekNow, toast, togglePlay, useStore } from '../state/store';
 import { Slider } from './CharacterPanel';
+import { DragNumber } from './DragNumber';
 
 type Move = 'orbit' | 'dolly' | 'zoom' | 'pan' | 'crane' | 'truck';
 
@@ -71,7 +72,7 @@ export function CameraMoves({ onDone, start, length, title = 'Camera moves', bar
         <Slider value={amounts[move]} min={m.min} max={m.max} step={m.step} onChange={(v) => setAmounts((a) => ({ ...a, [move]: v }))} />
       </Field>
       <Field label="Length (s)">
-        <input className="input mono" type="number" min={0.2} max={duration} step={0.5} value={secs} onChange={(e) => setSecs(Number(e.target.value))} style={{ width: 64, flex: 'none' }} />
+        <DragNumber value={secs} step={0.05} digits={2} unit=" s" min={0.2} max={duration} width={84} onCommit={setSecs} />
         <div className="seg">
           <button className={smooth ? 'on' : ''} onClick={() => setSmooth(true)} title="Ease in and out">
             Smooth

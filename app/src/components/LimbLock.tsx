@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { create } from 'zustand';
 import { bridge } from '../bridge/client';
 import { call, displayName, liveTime, parseKeyId, refreshTimeline, selectedCharacters, toast, useStore } from '../state/store';
-import { NumberField } from './TopBar';
+import { DragNumber } from './DragNumber';
 import { Help } from './Help';
 import { IconTile, SwitchCard } from './EditorBits';
 
@@ -116,11 +116,6 @@ export function LimbLockSection() {
   const valid = t1 - t0 >= 1 / fps - 1e-6;
   const who = chars.length ? displayName(nodes[chars[0]]) : null;
   const disabled = status !== 'open' || !tl || !chars.length || !valid || !!running;
-  const fmt = (v: number) => `${v.toFixed(2)} s`;
-  const parse = (s: string) => {
-    const v = Number(s.replace(/s$/i, '').trim());
-    return Number.isFinite(v) ? snap(v) : null;
-  };
 
   return (
     <section className="tool">
@@ -148,7 +143,7 @@ export function LimbLockSection() {
           <label>
             From
             <div className="ed-pair">
-              <NumberField value={t0} format={fmt} parse={parse} onCommit={(v) => setT0(Math.min(v, t1))} />
+              <DragNumber value={t0} step={0.01} digits={2} unit=" s" min={0} onCommit={(v) => setT0(Math.min(snap(v), t1))} />
               <button className="btn small solid" onClick={fromPlayhead} title="Start at the playhead">
                 Playhead
               </button>
@@ -157,7 +152,7 @@ export function LimbLockSection() {
           <label>
             To
             <div className="ed-pair">
-              <NumberField value={t1} format={fmt} parse={parse} onCommit={(v) => setT1(Math.max(v, t0))} />
+              <DragNumber value={t1} step={0.01} digits={2} unit=" s" min={0} onCommit={(v) => setT1(Math.max(snap(v), t0))} />
               <button className="btn small solid" onClick={toPlayhead} title="End at the playhead">
                 Playhead
               </button>

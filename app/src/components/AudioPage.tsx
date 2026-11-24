@@ -3,6 +3,7 @@ import { Icon } from './Icon';
 import { SwitchCard } from './EditorBits';
 import { Page, Panel, Section } from './Page';
 import { Help } from './Help';
+import { DragNumber } from './DragNumber';
 import { addAudio, audioName, call, listenAudio, liveTime, pickAudio, refreshAudio, removeAudio, seekNow, setAudio, setAudioDelay, showTab, useStore, type AudioClipInfo } from '../state/store';
 import { clipSpan, fadeAt, fileTimeAt, laneRgb, loudest, timelineTimeAt } from '../lib/audioLanes';
 import { Slider } from './CharacterPanel';
@@ -126,16 +127,9 @@ function DelayRow() {
   );
 }
 
-/** A seconds box: typing commits on blur or Enter (so half-typed numbers don't jump the clip around). */
+/** A seconds box: drag to scrub (one change per drag), or click and type (commits on Enter or leaving the box). */
 export function Secs({ value, onCommit, title, min = 0 }: { value: number; onCommit: (v: number) => void; title?: string; min?: number }) {
-  const [text, setText] = useState(String(Math.round(value * 1000) / 1000));
-  useEffect(() => setText(String(Math.round(value * 1000) / 1000)), [value]);
-  const commit = () => {
-    const v = Number(text);
-    if (Number.isFinite(v) && Math.abs(v - value) > 1e-4) onCommit(Math.max(min, v));
-    else setText(String(Math.round(value * 1000) / 1000));
-  };
-  return <input className="input mono" type="number" step={0.05} min={min} value={text} title={title} onChange={(e) => setText(e.target.value)} onBlur={commit} onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()} style={{ width: 70, flex: 'none' }} />;
+  return <DragNumber value={value} step={0.01} digits={2} unit=" s" min={min} width={84} title={title ? `${title} · drag sideways to change, click to type` : undefined} onCommit={(v) => Math.abs(v - value) > 1e-4 && onCommit(Math.max(min, v))} />;
 }
 
 const balanceLabel = (p: number) => (Math.abs(p) < 0.01 ? 'Centre' : `${p < 0 ? 'L' : 'R'} ${Math.round(Math.abs(p) * 100)}`);

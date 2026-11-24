@@ -6858,6 +6858,10 @@ html.frameless .header.mini-header {
 .dragnum:hover {
   border-color: var(--line);
 }
+.dragnum.disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
 .dragnum.dragging,
 .dragnum:focus-within {
   border-color: var(--accent);
