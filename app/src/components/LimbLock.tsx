@@ -40,14 +40,14 @@ function listen() {
     if (r.outOfReach) {
       const part = l.startsWith('hand') ? 'arm' : 'leg';
       return toast(
-        `${what} locked, but from ${r.outOfReach.from.toFixed(2)} s the body moves further than the ${part} reaches, so it stays as close as it can. Shorten the range or move the body less — Ctrl+Z to undo`,
+        `${what} locked, but out of the ${part}'s reach from ${r.outOfReach.from.toFixed(2)} s. Try a shorter range`,
         'error',
       );
     }
     toast(
       r.converted
-        ? `${what} locked (${r.keys} keys). It was posed with FK, so it now uses IK and its motion was kept — Ctrl+Z to undo`
-        : `${what} locked with ${r.keys} keys — Ctrl+Z to undo`,
+        ? `${what} locked (${r.keys} keys), switched from FK to IK`
+        : `${what} locked (${r.keys} keys)`,
       'done',
     );
   });

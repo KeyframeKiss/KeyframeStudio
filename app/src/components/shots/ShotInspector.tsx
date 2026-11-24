@@ -61,7 +61,7 @@ export function ShotInspector({ shot, index }: { shot: Shot; index: number }) {
       await seekNow(shot.start);
       await call('shots.view', { id: shot.id });
       await keyCamera(true, shot.start);
-      toast('The shot’s camera is keyed at its start — move the playhead, frame, and Key camera (or add a camera move)');
+      toast('Camera keyed at the shot’s start. Move on, frame, and Key camera again');
     }
   };
 

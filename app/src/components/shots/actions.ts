@@ -19,7 +19,7 @@ export function effMode(s: Shot): NonNullable<Shot['camMode']> {
 export async function addShotAt(t = liveTime()) {
   const { shots } = st();
   const r = newShotAt(shots, Math.round(t * 100) / 100, duration());
-  if (!r) return toast('No room for a shot here — move the playhead to a gap, or make the timeline longer');
+  if (!r) return toast('No room for a shot here. Move to a gap or lengthen the timeline');
   const id = newShotId();
   const first = shots.length === 0;
   if (!(await saveShots([...shots, { id, name: `Shot ${shots.length + 1}`, ...r, notes: '', status: 'idea', camMode: 'still' }], 'Add shot'))) return;
@@ -28,7 +28,7 @@ export async function addShotAt(t = liveTime()) {
   selectShot(id);
   if (first && !st().liveCuts) {
     await setLiveCuts(true);
-    toast(`Shot added ${r.start.toFixed(2)}–${r.end.toFixed(2)} s with the current camera. Play the edit is on: Studio, the monitor and renders follow the shots`, 'done');
+    toast(`Shot added ${r.start.toFixed(2)}–${r.end.toFixed(2)} s. Play the edit is on`, 'done');
   } else toast(`Shot added ${r.start.toFixed(2)}–${r.end.toFixed(2)} s with the current camera`);
 }
 
@@ -45,14 +45,14 @@ export async function splitAtPlayhead(id: string) {
   const t = Math.round(liveTime() * 1000) / 1000;
   const nid = newShotId();
   const next = splitShot(st().shots, id, t, nid);
-  if (!next) return toast('Put the playhead inside the shot (not at its very edge) to split it there');
+  if (!next) return toast('Put the playhead inside the shot to split it');
   if (await saveShots(next, 'Split shot')) selectShot(nid);
 }
 
 export async function duplicate(id: string) {
   const nid = newShotId();
   const next = duplicateShot(st().shots, id, nid, duration());
-  if (!next) return toast('No room right after this shot — make a gap first (drag the next shot along) or split it');
+  if (!next) return toast('No room after this shot. Make a gap or split it');
   if (await saveShots(next, 'Duplicate shot')) selectShot(nid);
 }
 
@@ -75,7 +75,7 @@ export async function lookThrough(id: string) {
   selectShot(id);
   await seekNow(s.start);
   if (effMode(s) === 'keys') return; // its camera keys show it at the start
-  if (!s.cam) return toast('This shot has no camera yet — frame the view in Studio and press Use current view');
+  if (!s.cam) return toast('No camera yet. Frame the view, then press Use current view');
   await call('shots.view', { id });
 }
 
@@ -99,7 +99,7 @@ export async function fromAngle(id: string, angle: string) {
 export async function addShotWithAngle(t: number, angle: string) {
   const { shots } = st();
   const r = newShotAt(shots, Math.round(t * 100) / 100, duration());
-  if (!r) return toast('No room for a shot there — drop it on a gap, or make the timeline longer');
+  if (!r) return toast('No room there. Drop it on a gap');
   const a = st().angles.find((x) => x.id === angle);
   const id = newShotId();
   const first = shots.length === 0;

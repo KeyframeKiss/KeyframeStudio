@@ -114,7 +114,7 @@ export function RenderPanel() {
     const r = await call<RenderStatus>('render.start', { ...(sendVersions() ? { versions: toWire(versions) } : {}), useShots: shots.length > 0 && liveCuts });
     if (!r) return;
     setSt(r);
-    toast('Rendering — Studio plays the animation and captures every frame. Leave it alone until it finishes.');
+    toast('Rendering. Leave Studio alone until it finishes');
     // Keyframe Studio plays the timeline while VideoExport records (VideoExport doesn't play it itself)
     if (r.settings.limit !== 'Animation') {
       const q = await call<QueueState>('render.queueStatus');

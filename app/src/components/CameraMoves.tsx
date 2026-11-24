@@ -37,7 +37,7 @@ export function CameraMoves({ onDone, start, length, title = 'Camera moves', bar
     const r = await call<{ t0: number; t1: number; keys: number; replaced: number }>('camera.move', { preset: move, amount: m.amount(amounts[move], first), duration: secs, t0, ease: smooth ? 'smooth' : 'linear' });
     if (!r) return;
     setLast({ t0: r.t0, t1: r.t1 });
-    toast(`${m.label} ${m.dirs[first ? 0 : 1].toLowerCase()} keyed ${r.t0.toFixed(2)}s → ${r.t1.toFixed(2)}s${r.replaced ? ` (replaced ${r.replaced} camera keys in between)` : ''} — Ctrl+Z to undo`);
+    toast(`${m.label} ${m.dirs[first ? 0 : 1].toLowerCase()} keyed ${r.t0.toFixed(2)}s → ${r.t1.toFixed(2)}s${r.replaced ? ` (replaced ${r.replaced} keys)` : ''}`);
     await refreshTimeline();
     onDone();
   };

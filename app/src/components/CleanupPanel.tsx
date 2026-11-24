@@ -69,7 +69,7 @@ export function CleanupPanel() {
       // a fix puts a stray key right back on its neighbours' line; Smooth uses the chosen strength/passes
       for (const [i, v] of smoothKeys(keys, chosen, fix ? 1 : strength, fix ? 1 : passes)) edits.push({ track: x.track, t: keys[i].t, value: v });
     }
-    if (!edits.length) return toast('Nothing to smooth — a track’s first and last keys stay put, so pick keys in between');
+    if (!edits.length) return toast('Pick keys between the first and last to smooth');
     const n = await editTimeline<number>('timeline.setKeyValues', { edits, label: fix ? 'Fix sudden moves' : 'Smooth keys' });
     if (n) toast(`${fix ? 'Fixed' : 'Smoothed'} ${n} key${n > 1 ? 's' : ''} — Ctrl+Z to undo`);
   };
@@ -95,7 +95,7 @@ export function CleanupPanel() {
     const ids = scope.list.map((x) => x.track.id);
     const end = loopEnd === 'end' ? (tl?.duration ?? 10) : Math.max(...scope.list.map((x) => x.track.keys.slice(-1)[0]?.[0] ?? 0));
     const n = await editTimeline<number>('timeline.makeLoop', { tracks: ids, end });
-    if (n) toast(`Loop closed at ${end.toFixed(2)}s on ${n} track${n > 1 ? 's' : ''} — the last pose now matches the first. Ctrl+Z to undo`);
+    if (n) toast(`Loop closed on ${n} track${n > 1 ? 's' : ''}: the last pose matches the first`);
     else if (n === 0) toast('Nothing to loop — each track needs a key before the loop end');
   };
 

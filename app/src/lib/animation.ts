@@ -23,14 +23,14 @@ export async function applyAnimation(ids: number[], group: number, category: num
   if (r == null) return false;
   if (typeof r !== 'object') return true; // an older bridge
   const notes: string[] = [];
-  if (r.freed.length) notes.push(`${names(r.freed)} ${r.freed.length > 1 ? 'were' : 'was'} posed with FK / IK, which holds the body still — turned off so the animation plays`);
-  if (r.started.length) notes.push(`${names(r.started)}'s animation was stopped (speed 0) — now playing at speed 1`);
-  if (r.driven?.length) notes.push(`${names(r.driven)}'s animation comes from the timeline, which goes back to its own clip at the next seek — use Animate › Motion builder to change it there`);
+  if (r.freed.length) notes.push(`FK / IK turned off for ${names(r.freed)}`);
+  if (r.started.length) notes.push(`${names(r.started)} was paused; now playing`);
+  if (r.driven?.length) notes.push(`${names(r.driven)}'s motion comes from the timeline: change it in the Motion builder`);
   // bones keyed on the timeline still win over the clip where they're keyed, while the timeline plays
   const st = useStore.getState();
   const bones = st.tracks.filter((t) => ids.includes(t.oci) && t.enabled && t.keys.length > 0 && /cf_[jt]_/.test(t.name));
-  if (bones.length) notes.push(`${bones.length} bone track${bones.length > 1 ? 's' : ''} on the timeline still ${bones.length > 1 ? 'play' : 'plays'} over it where keyed (mute ${bones.length > 1 ? 'them' : 'it'} to see the clip there)`);
-  if (notes.length) toast(`Animation applied. ${notes.join('. ')}. Ctrl+Z undoes it all`, 'done');
+  if (bones.length) notes.push(`${bones.length} keyed bone${bones.length > 1 ? 's' : ''} still override${bones.length > 1 ? '' : 's'} it`);
+  if (notes.length) toast(`Animation applied. ${notes.join('. ')}.`, 'done');
   return true;
 }
 

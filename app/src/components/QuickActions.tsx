@@ -30,7 +30,7 @@ export async function runMacro(m: Macro) {
 export function toggleRecording(setPrompt: (p: PromptState | null) => void) {
   if (!isRecording()) {
     startRecording();
-    toast('Recording a quick action — do the steps, then stop recording (status bar or Ctrl+K)');
+    toast('Recording. Do the steps, then stop in the status bar');
     return;
   }
   const rec = stopRecording();

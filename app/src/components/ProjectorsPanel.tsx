@@ -90,7 +90,7 @@ export function ProjectorsPanel() {
   const add = async (shape: string) => {
     try {
       await bridge.request('proj.add', { values: { shape, ...STARTERS[shape] } });
-      toast('Projector added — move and turn it with Studio’s handles (it’s the selected folder)');
+      toast('Projector added. Move it with Studio’s handles');
       load();
     } catch (e) {
       toast((e as Error).message, 'error');
@@ -185,7 +185,7 @@ function Anim({ id, model, what }: { id: number; model: string; what?: string })
         try {
           await bridge.request('timeline.addTrack', { owner: 'Keyframe Studio', model: `proj.${model}`, oci: id, keyAt: liveTime() });
           await refreshTimeline();
-          toast('Track added and keyed at the playhead — change the value later and key again (K)');
+          toast('Track added and keyed');
         } catch (e) {
           toast((e as Error).message, 'error');
         }

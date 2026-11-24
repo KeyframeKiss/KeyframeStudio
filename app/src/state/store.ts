@@ -442,7 +442,7 @@ export async function setAutoKey(on: boolean, newTracks = get().autoKeyNew) {
   if (r) {
     set({ autoKey: r.on, autoKeyNew: r.newTracks });
     lsSet('studioex.autoKeyNew', r.newTracks ? '1' : '0');
-    toast(r.on ? 'Auto-key ON — anything you move in Studio is keyed at the playhead' : 'Auto-key off');
+    toast(r.on ? 'Auto-key on: what you move in Studio gets keyed' : 'Auto-key off');
   }
 }
 
@@ -451,7 +451,7 @@ export async function setAutoKey(on: boolean, newTracks = get().autoKeyNew) {
 // ---------------------------------------------------------------------------
 export async function createFolder(name: string, trackIds: number[]): Promise<number | undefined> {
   if (!trackIds.length) {
-    toast('Select tracks first (click track names, Ctrl/Shift for several), then make a folder from them');
+    toast('Select some tracks first (click their names; Ctrl or Shift for more)');
     return undefined;
   }
   const id = await call<number>('timeline.groupCreate', { name, tracks: trackIds });
@@ -1029,7 +1029,7 @@ export function keyAllOfSelectedObjects() {
   const sel = new Set(get().studioSelection);
   const ids = get().tracks.filter((t) => sel.has(t.oci)).map((t) => t.id);
   if (!ids.length) {
-    toast('The selected object has no tracks yet — add one with + Track above the dope sheet');
+    toast('No tracks on this object yet. Add one with + Track');
     return;
   }
   return keyTracks(ids);
@@ -1100,7 +1100,7 @@ function clipMuteNote(ids: number[]) {
   const clipOf = tracks.filter((t) => muting.has(t.id) && /^charAnimation(Time)?$/.test(t.model ?? '')).map((t) => t.oci);
   const held = clipOf.some((oci) => tracks.some((t) => t.oci === oci && !muting.has(t.id) && t.enabled && t.keys.length > 0 && t.model === 'guideObjectRot'));
   if (held)
-    toast("The clip is muted but this character's bone keys still play: the body keeps moving while the hips stay where the clip stopped. To see the clip on its own, mute the bone keys (the baked folder) instead", 'info');
+    toast('Clip muted, but the bone keys still play. Mute the Motion folder to stop them too', 'info');
 }
 
 export function removeTracks(ids: number[]) {

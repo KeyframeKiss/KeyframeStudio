@@ -60,7 +60,7 @@ export function ShotsPage() {
     const live = shots.filter((s) => s.trans && (s.trans.type === 'dipBlack' || s.trans.type === 'dipWhite' || s.trans.type === 'dissolve')).length;
     if (n)
       toast(
-        `Camera keys written for ${n} cut${n > 1 ? 's and glides' : ''} — the camera now moves without Keyframe Studio too.${live ? ` ${live} dip${live > 1 ? 's and dissolves' : ' or dissolve'} keep playing from Play the edit (they need the bridge).` : ''} Ctrl+Z to undo`,
+        `Camera keys written for ${n} cut${n > 1 ? 's' : ''}.${live ? ` Dips and dissolves still need Play the edit.` : ''}`,
       );
   };
   const exportBoard = async () => {

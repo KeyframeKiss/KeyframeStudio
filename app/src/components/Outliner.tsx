@@ -52,7 +52,7 @@ export function Outliner() {
     const n = name.trim();
     if (!n) return;
     const r = await call<{ persists: boolean }>('scene.rename', { ids, name: n });
-    if (r && !r.persists) toast('Renamed — install KK_TreeNodeNaming to keep character/item names when saving', 'info');
+    if (r && !r.persists) toast('Renamed. Saving keeps it only with KK_TreeNodeNaming', 'info');
     refreshScene();
   };
   const anchor = useRef<number | null>(null);

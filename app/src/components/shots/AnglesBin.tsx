@@ -27,7 +27,7 @@ export function AnglesBin() {
   const add = async () => {
     const r = await call<State>('angles.add', {});
     apply(r);
-    if (r) toast('Angle added from Studio’s view — drag it onto a shot, or onto the empty track for a new shot');
+    if (r) toast('Angle added. Drag it onto a shot');
   };
   const rename = async (a: Angle, name: string) => {
     setRenaming(null);
@@ -36,7 +36,7 @@ export function AnglesBin() {
   };
   const remove = async (a: Angle) => {
     apply(await call<State>('angles.set', { angles: angles.filter((x) => x.id !== a.id).map((x) => ({ id: x.id })), label: 'Delete angle' }));
-    toast(`Deleted angle “${a.name}” — shots that used it keep their camera. Ctrl+Z to undo`);
+    toast(`Deleted “${a.name}”. Shots keep their camera`);
   };
   const items = (a: Angle): MenuItem[] => [
     { header: true, label: a.name },

@@ -30,7 +30,7 @@ export function Storyboard() {
     if (order.join() === sorted.map((s) => s.id).join()) return;
     const start = sorted[0]?.start ?? 0;
     if (await saveShots(reorder(shots, order, duration), 'Reorder shots'))
-      toast(`Shots reordered — they now play back to back from ${start.toFixed(2)} s. The animation stays where it is; only the shots' times changed. Ctrl+Z to undo`);
+      toast(`Shots reordered, back to back from ${start.toFixed(2)} s. The animation didn't move`);
   };
 
   if (!sorted.length) return <div className="sq-board-empty">No shots yet. Add one with + Shot at playhead, then they show here as a storyboard.</div>;
