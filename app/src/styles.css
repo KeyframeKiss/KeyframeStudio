@@ -1137,6 +1137,17 @@ html.compact .btn {
   flex-direction: column;
   gap: 4px;
 }
+/* a look without a picture yet: its colours as a gradient, a little darker at the bottom like a lit scene */
+.look-swatch {
+  position: relative;
+}
+.look-swatch::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, transparent 55%, rgba(0, 0, 0, 0.28));
+  pointer-events: none;
+}
 .look-card-ph small {
   font-size: 10px;
   font-weight: 500;

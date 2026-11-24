@@ -97,6 +97,28 @@ namespace StudioEX.Bridge.Api
         /// <summary>For looks: every effect's values (on/off included).</summary>
         public static Dictionary<string, object> Effects() => (Dictionary<string, object>)State()["effects"];
 
+        /// <summary>
+        /// For the built-in looks: every effect but depth of field (that belongs to the shot), off and at its
+        /// defaults unless the look uses it; a used effect is on with the look's values over the defaults.
+        /// </summary>
+        public static Dictionary<string, object> LookEffects(Dictionary<string, Dictionary<string, object>> used)
+        {
+            var d = new Dictionary<string, object>();
+            foreach (var kv in Defaults)
+            {
+                if (kv.Key == "dof") continue;
+                var vals = kv.Value.ToDictionary(x => x.Key, x => Wire(x.Value));
+                vals["on"] = false;
+                if (used != null && used.TryGetValue(kv.Key, out var mine))
+                {
+                    foreach (var v in mine) vals[v.Key] = Wire(v.Value);
+                    vals["on"] = true;
+                }
+                d[kv.Key] = vals;
+            }
+            return d;
+        }
+
         /// <summary>For looks: blend towards saved effects (numbers and colours by strength; on/off from the look past halfway). Undoable.</summary>
         public static void ApplyEffects(Dictionary<string, object> all, float strength)
         {

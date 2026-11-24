@@ -174,6 +174,7 @@ namespace StudioEX.Bridge.Api
                 { "lights", new Dictionary<string, object>
                     {
                         { "charaColor", C(Color.white) }, { "charaIntensity", 1d }, { "charaRot", new List<object> { 0d, 0d } }, { "charaShadow", true },
+                        { "mapColor", C(Color.white) }, { "mapIntensity", 1d },
                     }
                 },
             };
@@ -322,45 +323,217 @@ namespace StudioEX.Bridge.Api
             return s.Length == 0 ? "Look" : s;
         }
 
+        // ---- built-in looks ----
+        // Each is a whole look: Studio's settings from its defaults plus the look's own, and Keyframe Studio's
+        // effects (all but depth of field, which belongs to the shot) off unless the look uses them, so one look
+        // applied after another doesn't stack. New built-ins reach existing installs; one the user deleted stays
+        // deleted (".starters" lists the ones this install has had), and one they saved over (no "builtin") is theirs.
+        private const int StarterVersion = 4;
+        private static readonly string[] FirstStarters = { "Studio Default", "Soft Pastel", "Cinematic Warm", "Moonlight", "Punchy Anime", "Dreamy Glow" };
+        private static bool _startersChecked;
+
         private static void EnsureStarterPresets()
         {
-            if (Directory.Exists(Folder)) return;
+            bool fresh = !Directory.Exists(Folder);
+            if (_startersChecked && !fresh) return;
+            _startersChecked = true;
             Directory.CreateDirectory(Folder);
-            Color c(int r, int g, int b) => new Color(r / 255f, g / 255f, b / 255f, 1f);
-            Dictionary<string, object> P(string name, string note, Dictionary<string, object> effects, Dictionary<string, object> toon, Dictionary<string, object> lights)
+            string marker = Path.Combine(Folder, ".starters");
+            var had = new HashSet<string>();
+            if (File.Exists(marker))
             {
-                var d = new Dictionary<string, object> { { "version", 1 }, { "name", name }, { "note", note }, { "builtin", true } };
-                if (effects != null) d["effects"] = effects;
-                if (toon != null) d["toon"] = toon;
-                if (lights != null) d["lights"] = lights;
+                foreach (var line in File.ReadAllLines(marker, Encoding.UTF8))
+                    if (line.Trim().Length > 0) had.Add(line.Trim());
+            }
+            else if (!fresh) had.UnionWith(FirstStarters); // made before the list existed: these six were written then
+            foreach (var look in Starters())
+            {
+                string name = (string)look["name"];
+                string file = Path.Combine(Folder, SafeFile(name) + ".json");
+                if (had.Contains(name))
+                {
+                    if (!File.Exists(file)) continue; // deleted by the user
+                    try
+                    {
+                        var old = Json.Parse(File.ReadAllText(file, Encoding.UTF8)) as Dictionary<string, object>;
+                        if (old == null || !old.GetBool("builtin") || old.GetInt("starter") >= StarterVersion) continue;
+                    }
+                    catch { continue; }
+                    // an untouched built-in from an older version: the new settings, and a new picture when next used
+                    if (File.Exists(Path.ChangeExtension(file, ".jpg"))) File.Delete(Path.ChangeExtension(file, ".jpg"));
+                }
+                else if (File.Exists(file)) { had.Add(name); continue; }
+                File.WriteAllText(file, Json.Serialize(look), new UTF8Encoding(false));
+                had.Add(name);
+            }
+            try { File.WriteAllLines(marker, had.OrderBy(x => x).ToArray(), new UTF8Encoding(false)); }
+            catch (Exception e) { StudioBridgePlugin.Logger.LogWarning("Couldn't note the built-in looks: " + e.Message); }
+        }
+
+        private static Dictionary<string, object> D(params object[] kv)
+        {
+            var d = new Dictionary<string, object>();
+            for (int i = 0; i + 1 < kv.Length; i += 2) d[(string)kv[i]] = kv[i + 1] is int n ? (object)(double)n : kv[i + 1];
+            return d;
+        }
+
+        private static Dictionary<string, object> Merge(Dictionary<string, object> baseline, Dictionary<string, object> look)
+        {
+            var d = new Dictionary<string, object>(baseline);
+            if (look != null) foreach (var kv in look) d[kv.Key] = kv.Value;
+            return d;
+        }
+
+        private static List<Dictionary<string, object>> Starters()
+        {
+            Color c(int r, int g, int b) => new Color(r / 255f, g / 255f, b / 255f, 1f);
+            List<object> col(int r, int g, int b) => C(c(r, g, b));
+            List<object> rot(double x, double y) => new List<object> { x, y };
+            float[] f(float r, float g, float b, float a = 1f) => new[] { r, g, b, a };
+            var def = Defaults();
+            Dictionary<string, object> L(string name, string note, string swatch, Dictionary<string, object> effects, Dictionary<string, object> toon, Dictionary<string, object> lights, Dictionary<string, Dictionary<string, object>> fx) =>
+                new Dictionary<string, object>
+                {
+                    { "version", 1 }, { "name", name }, { "note", note }, { "builtin", true }, { "starter", StarterVersion },
+                    { "swatch", swatch.Split(' ').Cast<object>().ToList() },
+                    { "effects", Merge(def.GetObject("effects"), effects) },
+                    { "toon", Merge(def.GetObject("toon"), toon) },
+                    { "lights", Merge(def.GetObject("lights"), lights) },
+                    { "fx", FxApi.LookEffects(fx) },
+                };
+            var none = new Dictionary<string, Dictionary<string, object>>();
+            Dictionary<string, Dictionary<string, object>> Fx(params object[] kv)
+            {
+                var d = new Dictionary<string, Dictionary<string, object>>();
+                for (int i = 0; i + 1 < kv.Length; i += 2) d[(string)kv[i]] = (Dictionary<string, object>)kv[i + 1];
                 return d;
             }
-            var presets = new List<Dictionary<string, object>>
+
+            return new List<Dictionary<string, object>>
             {
-                P("Studio Default", "Studio's out-of-the-box look", Defaults().GetObject("effects"), Defaults().GetObject("toon"), Defaults().GetObject("lights")),
-                P("Soft Pastel", "Low contrast, gentle glow, light outlines",
-                    new Dictionary<string, object> { { "bloom", true }, { "bloomIntensity", 0.9d }, { "bloomThreshold", 0.55d }, { "bloomBlur", 2.2d }, { "ssao", true }, { "ssaoRadius", 0.06d }, { "ssaoColor", C(c(205, 190, 210)) }, { "vignette", false } },
-                    new Dictionary<string, object> { { "lineColor", 0.25d }, { "lineWidth", 0.35d }, { "ambientShadow", C(c(196, 170, 196)) }, { "ambientShadowG", 0.35d } },
-                    new Dictionary<string, object> { { "charaColor", C(c(255, 244, 248)) }, { "charaIntensity", 1.05d } }),
-                P("Cinematic Warm", "Golden key light, shallow depth of field, strong vignette",
-                    new Dictionary<string, object> { { "bloom", true }, { "bloomIntensity", 0.7d }, { "bloomThreshold", 0.65d }, { "bloomBlur", 1.4d }, { "dof", true }, { "dofFocal", 0.6d }, { "dofAperture", 0.75d }, { "vignette", true }, { "ssao", true }, { "ssaoRadius", 0.12d }, { "ssaoColor", C(c(150, 110, 90)) } },
-                    new Dictionary<string, object> { { "ambientShadow", C(c(170, 120, 105)) }, { "ambientShadowG", 0.6d }, { "lineColor", 0.55d } },
-                    new Dictionary<string, object> { { "charaColor", C(c(255, 214, 170)) }, { "charaIntensity", 1.15d }, { "charaRot", new List<object> { 25d, -35d } } }),
-                P("Moonlight", "Cool blue night, soft fog",
-                    new Dictionary<string, object> { { "bloom", true }, { "bloomIntensity", 0.6d }, { "bloomThreshold", 0.7d }, { "fog", true }, { "fogColor", C(c(70, 90, 140)) }, { "fogHeight", 3d }, { "fogStart", 2d }, { "vignette", true }, { "ssao", true }, { "ssaoColor", C(c(60, 70, 110)) } },
-                    new Dictionary<string, object> { { "ambientShadow", C(c(95, 110, 170)) }, { "ambientShadowG", 0.7d } },
-                    new Dictionary<string, object> { { "charaColor", C(c(170, 195, 255)) }, { "charaIntensity", 0.8d }, { "charaRot", new List<object> { 40d, 30d } } }),
-                P("Punchy Anime", "Crisp outlines, strong shadows, no blur",
-                    new Dictionary<string, object> { { "bloom", true }, { "bloomIntensity", 0.3d }, { "bloomThreshold", 0.8d }, { "dof", false }, { "vignette", false }, { "ssao", true }, { "ssaoRadius", 0.15d } },
-                    new Dictionary<string, object> { { "lineColor", 0.9d }, { "lineWidth", 0.7d }, { "ambientShadowG", 0.75d }, { "faceShadow", true } },
-                    new Dictionary<string, object> { { "charaIntensity", 1.2d } }),
-                P("Dreamy Glow", "Heavy bloom, sun shafts, pink haze",
-                    new Dictionary<string, object> { { "bloom", true }, { "bloomIntensity", 1.6d }, { "bloomThreshold", 0.5d }, { "bloomBlur", 3.5d }, { "sunShafts", true }, { "sunColor", C(c(255, 220, 235)) }, { "fog", true }, { "fogColor", C(c(255, 205, 225)) }, { "fogHeight", 2d }, { "fogStart", 4d } },
-                    new Dictionary<string, object> { { "lineColor", 0.3d }, { "ambientShadow", C(c(220, 170, 200)) } },
-                    new Dictionary<string, object> { { "charaColor", C(c(255, 236, 244)) } }),
+                // ---- the first six (now whole looks) ----
+                L("Studio Default", "Studio's out-of-the-box look", "#f3efe9 #c9cbd3 #8a8f9c", null, null, null, none),
+                L("Soft Pastel", "Low contrast, gentle glow, light outlines", "#fff1f6 #e6cfe6 #b9a0c4",
+                    D("bloom", true, "bloomIntensity", 0.9, "bloomThreshold", 0.55, "bloomBlur", 2.2, "ssaoRadius", 0.06, "ssaoColor", col(205, 190, 210), "vignette", false),
+                    D("lineColor", 0.25, "lineWidth", 0.35, "ambientShadow", col(196, 170, 196), "ambientShadowG", 0.35),
+                    D("charaColor", col(255, 244, 248), "charaIntensity", 1.05),
+                    Fx("grade", D("contrast", 0.92, "saturation", 0.95, "lift", f(0.03f, 0.02f, 0.03f)))),
+                L("Cinematic Warm", "Golden key light, shallow depth of field, strong vignette", "#ffd6aa #c98a62 #3a2a24",
+                    D("bloomIntensity", 0.7, "bloomThreshold", 0.65, "bloomBlur", 1.4, "dof", true, "dofFocal", 0.6, "dofAperture", 0.75, "ssaoRadius", 0.12, "ssaoColor", col(150, 110, 90)),
+                    D("ambientShadow", col(170, 120, 105), "ambientShadowG", 0.6, "lineColor", 0.55),
+                    D("charaColor", col(255, 214, 170), "charaIntensity", 1.15, "charaRot", rot(25, -35)),
+                    Fx("grade", D("contrast", 1.08, "temperature", 0.15, "saturation", 1.05))),
+                L("Moonlight", "Cool blue night, soft fog", "#aac3ff #4a5a8c #141a30",
+                    D("bloomIntensity", 0.6, "bloomThreshold", 0.7, "fog", true, "fogColor", col(70, 90, 140), "fogHeight", 3, "fogStart", 2, "ssaoColor", col(60, 70, 110)),
+                    D("ambientShadow", col(95, 110, 170), "ambientShadowG", 0.7),
+                    D("charaColor", col(170, 195, 255), "charaIntensity", 0.8, "charaRot", rot(40, 30), "mapColor", col(120, 140, 210), "mapIntensity", 0.7),
+                    Fx("grade", D("exposure", -0.25, "temperature", -0.3, "saturation", 0.85))),
+                L("Punchy Anime", "Crisp outlines, strong shadows, no blur", "#ffffff #5aa9ff #1b1d26",
+                    D("bloomIntensity", 0.3, "bloomThreshold", 0.8, "vignette", false, "ssaoRadius", 0.15),
+                    D("lineColor", 0.9, "lineWidth", 0.7, "ambientShadowG", 0.75, "faceShadow", true),
+                    D("charaIntensity", 1.2),
+                    Fx("grade", D("contrast", 1.1, "vibrance", 0.25), "sharpen", D("amount", 0.4))),
+                L("Dreamy Glow", "Heavy bloom, sun shafts, pink haze", "#fff0f6 #ffcde1 #d4a3d0",
+                    D("bloomIntensity", 1.6, "bloomThreshold", 0.5, "bloomBlur", 3.5, "sunShafts", true, "sunColor", col(255, 220, 235), "fog", true, "fogColor", col(255, 205, 225), "fogHeight", 2, "fogStart", 4),
+                    D("lineColor", 0.3, "ambientShadow", col(220, 170, 200)),
+                    D("charaColor", col(255, 236, 244)),
+                    none),
+
+                // ---- times of day and weather ----
+                L("Golden Hour", "Low warm sun from the side, long glow", "#ffe2a8 #ff9a4d #6b3a2a",
+                    D("bloomIntensity", 0.8, "bloomThreshold", 0.6, "bloomBlur", 1.8, "sunShafts", true, "sunColor", col(255, 200, 140), "ssaoColor", col(150, 110, 80)),
+                    D("ambientShadow", col(175, 125, 100), "ambientShadowG", 0.55),
+                    D("charaColor", col(255, 215, 170), "charaIntensity", 1.05, "charaRot", rot(15, -60), "mapColor", col(255, 220, 180)),
+                    Fx("grade", D("exposure", -0.1, "temperature", 0.22, "contrast", 1.1, "saturation", 1.05, "vibrance", 0.15, "gain", f(1.03f, 0.98f, 0.92f)))),
+                L("Overcast", "Soft, even light and muted colour", "#e6eaf0 #b4bac4 #6f7684",
+                    D("bloomIntensity", 0.25, "bloomThreshold", 0.8, "ssaoRadius", 0.08, "ssaoColor", col(160, 165, 175), "vignette", false),
+                    D("ambientShadow", col(150, 155, 165), "ambientShadowG", 0.35, "lineColor", 0.4),
+                    D("charaColor", col(225, 232, 240), "charaIntensity", 0.95, "charaRot", rot(50, 0)),
+                    Fx("grade", D("contrast", 0.92, "saturation", 0.85, "temperature", -0.12, "lift", f(0.03f, 0.03f, 0.04f)))),
+                L("Bright Summer", "High sun, vivid colour, crisp edges", "#fffbe8 #5fd0ff #2a7bd8",
+                    D("bloomIntensity", 0.5, "bloomThreshold", 0.7, "ssaoRadius", 0.12, "vignette", false),
+                    D("lineColor", 0.7, "ambientShadow", col(120, 140, 175), "ambientShadowG", 0.5),
+                    D("charaColor", col(255, 250, 240), "charaIntensity", 1.1, "charaRot", rot(55, 20), "mapColor", col(255, 252, 240)),
+                    Fx("grade", D("contrast", 1.15, "saturation", 1.2, "vibrance", 0.3, "temperature", 0.05), "sharpen", D("amount", 0.35))),
+                L("Rainy Day", "Cool, grey and quiet, with a light mist", "#c9d2de #8c99ad #3f4a5c",
+                    D("bloomIntensity", 0.3, "bloomThreshold", 0.8),
+                    D("ambientShadow", col(130, 140, 160), "ambientShadowG", 0.45),
+                    D("charaColor", col(205, 215, 235), "charaIntensity", 0.85, "charaRot", rot(60, -10), "mapColor", col(200, 210, 230), "mapIntensity", 0.8),
+                    Fx("grade", D("exposure", -0.25, "saturation", 0.65, "contrast", 0.95, "temperature", -0.3, "lift", f(0.02f, 0.03f, 0.05f)),
+                       "fog", D("near", f(0.7f, 0.75f, 0.8f, 0.35f), "far", f(0.55f, 0.6f, 0.68f, 0.6f), "density", 0.06, "start", 1.5, "split", 0.5))),
+
+                // ---- mood lighting ----
+                L("Sunset Romance", "Pink and orange light, soft haze", "#ffc6a8 #ff8fa8 #6a4a8c",
+                    D("bloomIntensity", 1.0, "bloomThreshold", 0.55, "bloomBlur", 2.5, "ssaoColor", col(170, 110, 120)),
+                    D("ambientShadow", col(190, 120, 150), "ambientShadowG", 0.5, "lineColor", 0.35),
+                    D("charaColor", col(255, 205, 190), "charaIntensity", 1.0, "charaRot", rot(10, 70), "mapColor", col(255, 190, 200)),
+                    Fx("grade", D("exposure", -0.1, "temperature", 0.18, "tint", 0.14, "saturation", 1.05, "contrast", 1.0, "lift", f(0.03f, 0.01f, 0.03f)),
+                       "fog", D("near", f(1f, 0.6f, 0.55f, 0.35f), "far", f(0.55f, 0.35f, 0.6f, 0.55f), "density", 0.05, "start", 2))),
+                L("Candlelight", "Dim, deep orange light, dark corners", "#ffc078 #c2561e #2a120a",
+                    D("bloomIntensity", 0.9, "bloomThreshold", 0.6),
+                    D("ambientShadow", col(120, 70, 50), "ambientShadowG", 0.8),
+                    D("charaColor", col(255, 185, 120), "charaIntensity", 0.85, "charaRot", rot(5, 40), "mapColor", col(255, 160, 90), "mapIntensity", 0.6),
+                    Fx("grade", D("exposure", -0.35, "temperature", 0.4, "contrast", 1.1, "saturation", 0.95), "vignette", D("intensity", 0.45, "smoothness", 0.5))),
+                L("Neon Night", "Magenta and cyan, glowing lights", "#ff4fd8 #3b1f6e #22d3ff",
+                    D("bloomIntensity", 1.4, "bloomThreshold", 0.55, "bloomBlur", 2.5, "ssaoColor", col(60, 40, 90)),
+                    D("ambientShadow", col(90, 70, 160), "ambientShadowG", 0.75),
+                    D("charaColor", col(255, 165, 230), "charaIntensity", 0.95, "charaRot", rot(20, -70), "mapColor", col(80, 190, 255), "mapIntensity", 0.8),
+                    Fx("grade", D("exposure", -0.35, "contrast", 1.15, "saturation", 1.1, "temperature", -0.2, "tint", 0.12, "lift", f(0.02f, 0f, 0.05f)), "aberration", D("amount", 0.25))),
+
+                // ---- film and camera styles ----
+                L("Film Vintage", "Faded warm film with grain", "#f1e2c6 #b89b7a #5b4a3e",
+                    D("bloomIntensity", 0.5),
+                    D("ambientShadow", col(160, 135, 115), "ambientShadowG", 0.5),
+                    D("charaColor", col(255, 236, 210)),
+                    Fx("grade", D("contrast", 0.9, "saturation", 0.8, "temperature", 0.2, "lift", f(0.07f, 0.06f, 0.05f), "gain", f(0.97f, 0.95f, 0.9f)),
+                       "grain", D("amount", 0.25, "size", 1.6), "vignette", D("intensity", 0.3))),
+                L("Noir", "Black and white, hard shadows, grain", "#f0f0f0 #7a7a7a #101010",
+                    D("bloomIntensity", 0.3, "bloomThreshold", 0.75),
+                    D("ramp", 1, "lineColor", 1.0, "ambientShadow", col(90, 90, 90), "ambientShadowG", 0.85),
+                    D("charaIntensity", 1.25, "charaRot", rot(30, -55)),
+                    Fx("grade", D("saturation", 0.0, "contrast", 1.45, "exposure", -0.4), "grain", D("amount", 0.3, "size", 1.4), "vignette", D("intensity", 0.5))),
+                L("Retro VHS", "Washed colour, colour fringes, grain", "#ff7ac6 #7a5cff #2ae0d0",
+                    D("bloomIntensity", 0.8, "bloomThreshold", 0.6, "bloomBlur", 2),
+                    null,
+                    null,
+                    Fx("grade", D("saturation", 1.15, "contrast", 0.85, "tint", 0.15, "temperature", -0.05, "lift", f(0.05f, 0.02f, 0.07f)),
+                       "aberration", D("amount", 0.55), "grain", D("amount", 0.35, "size", 2.2))),
+
+                // ---- special ----
+                L("Eerie", "Sickly green, dark fog, heavy shadows", "#9ad1a8 #3f6b55 #0e1a14",
+                    D("bloomIntensity", 0.3, "ssaoRadius", 0.15, "ssaoColor", col(40, 60, 50)),
+                    D("ambientShadow", col(70, 95, 85), "ambientShadowG", 0.85),
+                    D("charaColor", col(190, 230, 200), "charaIntensity", 0.75, "charaRot", rot(-20, 0)),
+                    Fx("grade", D("exposure", -0.3, "saturation", 0.6, "tint", -0.3, "temperature", -0.15, "contrast", 1.15),
+                       "fog", D("near", f(0.2f, 0.28f, 0.24f, 0.5f), "far", f(0.08f, 0.12f, 0.1f, 0.85f), "density", 0.12, "start", 1))),
+                L("Underwater", "Teal light and a deep blue haze", "#9ee8ff #1f8fb0 #08243d",
+                    D("bloomIntensity", 0.7, "bloomThreshold", 0.6, "sunShafts", true, "sunColor", col(170, 230, 255)),
+                    D("ambientShadow", col(70, 120, 150), "ambientShadowG", 0.6),
+                    D("charaColor", col(130, 200, 235), "charaIntensity", 0.85, "charaRot", rot(70, 0), "mapColor", col(90, 180, 220), "mapIntensity", 0.8),
+                    Fx("grade", D("exposure", -0.35, "temperature", -0.6, "tint", -0.1, "saturation", 0.95, "contrast", 1.0, "lift", f(0f, 0.04f, 0.1f), "gain", f(0.62f, 0.9f, 1f)),
+                       "fog", D("near", f(0.25f, 0.6f, 0.65f, 0.4f), "far", f(0.05f, 0.2f, 0.35f, 0.9f), "density", 0.15, "start", 0.5), "aberration", D("amount", 0.15))),
+                L("Cel Shaded", "Flat colour, bold outlines, sharp shadow edges", "#ffffff #ffb3c7 #2b2b38",
+                    D("bloom", false, "ssao", false, "vignette", false),
+                    D("ramp", 1, "lineColor", 1.0, "lineWidth", 0.8, "ambientShadowG", 0.6),
+                    D("charaIntensity", 1.15),
+                    Fx("grade", D("saturation", 1.2, "contrast", 1.12), "sharpen", D("amount", 0.6))),
             };
-            foreach (var p in presets)
-                File.WriteAllText(Path.Combine(Folder, SafeFile((string)p["name"]) + ".json"), Json.Serialize(p), new UTF8Encoding(false));
+        }
+
+        /// <summary>Colours for a look without a picture: its light, its shadow tint, and its fog or a darker shadow.</summary>
+        private static List<object> Swatch(Dictionary<string, object> look)
+        {
+            string Hex(List<object> c) => c.Count >= 3
+                ? "#" + string.Concat(c.Take(3).Select(v => ((int)Mathf.Clamp(Convert.ToSingle(v) * 255f, 0, 255)).ToString("x2")).ToArray())
+                : null;
+            var lights = look.GetObject("lights");
+            var toon = look.GetObject("toon");
+            var eff = look.GetObject("effects");
+            string a = lights != null ? Hex(lights.GetList("charaColor")) : null;
+            string b = toon != null ? Hex(toon.GetList("ambientShadow")) : null;
+            string c = eff != null && eff.GetBool("fog") ? Hex(eff.GetList("fogColor")) : null;
+            var list = new[] { a ?? "#e8e4de", b ?? "#8a8f9c", c ?? "#23252c" };
+            return list.Cast<object>().ToList();
         }
 
         private static object ListPresets()
@@ -382,6 +555,7 @@ namespace StudioEX.Bridge.Api
                         { "groups", Groups.Where(g => d.ContainsKey(g)).Cast<object>().ToList() },
                         { "modified", (File.GetLastWriteTimeUtc(f) - new DateTime(1970, 1, 1)).TotalMilliseconds },
                     };
+                    item["swatch"] = d.GetList("swatch").Count >= 2 ? d.GetList("swatch") : Swatch(d);
                     var jpg = Path.ChangeExtension(f, ".jpg");
                     if (File.Exists(jpg)) item["thumb"] = "data:image/jpeg;base64," + Convert.ToBase64String(File.ReadAllBytes(jpg));
                     list.Add(item);

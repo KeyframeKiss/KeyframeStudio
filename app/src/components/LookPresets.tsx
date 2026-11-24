@@ -16,6 +16,8 @@ interface Preset {
   name: string;
   note: string;
   builtin: boolean;
+  /** Colours standing in for a picture until it has one: light, mid-tone, shadow. */
+  swatch?: string[];
   groups: string[];
   thumb?: string;
 }
@@ -34,6 +36,15 @@ const GROUPS = [
 export const lookChanged = () => window.dispatchEvent(new CustomEvent('studioex:look-changed'));
 
 /** Look preset gallery: apply (all or some groups, any strength), save, overwrite, delete. */
+/** A look without a picture: a gradient of its colours, lit from the top left like a scene. */
+function swatchStyle(sw?: string[]): React.CSSProperties | undefined {
+  if (!sw || sw.length < 2) return undefined;
+  const [a, b, c = b] = sw;
+  return {
+    background: `radial-gradient(120% 90% at 18% 12%, ${a}cc 0%, transparent 55%), linear-gradient(135deg, ${a} 0%, ${b} 48%, ${c} 100%)`,
+  };
+}
+
 export function LookPresets({ wide }: { wide?: boolean }) {
   const status = useStore((s) => s.status);
   const rules = useStore((s) => s.lookRules);
@@ -197,10 +208,7 @@ export function LookPresets({ wide }: { wide?: boolean }) {
             >
               <StarIcon filled={!!lib.get(p.file).favorite} />
             </button>
-            {p.thumb ? <img src={p.thumb} alt="" /> : <div className="look-card-ph" title="Apply it once (all parts, full strength) to capture a preview">
-                {p.name.slice(0, 1)}
-                <small>preview after first use</small>
-              </div>}
+            {p.thumb ? <img src={p.thumb} alt="" /> : <div className="look-card-ph look-swatch" style={swatchStyle(p.swatch)} />}
             <div className="look-card-name">
               {p.name}
               {wide && p.note && <div className="look-card-note">{p.note}</div>}
