@@ -15,9 +15,14 @@ export interface PoseRef {
   path: string;
   name: string;
 }
+/** a saved Motion clip (Animate › Motion clips) */
+export interface MClipRef {
+  file: string;
+  name: string;
+}
 export interface Block {
   id: string;
-  kind: 'clip' | 'pose';
+  kind: 'clip' | 'pose' | 'mclip';
   /** seconds on the timeline */
   start: number;
   len: number;
@@ -29,6 +34,7 @@ export interface Block {
   offset?: number;
   clip?: ClipRef;
   pose?: PoseRef;
+  mclip?: MClipRef;
 }
 export interface Seq {
   blocks: Block[];
@@ -113,7 +119,9 @@ export const newId = () => `b${Date.now().toString(36)}${(n++).toString(36)}`;
 
 export const blockEnd = (b: Block) => b.start + b.len;
 export const seqEnd = (seq?: Seq) => (seq?.blocks.length ? Math.max(...seq.blocks.map(blockEnd)) : 0);
-export const blockName = (b: Block) => (b.kind === 'clip' ? b.clip?.name : b.pose?.name) ?? (b.kind === 'clip' ? 'Clip' : 'Pose');
+export const blockName = (b: Block) => (b.kind === 'clip' ? b.clip?.name : b.kind === 'mclip' ? b.mclip?.name : b.pose?.name) ?? (b.kind === 'pose' ? 'Pose' : 'Clip');
+/** clips play (speed, in-point); a pose holds */
+export const plays = (b: Block) => b.kind !== 'pose';
 
 /** A new block after the last one (blending in from it). */
 export function appended(seq: Seq | undefined, b: Omit<Block, 'id' | 'start' | 'blend' | 'ease'>): Block {

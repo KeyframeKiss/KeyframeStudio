@@ -160,4 +160,23 @@ export default async function (t) {
     await ok('undo');
     await sleep(300);
   });
+
+  await t.step('a saved Motion clip as a block: plays back the motion it was saved from', async () => {
+    const tl = await ok('timeline.get');
+    const folder = (tl.groups ?? []).find((g) => g.name.startsWith('Motion: '));
+    const tracks = tl.tracks.filter((x) => x.group === folder?.id && (x.model === 'guideObjectRot' || x.model === 'guideObjectPos')).map((x) => x.id);
+    const name = 'kf-test-walk';
+    await ok('clips.save', { name, tracks, t0: 0, t1: 2 });
+    t.defer(() => req('clips.delete', { file: name }));
+    const r = await build({ blocks: [{ id: 'm', kind: 'mclip', start: 0, len: 2, blend: 0, ease: 'smooth', speed: 1, offset: 0, mclip: { file: name, name } }] }, 'Motion clip');
+    check('its length reported', Math.abs((r.lengths?.m ?? 0) - 2) < 0.02, JSON.stringify(r.lengths));
+    await ok('timeline.seek', { t: 0.5 });
+    await sleep(300);
+    const s = await sample(0, 2);
+    const w = worstIn(got, s, (x) => x < 1.99);
+    t.metric('motion clip vs the walk it came from: worst bone off', w.toFixed(4), 'units');
+    check('the motion clip plays the walk back (within 2% of body height)', w < 0.02 * h(), `${w.toFixed(4)} at ${where}`);
+    await ok('undo');
+    await sleep(300);
+  });
 }

@@ -76,7 +76,13 @@ namespace StudioEX.Bridge.Api
             {
                 if (!(o is Dictionary<string, object> b)) throw new BridgeException("A block isn't readable");
                 string kind = b.GetString("kind");
-                if (kind != "clip" && kind != "pose") throw new BridgeException("Unknown block kind " + kind);
+                if (kind != "clip" && kind != "pose" && kind != "mclip") throw new BridgeException("Unknown block kind " + kind);
+                if (kind == "mclip")
+                {
+                    string file = b.GetObject("mclip")?.GetString("file");
+                    if (string.IsNullOrEmpty(file) || !File.Exists(ClipPath(file)))
+                        throw new BridgeException("A motion clip block's clip is missing: " + (b.GetObject("mclip")?.GetString("name") ?? file));
+                }
                 if (b.GetFloat("len") <= 0f) throw new BridgeException("A block needs a length");
                 if (kind == "pose")
                 {
@@ -318,6 +324,60 @@ namespace StudioEX.Bridge.Api
                 var baseParent = bones.Select(b => rootInv * (b.guideObject.transformTarget.parent != null ? b.guideObject.transformTarget.parent.rotation : rt.rotation)).ToArray();
                 var hipsBase = hipsNow();
 
+                // the chain the keys sit under: each bone's nearest driven ancestor, and how it hangs off it when held
+                int nb = bones.Count;
+                var tr = bones.Select(b => b.guideObject.transformTarget).ToList();
+                var anc = new int[nb];
+                var link = new Quaternion[nb];
+                for (int i = 0; i < nb; i++)
+                {
+                    anc[i] = -1;
+                    for (var par = tr[i].parent; par != null && anc[i] < 0; par = par.parent) anc[i] = tr.IndexOf(par);
+                    link[i] = anc[i] >= 0 ? Quaternion.Inverse(baseWant[anc[i]]) * baseParent[i] : Quaternion.identity;
+                }
+                Func<int, int> depth = i => { int d = 0; for (int a = anc[i]; a >= 0; a = anc[a]) d++; return d; };
+                var topDown = Enumerable.Range(0, nb).OrderBy(depth).ToList();
+
+                // 4b. Motion clips: their FK keys (bone by bone, at each moment) put together under the held chain;
+                // their position keys move the hips
+                for (int bi = 0; bi < blocks.Count; bi++)
+                {
+                    var b = blocks[bi];
+                    if (b.GetString("kind") != "mclip") continue;
+                    var data = LoadMClip(ClipPath(b.GetObject("mclip").GetString("file")));
+                    lengths[b.GetString("id") ?? bi.ToString()] = Math.Round(data.Length, 4);
+                    float speed = b.Has("speed") ? Mathf.Clamp(b.GetFloat("speed"), 0.05f, 10f) : 1f;
+                    float offset = Mathf.Max(0f, b.Has("offset") ? b.GetFloat("offset") : 0f);
+                    float start = BStart(b), clen = data.Length;
+                    Func<float, float> u = t => Mathf.Clamp(offset + (t - start) * speed, 0f, clen);
+                    clipTime[bi] = u;
+                    var frames = new Dictionary<int, PoseFrame>();
+                    clipFrames[bi] = frames;
+                    var keysOf = tr.Select(x => data.Rot.TryGetValue(x.name, out var ks) ? ks : null).ToArray();
+                    Vector3? p0 = data.Pos != null ? PosOf(Eval(data.Pos, 0f)) : null;
+                    float sc = Mathf.Max(1e-4f, Mathf.Abs(rt.localScale.x));
+                    var need = new HashSet<int>();
+                    for (int k = 0; k < picks.Length; k++)
+                    {
+                        if (picks[k].A == bi) need.Add(Q(u(picks[k].TA)));
+                        if (picks[k].B == bi) need.Add(Q(u(picks[k].TB)));
+                    }
+                    foreach (int q in need)
+                    {
+                        float at = q / 10000f;
+                        var w = new Quaternion[nb];
+                        foreach (int i in topDown)
+                        {
+                            var kd = keysOf[i] != null ? Eval(keysOf[i], at) : null;
+                            var loc = kd != null && IsQuat(kd.A) ? Q(kd.A) : Quaternion.Inverse(baseParent[i]) * baseWant[i];
+                            w[i] = (anc[i] >= 0 ? w[anc[i]] * link[i] : baseParent[i]) * loc;
+                        }
+                        var hp = hipsBase;
+                        if (p0 != null && PosOf(Eval(data.Pos, at)) is Vector3 pu) hp += Quaternion.Inverse(rt.localRotation) * (pu - p0.Value) / sc;
+                        frames[q] = new PoseFrame { Want = w, Hips = hp };
+                    }
+                }
+
                 // 5. mix: each frame's wanted rotations and hips
                 Func<int, float, PoseFrame> frameOf = (bi, t) =>
                 {
@@ -325,7 +385,6 @@ namespace StudioEX.Bridge.Api
                     if (b.GetString("kind") == "pose") return PoseCache[poseKeys[b]];
                     return clipFrames[bi][Q(clipTime[bi](t))];
                 };
-                int nb = bones.Count;
                 var want = new Quaternion[times.Count][];
                 var hips = new Vector3[times.Count];
                 for (int k = 0; k < times.Count; k++)
@@ -342,15 +401,6 @@ namespace StudioEX.Bridge.Api
                 }
 
                 // 6. into keys: each bone's rotation under the held chain; the root where the held hips land right
-                var tr = bones.Select(b => b.guideObject.transformTarget).ToList();
-                var anc = new int[nb];
-                var link = new Quaternion[nb];
-                for (int i = 0; i < nb; i++)
-                {
-                    anc[i] = -1;
-                    for (var par = tr[i].parent; par != null && anc[i] < 0; par = par.parent) anc[i] = tr.IndexOf(par);
-                    link[i] = anc[i] >= 0 ? Quaternion.Inverse(baseWant[anc[i]]) * baseParent[i] : Quaternion.identity;
-                }
                 var local = new Quaternion[nb][];
                 for (int i = 0; i < nb; i++)
                 {
@@ -413,6 +463,44 @@ namespace StudioEX.Bridge.Api
         }
 
         private static int Q(float clipSeconds) => Mathf.RoundToInt(clipSeconds * 10000f);
+
+        /// <summary>A saved Motion clip, as the builder reads it: FK rotation keys by bone name, the object's position keys.</summary>
+        private sealed class MClip
+        {
+            public readonly Dictionary<string, List<KD>> Rot = new Dictionary<string, List<KD>>();
+            public List<KD> Pos;
+            public float Length;
+        }
+        private static readonly Dictionary<string, MClip> MClipCache = new Dictionary<string, MClip>();
+
+        private static MClip LoadMClip(string path)
+        {
+            string key = path.ToLowerInvariant() + "|" + File.GetLastWriteTimeUtc(path).Ticks;
+            if (MClipCache.TryGetValue(key, out var hit)) return hit;
+            var doc = new System.Xml.XmlDocument();
+            doc.Load(path);
+            var root = doc.DocumentElement;
+            var d = new MClip { Length = Mathf.Max(1f / 60f, System.Xml.XmlConvert.ToSingle(root.GetAttribute("length"))) };
+            foreach (var t in root.SelectNodes("track").OfType<System.Xml.XmlElement>())
+            {
+                var keys = t.SelectNodes("k").OfType<System.Xml.XmlElement>().Select(ReadKeyNode).OrderBy(k => k.T).ToList();
+                if (keys.Count == 0) continue;
+                string id = t.GetAttribute("id"), gp = t.GetAttribute("guideObjectPath");
+                if (id == "guideObjectRot" && !string.IsNullOrEmpty(gp)) d.Rot[gp.Split('/').Last()] = keys;
+                else if (id == "guideObjectPos" && string.IsNullOrEmpty(gp)) d.Pos = keys;
+            }
+            if (d.Rot.Count == 0) throw new BridgeException("The motion clip “" + root.GetAttribute("name") + "” has no FK bone keys to use (IK or face only?)");
+            MClipCache[key] = d;
+            return d;
+        }
+
+        private static Vector3? PosOf(KD k)
+        {
+            if (k == null) return null;
+            if (!k.A.TryGetValue("valueX", out var x) || !k.A.TryGetValue("valueY", out var y) || !k.A.TryGetValue("valueZ", out var z)) return null;
+            if (!Num(x, out var fx) || !Num(y, out var fy) || !Num(z, out var fz)) return null;
+            return new Vector3(fx, fy, fz);
+        }
 
         private static float Ease(float u, string ease)
         {

@@ -1,7 +1,8 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { bridge } from '../../bridge/client';
 import { call, displayName, liveTime, seek, useStore } from '../../state/store';
-import { appended, blockEnd, blockName, clearSeq, listenMotion, loadAll, newId, seqEnd, setSeq, useMotion, type Block, type Seq } from '../../lib/motionSeq';
+import { appended, blockEnd, blockName, clearSeq, listenMotion, loadAll, newId, plays, seqEnd, setSeq, useMotion, type Block, type Seq } from '../../lib/motionSeq';
+import { MClipPicker } from './MClipPicker';
 import { AnimationBrowser } from '../AnimationBrowser';
 import { Help } from '../Help';
 import { Icon } from '../Icon';
@@ -56,7 +57,7 @@ export function MotionPage() {
   const fps = useStore((s) => s.tl?.fps ?? 30);
   useStore((s) => s.showEnglish);
   const { seqs, building, lengths, sel } = useMotion();
-  const [picker, setPicker] = useState<null | { kind: 'clip' | 'pose'; replace?: string }>(null);
+  const [picker, setPicker] = useState<null | { kind: Block['kind']; replace?: string }>(null);
   const [catalog, setCatalog] = useState<Catalog[] | null>(null);
   const [draft, setDraft] = useState<{ chara: number; blocks: Block[] } | null>(null);
   const [guide, setGuide] = useState<Guide | null>(null);
@@ -115,7 +116,7 @@ export function MotionPage() {
     if (chara == null) return;
     const cur = seqs[chara];
     if (picker?.replace && cur) {
-      void save(chara, cur.blocks.map((x) => (x.id === picker.replace ? { ...x, kind: b.kind, clip: b.clip, pose: b.pose } : x)), 'Replace block');
+      void save(chara, cur.blocks.map((x) => (x.id === picker.replace ? { ...x, kind: b.kind, clip: b.clip, pose: b.pose, mclip: b.mclip } : x)), 'Replace block');
       return;
     }
     const nb = appended(cur, b);
@@ -201,11 +202,11 @@ export function MotionPage() {
       const end = blockEnd(o);
       const speed = o.speed ?? 1;
       // a clip can't start before its own beginning
-      const earliest = o.kind === 'clip' ? Math.max(0, o.start - (o.offset ?? 0) / speed) : 0;
+      const earliest = plays(o) ? Math.max(0, o.start - (o.offset ?? 0) / speed) : 0;
       const raw = o.start + dt;
       const start = Math.min(end - 1 / fps, Math.max(earliest, raw + snap([raw])));
       b = { ...o, start, len: end - start, blend: Math.min(o.blend, end - start) };
-      if (o.kind === 'clip') b.offset = Math.max(0, (o.offset ?? 0) + (start - o.start) * speed);
+      if (plays(o)) b.offset = Math.max(0, (o.offset ?? 0) + (start - o.start) * speed);
       text = `Starts ${fmtT(start)} · length ${fmtT(b.len)}`;
     } else {
       const blend = Math.min(o.len, Math.max(0, o.blend + dt));
@@ -304,7 +305,8 @@ export function MotionPage() {
   };
   const who = chara != null ? displayName(nodes[chara]) : '';
   const busy = chara != null && building[chara] != null;
-  const natural = selBlock?.kind === 'clip' ? lengths[selBlock.id] : undefined;
+  const natural = selBlock && plays(selBlock) ? lengths[selBlock.id] : undefined;
+  const iconOf = (k: Block['kind']) => (k === 'pose' ? 'pose' : k === 'mclip' ? 'scissors' : 'animate');
 
   if (!chars.length) return <div className="empty mo-empty">Add a character to the scene to build its motion.</div>;
 
@@ -317,6 +319,9 @@ export function MotionPage() {
         </button>
         <button className="btn solid" disabled={chara == null} onClick={() => setPicker({ kind: 'pose' })}>
           <Icon name="pose" size={13} /> Add a pose
+        </button>
+        <button className="btn solid" disabled={chara == null} onClick={() => setPicker({ kind: 'mclip' })} title="A clip you saved in Animate › Motion clips">
+          <Icon name="scissors" size={13} /> Add a motion clip
         </button>
         <button
           className={`btn solid ${ripple ? 'on' : ''}`}
@@ -380,7 +385,7 @@ export function MotionPage() {
                     >
                       {prev && b.blend > 0 && <span className="mo-blend" style={{ width: Math.min(xOf(b.blend), xOf(b.len)) }} />}
                       {prev && <span className="mo-blend-handle" style={{ left: Math.min(xOf(b.blend), xOf(b.len)) - 5 }} title="Drag: how long it blends in from the block before" />}
-                      <Icon name={b.kind === 'clip' ? 'animate' : 'pose'} size={11} />
+                      <Icon name={iconOf(b.kind)} size={11} />
                       <span className="mo-name">{blockName(b)}</span>
                     </div>
                   );
@@ -403,9 +408,9 @@ export function MotionPage() {
       {chara != null && selBlock && (
         <div className="mo-inspector">
           <div className="mo-insp-head">
-            <Icon name={selBlock.kind === 'clip' ? 'animate' : 'pose'} size={13} />
+            <Icon name={iconOf(selBlock.kind)} size={13} />
             <b>{blockName(selBlock)}</b>
-            <span className="sub">{selBlock.kind === 'clip' ? 'Studio clip' : 'Pose (held)'}</span>
+            <span className="sub">{selBlock.kind === 'clip' ? 'Studio clip' : selBlock.kind === 'mclip' ? 'Motion clip' : 'Pose (held)'}</span>
             <span className="spacer" />
             <button className="btn small solid" onClick={() => setPicker({ kind: selBlock.kind, replace: selBlock.id })}>
               Replace…
@@ -426,7 +431,7 @@ export function MotionPage() {
               Length
               <NumberField value={selBlock.len} format={fmt} parse={parseS} onCommit={(v) => update({ len: Math.max(1 / fps, snapT(v)) }, 'Change block length')} />
             </label>
-            {selBlock.kind === 'clip' && (
+            {plays(selBlock) && (
               <>
                 <label>
                   Speed
@@ -473,6 +478,16 @@ export function MotionPage() {
           onPick={(g, c, no) => {
             const name = clipName(g, c, no);
             addOrReplace({ kind: 'clip', len: 3, speed: 1, offset: 0, clip: { group: g, category: c, no, name } }, 'Add clip');
+            setPicker(null);
+          }}
+        />
+      )}
+      {picker?.kind === 'mclip' && chara != null && (
+        <MClipPicker
+          title={picker.replace ? `Replace the motion clip in ${who}'s motion` : `Add a motion clip to ${who}'s motion`}
+          onClose={() => setPicker(null)}
+          onPick={(m) => {
+            addOrReplace({ kind: 'mclip', len: Math.max(1 / fps, Math.round(m.length * fps) / fps), speed: 1, offset: 0, mclip: { file: m.file, name: m.name } }, 'Add motion clip');
             setPicker(null);
           }}
         />
