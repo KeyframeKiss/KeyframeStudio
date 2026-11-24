@@ -102,17 +102,43 @@ namespace StudioEX.Bridge.Api
         internal static void StretchClips(float oldEnd, float newEnd)
         {
             if (newEnd <= oldEnd + 1e-4f) return;
-            foreach (var ip in Interpolables.Values.Where(x => x.id == "charAnimationTime" && x.keyframes.Count >= 2).ToList())
+            // a clip running to the old end — or past it (the timeline was shortened under it) — but not to the new one
+            bool Stretches(Interpolable ip)
+            {
+                int n = ip.keyframes.Count;
+                float tl = ip.keyframes.Keys[n - 1], tp = ip.keyframes.Keys[n - 2];
+                var prev = ip.keyframes.Values[n - 2];
+                return tl >= oldEnd - 2e-3f && tl < newEnd - 1e-4f && !IsHold(prev.curve) && tl - tp >= 1e-4f &&
+                       ip.keyframes.Values[n - 1].value is float && prev.value is float;
+            }
+            var list = Interpolables.Values.Where(x => x.id == "charAnimationTime" && x.keyframes.Count >= 2 && Stretches(x)).ToList();
+            if (list.Count == 0) return;
+            History.Record(list);
+            foreach (var ip in list)
             {
                 int n = ip.keyframes.Count;
                 float tl = ip.keyframes.Keys[n - 1], tp = ip.keyframes.Keys[n - 2];
                 var last = ip.keyframes.Values[n - 1];
-                var prev = ip.keyframes.Values[n - 2];
-                if (Mathf.Abs(tl - oldEnd) > 2e-3f || IsHold(prev.curve) || tl - tp < 1e-4f) continue;
-                if (!(last.value is float vl) || !(prev.value is float vp)) continue;
+                float vl = (float)last.value, vp = (float)ip.keyframes.Values[n - 2].value;
                 float v = vp + (vl - vp) * (newEnd - tp) / (tl - tp);
                 ip.keyframes.Remove(tl);
                 ip.keyframes[newEnd] = new TLKeyframe(v, ip, last.curve);
+            }
+        }
+
+        /// <summary>The timeline's length, for undo (with the clips it stretched, recorded alongside).</summary>
+        private sealed class DurationUndo : IUndoEntry
+        {
+            private readonly float _d;
+            public DurationUndo(float d) { _d = d; }
+            public string Label => "Timeline length";
+            public bool Absorbs(IUndoEntry newer) => false;
+            public IUndoEntry Restore()
+            {
+                var inverse = new DurationUndo(TL.duration);
+                F_duration.SetValue(Ready, _d);
+                RefreshView();
+                return inverse;
             }
         }
 

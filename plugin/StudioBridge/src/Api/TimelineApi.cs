@@ -666,8 +666,18 @@ namespace StudioEX.Bridge.Api
             {
                 float d = Mathf.Max(0.01f, a.GetFloat("duration"));
                 float old = TL.duration;
-                F_duration.SetValue(s, d);
-                StretchClips(old, d); // clips that ran to the end run on to the new end
+                if (Mathf.Abs(d - old) > 1e-5f)
+                {
+                    // one undo step: the length, and the clips that ran to the end running on to the new end
+                    UndoStack.BeginGroup();
+                    try
+                    {
+                        UndoStack.Push(new DurationUndo(old));
+                        F_duration.SetValue(s, d);
+                        StretchClips(old, d);
+                    }
+                    finally { UndoStack.EndGroup("Timeline length"); }
+                }
                 RefreshView();
             }
             if (a.Has("fps"))

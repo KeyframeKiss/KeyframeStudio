@@ -196,9 +196,33 @@ namespace StudioEX.Bridge.Api
             public IUndoEntry Restore()
             {
                 var inverse = new ShotsUndo(Snap(), Label);
+                var slotsBefore = _angles.Where(x => x.Has("slot")).Select(x => x.GetInt("slot")).ToList();
+                var camBefore = new Dictionary<string, string>();
+                foreach (var x in _angles)
+                    if (x.GetString("id") is string aid) camBefore[aid] = Json.Serialize(x.GetObject("cam")) + "|" + (x.Has("slot") ? x.GetInt("slot") : -1);
                 _shots = Copy(_was.Shots);
                 _angles = Copy(_was.Angles);
                 _liveId = null;
+                // Studio's saved views follow their angles back: an angle's view gets its camera again, and a view
+                // taken by an angle that's gone again (undoing Add angle) is emptied, so importing views doesn't
+                // bring it back as "View N"
+                try
+                {
+                    // only views whose angle changed (a view saved in Studio by hand since is left alone otherwise)
+                    foreach (var angle in _angles)
+                        if (!(angle.GetString("id") is string aid) || !camBefore.TryGetValue(aid, out var was) ||
+                            was != Json.Serialize(angle.GetObject("cam")) + "|" + (angle.Has("slot") ? angle.GetInt("slot") : -1))
+                            SyncSlot(angle);
+                    var s = Singleton<Studio.Studio>.Instance;
+                    var reset = s.cameraCtrl.ExportResetData();
+                    foreach (int i in slotsBefore)
+                        if (i >= 0 && i < s.sceneInfo.cameraData.Length && !_angles.Any(x => x.Has("slot") && x.GetInt("slot") == i))
+                        {
+                            s.sceneInfo.cameraData[i].Copy(reset);
+                            CameraApi.ClearSlotThumb(i);
+                        }
+                }
+                catch (Exception e) { StudioBridgePlugin.Logger.LogWarning("Shots undo: saved views: " + e.Message); }
                 Broadcast();
                 return inverse;
             }
@@ -695,8 +719,14 @@ namespace StudioEX.Bridge.Api
         private static object BuildCuts()
         {
             if (!TimelineApi.Available) throw new BridgeException("Camera cuts need Timeline");
+            _keyedAt = -10f; // which shots play camera keys: read now, not from a moment ago (a bake just before)
             var withCam = _shots.Where(s => s.GetObject("cam") != null && Mode(s) == "still").ToList();
-            if (withCam.Count == 0) throw new BridgeException("Give the shots a camera first (frame the view, then Set camera)");
+            if (withCam.Count == 0)
+            {
+                // baked before: every shot with a camera now plays camera keys — nothing new to bake
+                if (_shots.Any(s => s.GetObject("cam") != null)) return 0;
+                throw new BridgeException("Give the shots a camera first (frame the view, then Set camera)");
+            }
             return BuildCutsImpl(withCam);
         }
 

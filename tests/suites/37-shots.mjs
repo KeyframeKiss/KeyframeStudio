@@ -174,6 +174,15 @@ export default async function (t) {
     check('deleting angles keeps the shots’ cameras', (await state()).angles.length === 0 && near((await shot('B')).cam.fov, 27, 0.01));
     await ok('undo');
     check('…and undo brings them back', (await state()).angles.length >= 2);
+    // undoing Add angle empties the saved view it took (so importing views doesn't bring it back)
+    await ok('camera.setFov', { fov: 41 });
+    await sleep(200);
+    const added = (await ok('angles.add', {})).angles.at(-1);
+    if (added?.slot != null) {
+      check('the new angle took a saved view', (await ok('camera.get')).slots[added.slot].used);
+      await ok('undo');
+      check('undo Add angle: its saved view is empty again', !(await ok('camera.get')).slots[added.slot].used);
+    } else t.say('no free saved view for the angle: skipped');
   });
 
   await t.step('camera types: first person and follow switch at the cuts', async () => {
@@ -267,6 +276,9 @@ export default async function (t) {
     const n = await ok('shots.buildCuts', {});
     const keys = (await ok('camera.shots')).map((k) => Math.round(k.t * 100) / 100);
     check('baking a glide keys its start and end (eased between), not the cut', keys.includes(1.5) && keys.includes(2.5) && !keys.includes(2), keys.join(', '));
+    const again = await req('shots.buildCuts', {});
+    check('baking again: nothing new to bake (not an error)', again.ok && again.result === 0, JSON.stringify(again));
+    if (again.ok && again.result) await ok('undo'); // (it baked again: take that off too)
     await ok('undo');
     await withTrans(undefined);
     check('back to a hard cut', !(await shot('B')).trans);

@@ -140,7 +140,8 @@ export default async function (t) {
     check('IK on for that limb only', after.ik && after.activeIK.filter(Boolean).length === 1, JSON.stringify(after.activeIK));
     check('FK stays on beside it', after.fk === hand.fk);
     // (Studio's IK solver lets a reaching arm tug the body a hair — a centimetre or so — as it does in Studio itself)
-    check('the body didn’t jump', dist(after.hips, hand.hips) < 0.02 && dist(foot0, (await sim({ id, bone: 'cf_j_foot_R' })).world) < 0.02, `hips ${dist(after.hips, hand.hips).toFixed(4)} m`);
+    const footMoved = dist(foot0, (await sim({ id, bone: 'cf_j_foot_R' })).world);
+    check('the body didn’t jump', dist(after.hips, hand.hips) < 0.02 && footMoved < 0.02, `hips ${dist(after.hips, hand.hips).toFixed(4)} m, right foot ${footMoved.toFixed(4)} m`);
     const hand1 = await sim({ id, bone: 'cf_j_hand_L' });
     check('…nor the hand itself (its target starts where it is)', dist(hand1.world, hand.world) < 0.02 && dist(after.world, hand.world) < 0.02, `hand ${dist(hand1.world, hand.world).toFixed(4)} m, target ${dist(after.world, hand.world).toFixed(4)} m`);
     handIk = { ...after, i: handIk.i };

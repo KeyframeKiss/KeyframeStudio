@@ -62,6 +62,7 @@ export function ShotsPage() {
       toast(
         `Camera keys written for ${n} cut${n > 1 ? 's' : ''}.${live ? ` Dips and dissolves still need Play the edit.` : ''}`,
       );
+    else if (n === 0) toast('The cuts are already in camera keys');
   };
   const exportBoard = async () => {
     if (!shots.length) return;

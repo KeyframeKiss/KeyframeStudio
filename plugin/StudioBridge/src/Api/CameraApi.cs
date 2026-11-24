@@ -19,6 +19,7 @@ namespace StudioEX.Bridge.Api
         internal static readonly Dictionary<float, string> ShotThumbs = new Dictionary<float, string>();
 
         internal static void SetSlotThumb(int i, string thumb) => SlotThumbs[i] = thumb;
+        internal static void ClearSlotThumb(int i) => SlotThumbs.Remove(i);
 
         /// <summary>Thumbnails belong to the scene they were taken in.</summary>
         public static void ClearThumbs()
