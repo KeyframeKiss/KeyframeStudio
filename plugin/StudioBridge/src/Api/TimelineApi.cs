@@ -286,6 +286,7 @@ namespace StudioEX.Bridge.Api
             RegisterCameraMoves(r);
             RegisterLimbLock(r);
             RegisterAnimTimeline(r);
+            RegisterMotionBuilder(r);
             RegisterClips(r);
 
         }

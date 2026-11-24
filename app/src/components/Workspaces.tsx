@@ -12,7 +12,8 @@ import { columns, leftCss, rightCss, setPanelSizes, usePanelSizes } from '../lib
 import { CleanupPanel } from './CleanupPanel';
 import { ClipsPanel } from './ClipsPanel';
 import { AnimationBrowser } from './AnimationBrowser';
-import { applyAnimation, putClipOnTimeline } from '../lib/animation';
+import { applyAnimation } from '../lib/animation';
+import { MotionPage } from './motion/MotionPage';
 import { CharacterAnimationPanel } from './CharacterAnimation';
 import { CharacterPanel } from './CharacterPanel';
 import { DopeSheet } from './DopeSheet';
@@ -160,6 +161,7 @@ function SubPage({ max = 760, children }: { max?: number; children: React.ReactN
 // ---------------------------------------------------------------------------
 const ANIMATE_TABS: SubTab[] = [
   { id: 'timeline', label: 'Timeline', icon: 'tracks', hint: 'Dope sheet and graph editor (Tab switches)' },
+  { id: 'motion', label: 'Motion builder', icon: 'animate', hint: 'Line up Studio clips and poses on a character, blend them, and get keys' },
   { id: 'face', label: 'Face', icon: 'target', hint: 'Animate a face: expressions keyed at the playhead, lip-sync, blinks' },
   { id: 'clips', label: 'Motion clips', icon: 'scissors', hint: 'Save a stretch of animation and reuse it on any character' },
 ];
@@ -188,6 +190,7 @@ export function AnimateWorkspace() {
         <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', position: 'relative' }}>
           <ErrorBoundary key={tab} name={ANIMATE_TABS.find((t) => t.id === tab)?.label ?? tab}>
             {tab === 'timeline' && <DopeSheet />}
+            {tab === 'motion' && <MotionPage />}
             {tab === 'face' && <FaceAnimation />}
             {tab === 'clips' && (
               <SubPage max={1100}>
@@ -370,12 +373,7 @@ function AnimationLibrary() {
         onPick={async (g, c, n) => {
           if (await applyAnimation(chars, g, c, n)) setCurrent({ group: g, category: c, no: n });
         }}
-        onTimeline={async (g, c, n) => {
-          const same = g === current.group && c === current.category && n === current.no;
-          if (!same && !(await applyAnimation(chars, g, c, n))) return;
-          setCurrent({ group: g, category: c, no: n });
-          await putClipOnTimeline(chars);
-        }}
+
       />
     </>
   );
