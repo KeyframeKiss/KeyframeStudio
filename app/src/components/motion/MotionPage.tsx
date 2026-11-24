@@ -10,8 +10,22 @@ import { useAnimationFrame } from '../useAnimationFrame';
 import { PosePicker } from './PosePicker';
 
 const LABEL_W = 150;
-const EDGE = 7; // px: grab a block's right edge to change its length
-const SNAP_PX = 8;
+const EDGE = 7; // px: grab a block's edge to trim it
+const SNAP_PX = 10; // px: edges this close snap together (Shift: no snapping)
+const lsGet = (k: string, d: string) => {
+  try {
+    return localStorage.getItem(k) ?? d;
+  } catch {
+    return d;
+  }
+};
+const lsSet = (k: string, v: string) => {
+  try {
+    localStorage.setItem(k, v);
+  } catch {
+    /* fine */
+  }
+};
 
 interface Catalog {
   id: number;
@@ -20,7 +34,10 @@ interface Catalog {
   categories: { id: number; name: string; nameEn?: string; clips: { no: number; name: string; nameEn?: string }[] }[];
 }
 
-type Drag = { chara: number; id: string; kind: 'move' | 'len' | 'blend'; x0: number; orig: Block; moved: boolean };
+type Drag = { chara: number; id: string; kind: 'move' | 'len' | 'trim' | 'blend'; x0: number; orig: Block; all: Block[]; moved: boolean };
+type Guide = { t: number | null; text: string; x: number };
+
+const fmtT = (v: number) => `${v.toFixed(2)} s`;
 
 function tickStep(pps: number) {
   for (const s of [0.1, 0.25, 0.5, 1, 2, 5, 10, 15, 30, 60, 120]) if (s * pps >= 70) return s;
@@ -41,7 +58,12 @@ export function MotionPage() {
   const { seqs, building, lengths, sel } = useMotion();
   const [picker, setPicker] = useState<null | { kind: 'clip' | 'pose'; replace?: string }>(null);
   const [catalog, setCatalog] = useState<Catalog[] | null>(null);
-  const [draft, setDraft] = useState<{ chara: number; block: Block } | null>(null);
+  const [draft, setDraft] = useState<{ chara: number; blocks: Block[] } | null>(null);
+  const [guide, setGuide] = useState<Guide | null>(null);
+  const [ripple, setRippleState] = useState(() => lsGet('studioex.motion.ripple', '1') === '1');
+  const setRipple = (on: boolean) => (setRippleState(on), lsSet('studioex.motion.ripple', on ? '1' : '0'));
+  const [zoom, setZoom] = useState(1);
+  const zoomAnchor = useRef<{ t: number; px: number } | null>(null);
   const drag = useRef<Drag | null>(null);
   const wrap = useRef<HTMLDivElement>(null);
   const [w, setW] = useState(800);
@@ -65,17 +87,14 @@ export function MotionPage() {
   const seq: Seq | undefined = chara != null ? seqs[chara] : undefined;
   const selBlock = seq?.blocks.find((b) => b.id === sel.block) ?? null;
 
-  const span = Math.max(duration, ...Object.values(seqs).map(seqEnd), 1);
-  const pps = w / span;
+  const span = Math.max(duration, ...Object.values(seqs).map(seqEnd), 1) + 0.5;
+  const pps = (w / span) * zoom;
   const xOf = (t: number) => t * pps;
   const snapT = (t: number) => Math.max(0, Math.round(t * fps) / fps);
   const step = tickStep(pps);
 
   const pick = (c: number, block: string | null) => useMotion.setState({ sel: { chara: c, block } });
-  const blocksOf = (c: number) => {
-    const list = seqs[c]?.blocks ?? [];
-    return draft?.chara === c ? list.map((b) => (b.id === draft.block.id ? draft.block : b)) : list;
-  };
+  const blocksOf = (c: number) => (draft?.chara === c ? draft.blocks : (seqs[c]?.blocks ?? []));
   const save = (c: number, blocks: Block[], label: string) => setSeq(c, { ...(seqs[c] ?? { blocks: [] }), blocks }, label);
   const update = (patch: Partial<Block>, label = 'Edit motion') => {
     if (chara == null || !seq || !selBlock) return;
@@ -104,16 +123,37 @@ export function MotionPage() {
     pick(chara, nb.id);
   };
 
-  // ---- dragging blocks: move, length (right edge), blend (the handle at the end of the blend ramp)
+  // ---- dragging blocks: move, trim either edge, blend (the handle at the end of the blend ramp)
   const onDown = (e: React.PointerEvent, c: number, b: Block) => {
     if (e.button !== 0) return;
     e.stopPropagation();
     pick(c, b.id);
     const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
     const x = e.clientX - r.left;
-    const kind: Drag['kind'] = (e.target as HTMLElement).classList.contains('mo-blend-handle') ? 'blend' : x > r.width - EDGE ? 'len' : 'move';
-    drag.current = { chara: c, id: b.id, kind, x0: e.clientX, orig: b, moved: false };
+    const kind: Drag['kind'] = (e.target as HTMLElement).classList.contains('mo-blend-handle')
+      ? 'blend'
+      : x > r.width - EDGE
+        ? 'len'
+        : x < EDGE && r.width > EDGE * 3
+          ? 'trim'
+          : 'move';
+    drag.current = { chara: c, id: b.id, kind, x0: e.clientX, orig: b, all: seqs[c]?.blocks ?? [], moved: false };
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  };
+  /** Everything a dragged edge can snap to: other blocks' edges (all lanes), the start, the playhead, the end. */
+  const snapTargets = (skip: Set<string>) => {
+    const list: { t: number; what: string }[] = [
+      { t: 0, what: 'the start' },
+      { t: liveTime(), what: 'the playhead' },
+      { t: duration, what: 'the timeline end' },
+    ];
+    for (const [cid, sq] of Object.entries(seqs))
+      for (const x of sq.blocks)
+        if (!skip.has(x.id)) {
+          const own = Number(cid) === chara ? '' : ` (${displayName(nodes[Number(cid)])})`;
+          list.push({ t: x.start, what: `${blockName(x)} start${own}` }, { t: blockEnd(x), what: `${blockName(x)} end${own}` });
+        }
+    return list;
   };
   const onMove = (e: React.PointerEvent) => {
     const d = drag.current;
@@ -122,40 +162,85 @@ export function MotionPage() {
     if (!d.moved && Math.abs(dx) < 3) return;
     d.moved = true;
     const dt = dx / pps;
-    const others = (seqs[d.chara]?.blocks ?? []).filter((x) => x.id !== d.id);
-    const edges = [0, ...others.flatMap((x) => [x.start, blockEnd(x)])];
-    const snapEdge = (t: number) => {
-      const near = edges.find((x) => Math.abs(x - t) * pps < SNAP_PX);
-      return near ?? snapT(t);
+    const free = e.shiftKey;
+    // blocks that ride along with a length change (ripple): the ones after it in its lane
+    const follows = ripple && d.kind === 'len' ? d.all.filter((x) => x.id !== d.id && x.start >= blockEnd(d.orig) - 1e-3) : [];
+    const targets = snapTargets(new Set([d.id, ...follows.map((x) => x.id)]));
+    let snapped: { t: number; what: string } | null = null;
+    // snap one or more candidate times (the edges that move); the closest target wins
+    const snap = (cands: number[]): number => {
+      if (free) return snapT(cands[0]) - cands[0];
+      let best: { off: number; t: number; what: string } | null = null;
+      for (const c of cands)
+        for (const g of targets) {
+          const off = g.t - c;
+          if (Math.abs(off) * pps < SNAP_PX && (!best || Math.abs(off) < Math.abs(best.off))) best = { off, t: g.t, what: g.what };
+        }
+      if (best) {
+        snapped = { t: best.t, what: best.what };
+        return best.off;
+      }
+      return snapT(cands[0]) - cands[0];
     };
-    let b = d.orig;
+    const o = d.orig;
+    let b = o;
+    let shift = 0;
+    let text = '';
     if (d.kind === 'move') {
-      let start = Math.max(0, d.orig.start + dt);
-      const s1 = snapEdge(start);
-      const s2 = snapEdge(start + d.orig.len) - d.orig.len;
-      start = Math.abs(s1 - start) <= Math.abs(s2 - start) ? s1 : Math.max(0, s2);
-      b = { ...d.orig, start };
+      const start = Math.max(0, o.start + dt);
+      const off = snap([start, start + o.len]);
+      b = { ...o, start: Math.max(0, start + off) };
+      text = `${fmtT(b.start)} – ${fmtT(blockEnd(b))}`;
     } else if (d.kind === 'len') {
-      const end = Math.max(d.orig.start + 1 / fps, snapEdge(blockEnd(d.orig) + dt));
-      b = { ...d.orig, len: end - d.orig.start, blend: Math.min(d.orig.blend, end - d.orig.start) };
+      const endRaw = blockEnd(o) + dt;
+      const end = Math.max(o.start + 1 / fps, endRaw + snap([endRaw]));
+      b = { ...o, len: end - o.start, blend: Math.min(o.blend, end - o.start) };
+      shift = end - blockEnd(o);
+      text = `Length ${fmtT(b.len)}${follows.length ? ` · ${follows.length} after it move along` : ''}`;
+    } else if (d.kind === 'trim') {
+      const end = blockEnd(o);
+      const speed = o.speed ?? 1;
+      // a clip can't start before its own beginning
+      const earliest = o.kind === 'clip' ? Math.max(0, o.start - (o.offset ?? 0) / speed) : 0;
+      const raw = o.start + dt;
+      const start = Math.min(end - 1 / fps, Math.max(earliest, raw + snap([raw])));
+      b = { ...o, start, len: end - start, blend: Math.min(o.blend, end - start) };
+      if (o.kind === 'clip') b.offset = Math.max(0, (o.offset ?? 0) + (start - o.start) * speed);
+      text = `Starts ${fmtT(start)} · length ${fmtT(b.len)}`;
     } else {
-      b = { ...d.orig, blend: Math.min(d.orig.len, Math.max(0, snapT(d.orig.blend + dt))) };
+      const blend = Math.min(o.len, Math.max(0, o.blend + dt));
+      const bl = free ? snapT(blend) : Math.min(o.len, Math.max(0, blend + snap([o.start + blend])));
+      b = { ...o, blend: bl };
+      text = `Blend ${fmtT(b.blend)}`;
     }
-    setDraft({ chara: d.chara, block: b });
+    const s0 = snapped as { t: number; what: string } | null;
+    if (s0) text += ` · snapped to ${s0.what}`;
+    const blocks = d.all.map((x) => (x.id === d.id ? b : follows.some((f) => f.id === x.id) ? { ...x, start: x.start + shift } : x));
+    setDraft({ chara: d.chara, blocks });
+    const box = wrap.current?.getBoundingClientRect();
+    setGuide({ t: s0 ? s0.t : null, text, x: box ? e.clientX - box.left + (wrap.current?.scrollLeft ?? 0) : 0 });
   };
   const onUp = () => {
     const d = drag.current;
     drag.current = null;
+    setGuide(null);
     if (!d?.moved || !draft) return setDraft(null);
-    const blocks = (seqs[d.chara]?.blocks ?? []).map((x) => (x.id === d.id ? draft.block : x));
+    const blocks = draft.blocks;
     setDraft(null);
-    void save(d.chara, blocks, d.kind === 'move' ? 'Move block' : d.kind === 'len' ? 'Change block length' : 'Change blend');
+    void save(d.chara, blocks, d.kind === 'move' ? 'Move block' : d.kind === 'blend' ? 'Change blend' : 'Change block length');
   };
 
   const remove = (c: number, id: string) => {
     const cur = seqs[c];
-    if (!cur) return;
-    void save(c, cur.blocks.filter((x) => x.id !== id), 'Remove block');
+    const gone = cur?.blocks.find((x) => x.id === id);
+    if (!cur || !gone) return;
+    // ripple: blocks right after it close the gap
+    const end = blockEnd(gone);
+    const closes = ripple && cur.blocks.some((x) => x.id !== id && Math.abs(x.start - end) < 1e-3);
+    const blocks = cur.blocks
+      .filter((x) => x.id !== id)
+      .map((x) => (closes && x.start >= end - 1e-3 ? { ...x, start: Math.max(0, x.start - gone.len) } : x));
+    void save(c, blocks, 'Remove block');
     pick(c, null);
   };
   const duplicate = (c: number, b: Block) => {
@@ -172,13 +257,47 @@ export function MotionPage() {
   };
 
   const onKey = (e: React.KeyboardEvent) => {
-    if ((e.key === 'Delete' || e.key === 'Backspace') && chara != null && selBlock && !(e.target as HTMLElement).closest('input')) {
+    if (chara == null || !selBlock || !seq || (e.target as HTMLElement).closest('input')) return;
+    if (e.key === 'Delete' || e.key === 'Backspace') {
       e.preventDefault();
       remove(chara, selBlock.id);
+    } else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+      // nudge by a frame (Shift: ten)
+      e.preventDefault();
+      e.stopPropagation();
+      const by = ((e.key === 'ArrowLeft' ? -1 : 1) * (e.shiftKey ? 10 : 1)) / fps;
+      update({ start: Math.max(0, snapT(selBlock.start + by)) }, 'Move block');
     }
   };
 
-  const fmt = (v: number) => `${v.toFixed(2)} s`;
+  // Ctrl + wheel: zoom the lanes around the pointer
+  const onWheel = (e: React.WheelEvent) => {
+    if (!e.ctrlKey) return;
+    e.preventDefault();
+    const el = wrap.current;
+    if (!el) return;
+    const px = e.clientX - el.getBoundingClientRect().left - LABEL_W;
+    const t = (px + el.scrollLeft) / pps;
+    zoomAnchor.current = { t, px };
+    setZoom((z) => Math.min(40, Math.max(1, z * (e.deltaY < 0 ? 1.25 : 0.8))));
+  };
+  useLayoutEffect(() => {
+    const a = zoomAnchor.current;
+    const el = wrap.current;
+    if (!a || !el) return;
+    zoomAnchor.current = null;
+    el.scrollLeft = Math.max(0, a.t * pps - a.px);
+  }, [zoom]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    // the wheel listener must be non-passive to stop the page zooming
+    const el = wrap.current;
+    if (!el) return;
+    const stop = (e: WheelEvent) => e.ctrlKey && e.preventDefault();
+    el.addEventListener('wheel', stop, { passive: false });
+    return () => el.removeEventListener('wheel', stop);
+  }, []);
+
+  const fmt = fmtT;
   const parseS = (s: string) => {
     const v = Number(s.replace(/s$/i, '').trim());
     return Number.isFinite(v) ? v : null;
@@ -199,6 +318,19 @@ export function MotionPage() {
         <button className="btn solid" disabled={chara == null} onClick={() => setPicker({ kind: 'pose' })}>
           <Icon name="pose" size={13} /> Add a pose
         </button>
+        <button
+          className={`btn solid ${ripple ? 'on' : ''}`}
+          aria-pressed={ripple}
+          onClick={() => setRipple(!ripple)}
+          title="Ripple: lengthening, shortening or removing a block moves the blocks after it along, so the sequence stays joined up"
+        >
+          Ripple {ripple ? 'on' : 'off'}
+        </button>
+        {zoom > 1.01 && (
+          <button className="btn solid" onClick={() => setZoom(1)} title="Show the whole motion (Ctrl + wheel zooms)">
+            Zoom {zoom.toFixed(1)}× · fit
+          </button>
+        )}
         <span className="spacer" />
         <span className="mo-status">
           {busy ? (building[chara!] > 0 ? `Building… ${Math.round(building[chara!] * 100)}%` : 'Building…') : seq?.blocks.length ? `${seq.blocks.length} block${seq.blocks.length > 1 ? 's' : ''} · ${seqEnd(seq).toFixed(2)} s · built` : 'No motion yet'}
@@ -209,10 +341,11 @@ export function MotionPage() {
         <button className="btn solid" disabled={!seq} onClick={() => chara != null && clearSeq(chara)} title="Remove this character's motion and its keys (Ctrl+Z brings them back)">
           Clear
         </button>
-        <Help text="Add Studio clips and poses: they play one after another on the character's lane. Drag a block to move it, its right edge to change its length, and the handle at the top of its ramp to blend in from the block before (overlap = a smooth change, not a jump). Every change is built into keys in the timeline's “Motion” folder, so it plays, scrubs and renders like any animation. Ctrl+Z undoes each change." />
+        <Help text="Add Studio clips and poses: they play one after another on the character's lane. Drag a block to move it, either edge to trim it, and the handle at the top of its ramp to blend in from the block before. Edges snap to other blocks, the playhead and the start (hold Shift to drag freely); ← / → nudge the selected block a frame (Shift: ten); Ctrl + wheel zooms. With Ripple on, the blocks after one move along when it gets longer or shorter or is removed. Every change is built into keys in the timeline's “Motion” folder, so it plays, scrubs and renders like any animation. Ctrl+Z undoes each change." />
       </div>
 
-      <div className="mo-lanes" ref={wrap} onPointerMove={onMove} onPointerUp={onUp}>
+      <div className="mo-lanes" ref={wrap} onPointerMove={onMove} onPointerUp={onUp} onWheel={onWheel}>
+       <div className="mo-content" style={{ width: LABEL_W + span * pps }}>
         <div className="mo-row mo-ruler-row">
           <div className="mo-label" />
           <div className="mo-ruler" onPointerDown={(e) => seek(Math.min(duration, Math.max(0, (e.clientX - e.currentTarget.getBoundingClientRect().left) / pps)))}>
@@ -243,7 +376,7 @@ export function MotionPage() {
                       style={{ left: xOf(b.start), width: Math.max(6, xOf(b.len)) }}
                       onPointerDown={(e) => onDown(e, c.id, b)}
                       onDoubleClick={() => setPicker({ kind: b.kind, replace: b.id })}
-                      title={`${blockName(b)}\n${b.start.toFixed(2)}–${blockEnd(b).toFixed(2)} s${b.blend > 0 && prev ? ` · blends in over ${b.blend.toFixed(2)} s` : ''}\nDrag to move · drag the right edge for length · double-click to replace`}
+                      title={`${blockName(b)}\n${b.start.toFixed(2)}–${blockEnd(b).toFixed(2)} s${b.blend > 0 && prev ? ` · blends in over ${b.blend.toFixed(2)} s` : ''}\nDrag to move · drag an edge to trim · double-click to replace`}
                     >
                       {prev && b.blend > 0 && <span className="mo-blend" style={{ width: Math.min(xOf(b.blend), xOf(b.len)) }} />}
                       {prev && <span className="mo-blend-handle" style={{ left: Math.min(xOf(b.blend), xOf(b.len)) - 5 }} title="Drag: how long it blends in from the block before" />}
@@ -258,6 +391,13 @@ export function MotionPage() {
           );
         })}
         <Playhead pps={pps} />
+        {guide && guide.t != null && <div className="mo-guide" style={{ left: LABEL_W + xOf(guide.t) }} />}
+        {guide && (
+          <div className="mo-readout" style={{ left: Math.max(LABEL_W + 4, guide.x + 12) }}>
+            {guide.text}
+          </div>
+        )}
+       </div>
       </div>
 
       {chara != null && selBlock && (

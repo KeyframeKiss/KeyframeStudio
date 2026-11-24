@@ -8729,3 +8729,64 @@ a.btn {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* Motion builder: zoomable content, edge trims, snap guide and readout */
+.mo-content {
+  position: relative;
+  min-width: 100%;
+}
+.mo-lanes {
+  overflow-x: auto;
+}
+.mo-label {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  background: var(--bg-0);
+}
+.mo-row.on .mo-label {
+  background: color-mix(in srgb, var(--accent) 5%, var(--bg-0));
+}
+.mo-ruler-row .mo-label {
+  background: var(--bg-1);
+}
+.mo-block::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 7px;
+  cursor: ew-resize;
+}
+.mo-block:hover::before {
+  background: color-mix(in srgb, var(--text-0) 18%, transparent);
+}
+.mo-guide {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  border-left: 1px solid var(--accent-2);
+  box-shadow: 0 0 6px var(--accent-2);
+  pointer-events: none;
+  z-index: 5;
+}
+.mo-readout {
+  position: absolute;
+  top: 28px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  background: var(--bg-4);
+  color: var(--text-0);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 6;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+}
+.mo-toolbar .btn.on {
+  border-color: var(--accent);
+  color: var(--accent);
+}
