@@ -63,6 +63,7 @@ declare global {
       setAlwaysOnTop(on: boolean): Promise<boolean>;
       setMini?(on: boolean): Promise<boolean>;
       getAlwaysOnTop(): Promise<boolean>;
+      setTitleBarColors?(c: { color: string; symbol: string }): Promise<boolean>;
       getBounds?(): Promise<{ x: number; y: number; width: number; height: number }>;
       setBounds?(b: { x: number; y: number; width: number; height: number }): Promise<boolean>;
       translate?: Bridge;

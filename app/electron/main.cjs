@@ -75,6 +75,7 @@ function saveState(win) {
   const s = miniFrom
     ? { bounds: miniFrom.bounds, maximized: miniFrom.maximized, alwaysOnTop: miniFrom.onTop, miniBounds: win.getNormalBounds() }
     : { bounds: win.getNormalBounds(), maximized: win.isMaximized(), alwaysOnTop: win.isAlwaysOnTop(), miniBounds: prev.miniBounds };
+  s.titleBar = prev.titleBar;
   try { fs.writeFileSync(stateFile, JSON.stringify(s)); } catch { /* ignore */ }
 }
 
@@ -93,7 +94,7 @@ function createWindow() {
     ...(state.bounds || {}),
     minWidth: 900,
     minHeight: 500,
-    backgroundColor: '#15161a',
+    backgroundColor: state.titleBar?.color ?? '#15161a',
     title: 'Keyframe Studio',
     icon: APP_ICON,
     autoHideMenuBar: true,
@@ -101,7 +102,8 @@ function createWindow() {
     // maximize) and Windows draws minimize / maximize / close inside it in the app's colours — keeping its
     // snap layouts on the maximize button. Height and colours match .header in styles.css.
     titleBarStyle: 'hidden',
-    titleBarOverlay: { color: '#17181d', symbolColor: '#b4b8c4', height: 47 },
+    // colours follow the app's theme (window:titleBarColors), remembered so the next start opens in them
+    titleBarOverlay: { color: state.titleBar?.color ?? '#17181d', symbolColor: state.titleBar?.symbol ?? '#b4b8c4', height: 47 },
     alwaysOnTop: !!state.alwaysOnTop,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
@@ -158,6 +160,19 @@ function createWindow() {
 
   ipcMain.handle('window:setAlwaysOnTop', (_e, on) => { win.setAlwaysOnTop(!!on); saveState(win); return win.isAlwaysOnTop(); });
   ipcMain.handle('window:getAlwaysOnTop', () => win.isAlwaysOnTop());
+  // the theme changed: Windows' minimize / maximize / close take the header's colours
+  ipcMain.handle('window:titleBarColors', (_e, c) => {
+    const hex = (v) => typeof v === 'string' && /^#[0-9a-f]{6}$/i.test(v);
+    if (!c || !hex(c.color) || !hex(c.symbol)) return false;
+    try { win.setTitleBarOverlay({ color: c.color, symbolColor: c.symbol }); } catch { return false; }
+    win.setBackgroundColor(c.color);
+    const st = loadState();
+    if (st.titleBar?.color !== c.color || st.titleBar?.symbol !== c.symbol) {
+      st.titleBar = { color: c.color, symbol: c.symbol };
+      try { fs.writeFileSync(stateFile, JSON.stringify(st)); } catch { /* ignore */ }
+    }
+    return true;
+  });
   // Mini mode: a small strip (just the timeline) kept on top of other windows; off puts the full window back
   ipcMain.handle('window:mini', (_e, on) => {
     const { screen } = require('electron');

@@ -51,6 +51,8 @@ function apply() {
   root.dataset.accent = accent;
   cache.clear();
   if (useAppearance.getState().resolved !== resolved) useAppearance.setState({ resolved });
+  // Windows draws minimize / maximize / close over the header: give them the header's colours
+  window.studioEx?.setTitleBarColors?.({ color: tokenColor('--bg-1'), symbol: tokenColor('--text-1') }).catch(() => {});
   window.dispatchEvent(new CustomEvent('kf:theme'));
 }
 

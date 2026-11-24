@@ -8,6 +8,8 @@ contextBridge.exposeInMainWorld('studioEx', {
   // mini mode: a small always-on-top timeline strip; false puts the full window back
   setMini: (on) => ipcRenderer.invoke('window:mini', on),
   getAlwaysOnTop: () => ipcRenderer.invoke('window:getAlwaysOnTop'),
+  // Windows' window buttons in the header's colours (hex), when the theme changes
+  setTitleBarColors: (c) => ipcRenderer.invoke('window:titleBarColors', c),
   getBounds: () => ipcRenderer.invoke('window:getBounds'),
   setBounds: (b) => ipcRenderer.invoke('window:setBounds', b),
   log: {
