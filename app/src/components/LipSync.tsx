@@ -3,7 +3,7 @@ import { Help } from './Help';
 import { Slider } from './CharacterPanel';
 import { Secs } from './AudioPage';
 import { bridge } from '../bridge/client';
-import { call, displayName, listenAudio, liveTime, pickAudio, showTab, toast, useStore, type AudioClipInfo } from '../state/store';
+import { audioName, call, displayName, listenAudio, liveTime, pickAudio, showTab, toast, useStore, type AudioClipInfo } from '../state/store';
 import { clipSpan, fileTimeAt, laneRgb, loudest } from '../lib/audioLanes';
 import { type LipSyncOptions } from '../lib/lipsync';
 import { DEFAULT_SETUP, generateLipSync, loadSetups, MOUTH_SLOTS, rangeOf, saveSetup, STYLES, voiceOf, voiceRef, type LipSetup, type LipStyle, type MouthPattern, type MouthSlot } from '../lib/lipsyncRun';
@@ -33,7 +33,7 @@ function useSetups() {
   return { setups, update };
 }
 
-const clipLabel = (c: AudioClipInfo) => `${c.file.replace(/\.wav$/i, '')} · at ${c.offset.toFixed(1)} s`;
+const clipLabel = (c: AudioClipInfo) => `${audioName(c)} · at ${c.offset.toFixed(1)} s`;
 const report = (who: string, r: Awaited<ReturnType<typeof generateLipSync>>) =>
   typeof r === 'string' ? `${who}: ${r}` : `${who}: ${r.mouth} mouth keys${r.shapes ? `, ${r.shapes} vowel shapes` : ''}${r.note ? ` (${r.note})` : ''}`;
 

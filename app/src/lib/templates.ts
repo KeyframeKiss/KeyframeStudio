@@ -17,7 +17,7 @@ export interface TemplateData {
   /** Every audio clip. */
   audioClips?: AudioClip[];
 }
-type AudioClip = { file: string; offset: number; volume: number; muted: boolean; pan?: number; speed?: number; fadeIn?: number; fadeOut?: number; trimIn?: number; trimOut?: number };
+type AudioClip = { file: string; name?: string; offset: number; volume: number; muted: boolean; pan?: number; speed?: number; fadeIn?: number; fadeOut?: number; trimIn?: number; trimOut?: number };
 /** A template's audio clips, old (one clip) or new. */
 const clipsOf = (d: TemplateData): AudioClip[] => d.audioClips ?? (d.audio ? [d.audio] : []);
 
@@ -50,7 +50,7 @@ export async function gatherTemplate(req: Request): Promise<TemplateData> {
   if (rigs?.length) data.rigs = [...new Set(rigs.map((r) => r.name))];
   if (render?.settings) data.render = render.settings;
   if (audio?.clips?.length)
-    data.audioClips = audio.clips.map((c) => ({ file: c.file, offset: c.offset, volume: c.volume, muted: c.muted, pan: c.pan, speed: c.speed, fadeIn: c.fadeIn, fadeOut: c.fadeOut, trimIn: c.trimIn, trimOut: c.trimOut }));
+    data.audioClips = audio.clips.map((c) => ({ file: c.file, name: c.name ?? '', offset: c.offset, volume: c.volume, muted: c.muted, pan: c.pan, speed: c.speed, fadeIn: c.fadeIn, fadeOut: c.fadeOut, trimIn: c.trimIn, trimOut: c.trimOut }));
   return data;
 }
 
@@ -82,7 +82,7 @@ export async function applyTemplate(req: Request, d: TemplateData, parts: Set<Te
       for (const a of clips) {
         const r = await req<{ clips: { id: number }[] }>('audio.add', { file: a.file, offset: a.offset });
         const id = r.clips[r.clips.length - 1].id;
-        const { file: _f, offset: _o, ...rest } = a; // volume, mute, balance, speed, fades, trims
+        const { file: _f, offset: _o, ...rest } = a; // name, volume, mute, balance, speed, fades, trims
         await req('audio.set', { id, ...rest });
       }
     });

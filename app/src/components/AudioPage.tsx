@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
+import { Icon } from './Icon';
 import { Field, Page, Panel, Section } from './Page';
 import { Help } from './Help';
-import { addAudio, call, listenAudio, liveTime, pickAudio, refreshAudio, removeAudio, seekNow, setAudio, setAudioDelay, showTab, useStore, type AudioClipInfo } from '../state/store';
+import { addAudio, audioName, call, listenAudio, liveTime, pickAudio, refreshAudio, removeAudio, seekNow, setAudio, setAudioDelay, showTab, useStore, type AudioClipInfo } from '../state/store';
 import { clipSpan, fadeAt, fileTimeAt, laneRgb, loudest, timelineTimeAt } from '../lib/audioLanes';
 import { Slider } from './CharacterPanel';
 
@@ -138,6 +139,40 @@ export function Secs({ value, onCommit, title, min = 0 }: { value: number; onCom
 
 const balanceLabel = (p: number) => (Math.abs(p) < 0.01 ? 'Centre' : `${p < 0 ? 'L' : 'R'} ${Math.round(Math.abs(p) * 100)}`);
 
+/** A clip's name: click it to rename (empty = the file's name); Enter keeps it, Esc leaves it as it was. */
+function ClipName({ clip: c, index }: { clip: AudioClipInfo; index: number }) {
+  const [text, setText] = useState<string | null>(null);
+  const lane = { ['--lane' as string]: `rgb(${laneRgb(index)})` };
+  const fileName = c.file.replace(/\.wav$/i, '');
+  if (text != null)
+    return (
+      <input
+        className="input audio-name-input"
+        style={lane}
+        autoFocus
+        value={text}
+        placeholder={fileName}
+        maxLength={80}
+        aria-label="Name of this audio"
+        onFocus={(e) => e.target.select()}
+        onChange={(e) => setText(e.target.value)}
+        onBlur={() => {
+          if (text.trim() !== (c.name ?? '').trim()) void setAudio(c.id, { name: text.trim() });
+          setText(null);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+          if (e.key === 'Escape') setText(null);
+        }}
+      />
+    );
+  return (
+    <button type="button" className="audio-clip-name" style={lane} title={`${c.name ? `File: ${c.file}\n` : ''}Click to rename`} onClick={() => setText(c.name || fileName)}>
+      {audioName(c)}
+    </button>
+  );
+}
+
 /** One clip: listen, where it starts, how it sounds (volume, balance, speed, fades, trims), swap, remove. */
 function ClipPanel({ clip: c, index }: { clip: AudioClipInfo; index: number }) {
   const listen = useStore((s) => (s.audioListen?.id === c.id ? s.audioListen.at : null));
@@ -149,9 +184,7 @@ function ClipPanel({ clip: c, index }: { clip: AudioClipInfo; index: number }) {
     <Panel
       className="audio-clip"
       title={
-        <span className="audio-clip-name" style={{ ['--lane' as string]: `rgb(${laneRgb(index)})` }} title={c.file}>
-          {c.file}
-        </span>
+        <ClipName clip={c} index={index} />
       }
       actions={
         <>
@@ -159,12 +192,12 @@ function ClipPanel({ clip: c, index }: { clip: AudioClipInfo; index: number }) {
             {listen != null ? `■ ${((listen - c.trimIn) / c.speed).toFixed(1)} s` : '▶ Listen'}
           </button>
           {window.studioEx?.openAudio && (
-            <button className="btn small" onClick={() => pickAudio(0, c.id)} title="Swap this clip's WAV, keeping where it starts">
+            <button className="btn small solid" onClick={() => pickAudio(0, c.id)} title="Swap this clip's WAV, keeping where it starts and its name">
               Replace…
             </button>
           )}
-          <button className="btn small" onClick={() => removeAudio(c.id)} title="Remove this clip from the scene">
-            ✕
+          <button className="btn icon danger" onClick={() => removeAudio(c.id)} title="Remove this clip from the scene" aria-label="Remove this clip">
+            <Icon name="trash" size={13} />
           </button>
         </>
       }

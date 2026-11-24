@@ -58,6 +58,8 @@ export interface Shot {
 export interface AudioClipInfo {
   id: number;
   file: string;
+  /** The name shown for it; empty = the file's name. */
+  name?: string;
   offset: number;
   volume: number;
   muted: boolean;
@@ -75,7 +77,7 @@ export interface AudioClipInfo {
   /** Seconds it plays on the timeline. */
   span: number;
 }
-export type AudioPatch = Partial<Pick<AudioClipInfo, 'offset' | 'volume' | 'muted' | 'pan' | 'speed' | 'fadeIn' | 'fadeOut' | 'trimIn' | 'trimOut'>>;
+export type AudioPatch = Partial<Pick<AudioClipInfo, 'name' | 'offset' | 'volume' | 'muted' | 'pan' | 'speed' | 'fadeIn' | 'fadeOut' | 'trimIn' | 'trimOut'>>;
 export interface AudioPeaks {
   perSecond: number;
   peaks: number[];
@@ -375,6 +377,9 @@ export async function pickAudio(offset = 0, replace?: number) {
   if (!p) return false;
   return replace != null ? replaceAudio(replace, p) : addAudio(p, offset);
 }
+/** What a clip is called: its own name, else its file without ".wav". */
+export const audioName = (c: { file: string; name?: string }) => c.name?.trim() || c.file.replace(/\.wav$/i, '');
+
 export async function setAudio(id: number, patch: AudioPatch) {
   // optimistic: no jump back while the bridge answers
   set({ audio: get().audio.map((c) => (c.id === id ? { ...c, ...patch } : c)) });

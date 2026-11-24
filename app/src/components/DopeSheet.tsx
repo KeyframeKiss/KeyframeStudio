@@ -35,6 +35,7 @@ import {
   pickAudio,
   removeAudio,
   setAudio,
+  audioName,
   type KeyId,
   setTrackKinds,
   trackKind,
@@ -43,6 +44,7 @@ import {
 } from '../state/store';
 import { Icon, TypeIcon } from './Icon';
 import { ContextMenu, type MenuItem } from './ContextMenu';
+import { PromptDialog, type PromptState } from './PromptDialog';
 import { GraphEditor } from './GraphEditor';
 import { TimeScrollbar, VScrollbar } from './Scrollbars';
 import { Popover } from './Shell';
@@ -248,6 +250,7 @@ export function DopeSheet({ compact = false }: { compact?: boolean } = {}) {
   const [nameW, setNameW] = useState(() => Number(localStorage.getItem('studioex.nameW')) || 250);
   const [scrollY, setScrollY] = useState(0);
   const [menu, setMenu] = useState<{ x: number; y: number; items: MenuItem[] } | null>(null);
+  const [prompt, setPrompt] = useState<PromptState | null>(null);
   const [renaming, setRenaming] = useState<number | null>(null);
   const [viewH, setViewH] = useState(0); // mirrors size.current.h so the names column re-renders on resize
 
@@ -726,7 +729,7 @@ export function DopeSheet({ compact = false }: { compact?: boolean } = {}) {
           // name at the clip's start (kept on screen while it scrolls)
           ctx.font = '600 10px Segoe UI, system-ui, sans-serif';
           ctx.textBaseline = 'top';
-          const label = `\u266a ${au.file}${au.muted ? '  (muted)' : ''}`;
+          const label = `\u266a ${audioName(au)}${au.muted ? '  (muted)' : ''}`;
           ctx.save();
           ctx.beginPath();
           ctx.rect(xa + 2, y0, Math.max(0, xb - xa - 6), AUDIO_H);
@@ -1186,7 +1189,7 @@ export function DopeSheet({ compact = false }: { compact?: boolean } = {}) {
     if (!au) return [];
     const listening = st.audioListen?.id === id;
     const inClip = at != null && at >= au.offset && at <= au.offset + clipSpan(au);
-    const items: MenuItem[] = [{ header: true, label: au.file }];
+    const items: MenuItem[] = [{ header: true, label: audioName(au) }];
     if (listening) items.push({ label: 'Stop listening', action: () => listenAudio(null) });
     else {
       items.push({ label: 'Listen', action: () => listenAudio(id, au.trimIn) });
@@ -1196,6 +1199,17 @@ export function DopeSheet({ compact = false }: { compact?: boolean } = {}) {
     items.push({ label: 'Start at the playhead', action: () => setAudio(id, { offset: Math.round(liveTime() * 1000) / 1000 }) });
     items.push({ label: 'Start at 0', action: () => setAudio(id, { offset: 0 }) });
     items.push({ label: au.muted ? 'Unmute' : 'Mute while animating', action: () => setAudio(id, { muted: !au.muted }) });
+    items.push({
+      label: 'Rename\u2026',
+      action: () =>
+        setPrompt({
+          title: 'Rename this audio',
+          hint: `The file stays ${au.file}. Leave it empty to show the file's name.`,
+          value: au.name ?? '',
+          placeholder: au.file.replace(/\.wav$/i, ''),
+          ok: (v) => void setAudio(id, { name: v.trim() }),
+        }),
+    });
     items.push({ sep: true });
     if (window.studioEx?.openAudio) {
       items.push({ label: 'Replace with another WAV\u2026', action: () => pickAudio(0, id) });
@@ -1454,12 +1468,12 @@ export function DopeSheet({ compact = false }: { compact?: boolean } = {}) {
                   e.preventDefault();
                   setMenu({ x: e.clientX, y: e.clientY, items: audioMenu(au.id, null) });
                 }}
-                title={`${au.file}\n${clipSpan(au).toFixed(2)} s, starts at ${au.offset.toFixed(2)} s\nDrag the clip to move it \u00b7 double-click it to listen from there \u00b7 right-click for more`}
+                title={`${audioName(au)}${au.name ? ` (${au.file})` : ''}\n${clipSpan(au).toFixed(2)} s, starts at ${au.offset.toFixed(2)} s\nDrag the clip to move it \u00b7 double-click it to listen from there \u00b7 right-click for more`}
               >
                 <button className={`sheet-audio-btn ${listening ? 'on' : ''}`} onClick={() => listenAudio(listening ? null : au.id, au.trimIn)} title={listening ? 'Stop' : 'Listen \u2014 Studio plays this clip by itself'}>
                   {listening ? '\u25a0' : '\u25b6'}
                 </button>
-                <span className="name">{au.file.replace(/\.wav$/i, '')}</span>
+                <span className="name">{audioName(au)}</span>
                 <button className={`sheet-audio-btn ${au.muted ? 'off' : ''}`} onClick={() => setAudio(au.id, { muted: !au.muted })} title={au.muted ? 'Unmute' : 'Mute while animating'}>
                   <Icon name={au.muted ? 'eyeOff' : 'eye'} size={13} />
                 </button>
@@ -1653,6 +1667,7 @@ export function DopeSheet({ compact = false }: { compact?: boolean } = {}) {
         </div>
       </div>
       {menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />}
+      {prompt && <PromptDialog p={prompt} onClose={() => setPrompt(null)} />}
     </div>
   );
 }

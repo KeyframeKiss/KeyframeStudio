@@ -170,6 +170,18 @@ export default async function (t) {
     await ok('timeline.stop');
   });
 
+  await t.step('a name of its own', async () => {
+    const id = (await ok('audio.get')).clips[1].id;
+    let g = await ok('audio.set', { id, name: '  Line 2: hello  ' });
+    check('named (spaces trimmed), the file unchanged', g.clips[1].name === 'Line 2: hello' && g.clips[1].file === 'StudioEX test tone.wav', JSON.stringify(g.clips[1]));
+    check('the other clip keeps the file name', !g.clips[0].name, JSON.stringify(g.clips[0]));
+    g = await ok('audio.set', { id, name: 'x'.repeat(200) });
+    check('a long name is cut to 80 characters', g.clips[1].name.length === 80, String(g.clips[1].name.length));
+    g = await ok('audio.set', { id, name: '' });
+    check('an empty name goes back to the file name', g.clips[1].name === '', JSON.stringify(g.clips[1]));
+    await ok('audio.set', { id, name: 'Line 2: hello' });
+  });
+
   await t.step('saved with the scene', async () => {
     const sceneDir = path.join(t.paths.userData, 'studio', 'scene');
     const before = new Set(fs.readdirSync(sceneDir));
@@ -198,5 +210,6 @@ export default async function (t) {
     check('…every clip, with its start and volume', g.clips.length === 2 && near(g.clips[1].offset, 4) && near(g.clips[1].volume, 0.3), JSON.stringify(g.clips));
     const c = g.clips[1];
     check('…and its balance, speed, fades, trims', near(c.pan, -0.5) && near(c.speed, 2) && near(c.fadeIn, 0.2) && near(c.fadeOut, 0.3) && near(c.trimIn, 0.5) && near(c.trimOut, 0.5), JSON.stringify(c));
+    check('…and its name', c.name === 'Line 2: hello' && !g.clips[0].name, JSON.stringify(g.clips.map((x) => x.name)));
   });
 }

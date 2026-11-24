@@ -27,6 +27,8 @@ namespace StudioEX.Bridge.Api
         {
             public int Id;
             public string File;
+            /// <summary>The name shown for it ("" = the file's name).</summary>
+            public string Name = "";
             public float Offset, Volume = 1f;
             public bool Muted;
             /// <summary>-1 left … 1 right.</summary>
@@ -110,6 +112,7 @@ namespace StudioEX.Bridge.Api
                 if (a.Has("offset")) c.Offset = a.GetFloat("offset");
                 if (a.Has("volume")) c.Volume = Mathf.Clamp01(a.GetFloat("volume"));
                 if (a.Has("muted")) c.Muted = a.GetBool("muted");
+                if (a.Has("name")) c.Name = CleanName(a.GetString("name"));
                 Shape(c, a);
                 return Changed();
             });
@@ -190,9 +193,15 @@ namespace StudioEX.Bridge.Api
                 : new List<object>();
         }
 
+        private static string CleanName(string s)
+        {
+            s = (s ?? "").Trim();
+            return s.Length > 80 ? s.Substring(0, 80) : s;
+        }
+
         private static Dictionary<string, object> Info(Clip c) => new Dictionary<string, object>
         {
-            { "id", c.Id }, { "file", c.File }, { "offset", (double)c.Offset }, { "volume", (double)c.Volume }, { "muted", c.Muted },
+            { "id", c.Id }, { "file", c.File }, { "name", c.Name }, { "offset", (double)c.Offset }, { "volume", (double)c.Volume }, { "muted", c.Muted },
             { "duration", (double)c.Audio.length }, { "playing", c.Src.isPlaying },
             { "pan", (double)c.Pan }, { "speed", (double)c.Speed }, { "fadeIn", (double)c.FadeIn }, { "fadeOut", (double)c.FadeOut },
             { "trimIn", (double)c.TrimIn }, { "trimOut", (double)c.TrimOut }, { "span", (double)c.Span },
@@ -512,6 +521,7 @@ namespace StudioEX.Bridge.Api
                         { "fadeOuts", Clips.Select(c => c.FadeOut).ToArray() },
                         { "trimIns", Clips.Select(c => c.TrimIn).ToArray() },
                         { "trimOuts", Clips.Select(c => c.TrimOut).ToArray() },
+                        { "names", Clips.Select(c => c.Name ?? "").ToArray() },
                     },
                 });
             }
@@ -533,6 +543,7 @@ namespace StudioEX.Bridge.Api
                 var offsets = AsList(d.data, "offsets");
                 var volumes = AsList(d.data, "volumes");
                 var mutes = AsList(d.data, "mutes");
+                var names = AsList(d.data, "names");
                 var shape = new[] { "pan", "speed", "fadeIn", "fadeOut", "trimIn", "trimOut" }.ToDictionary(k => k, k => AsList(d.data, k + "s"));
                 for (int i = 0; i < files.Count; i++)
                 {
@@ -541,6 +552,7 @@ namespace StudioEX.Bridge.Api
                     var args = new Dictionary<string, object>();
                     foreach (var kv in shape) if (kv.Value != null && i < kv.Value.Count) args[kv.Key] = Convert.ToDouble(kv.Value[i]);
                     Shape(Clips[Clips.Count - 1], args);
+                    if (names != null && i < names.Count) Clips[Clips.Count - 1].Name = CleanName(names[i] as string);
                 }
                 Changed();
             }
