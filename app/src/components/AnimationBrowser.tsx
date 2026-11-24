@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Help } from './Help';
-import { Icon } from './Icon';
 import { parseTags, useLibMeta } from '../lib/libmeta';
 import { pressable } from '../lib/pressable';
 import { call, displayName, useStore } from '../state/store';
@@ -27,15 +26,12 @@ export function AnimationBrowser({
   onClose,
   embedded,
   title = 'Animations',
-  onTimeline,
 }: {
   current: { group: number; category: number; no: number };
   onPick: (group: number, category: number, no: number) => void;
   onClose: () => void;
   /** the heading (e.g. who the clip goes on) */
   title?: string;
-  /** put a clip on the timeline at the playhead (shows the header button and the right-click item) */
-  onTimeline?: (group: number, category: number, no: number) => void;
   /** Render inline (Pose workspace) instead of as a dialog. */
   embedded?: boolean;
 }) {
@@ -131,7 +127,6 @@ export function AnimationBrowser({
       items: [
         { header: true, label: displayName(h.clip) },
         { label: 'Apply', action: () => pick(h.g.id, h.c.id, h.clip.no) },
-        ...(onTimeline ? [{ label: 'Put on the timeline at the playhead', action: () => onTimeline(h.g.id, h.c.id, h.clip.no) }] : []),
         { label: m.favorite ? 'Remove from favorites' : 'Add to favorites', action: () => lib.toggleFavorite(h.key) },
         {
           label: 'Edit tags…',
@@ -191,16 +186,6 @@ export function AnimationBrowser({
             <Help text="Click a clip to put it on the character (it plays at once; FK / IK that would hold the body still are switched off) · double-click to apply and close · ★ to keep a favorite · right-click for tags. Ctrl+Z undoes it." />
           </h2>
           <input className="input" autoFocus placeholder="Search every animation (incl. mods) and your tags…" value={query} onChange={(e) => setQuery(e.target.value)} style={{ flex: 1 }} />
-          {onTimeline && (
-            <button
-              className="btn solid"
-              disabled={current.no < 0}
-              onClick={() => onTimeline(current.group, current.category, current.no)}
-              title="Key the clip that's on now to start at the playhead (Timeline's Animation tracks): it plays in step with the timeline, and scrubbing shows its pose"
-            >
-              <Icon name="key" size={13} /> Put on the timeline
-            </button>
-          )}
           {!embedded && (
             <button className="btn" onClick={onClose}>
               Close
