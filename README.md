@@ -16,7 +16,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/images/app-animate.png" alt="Keyframe Studio: the Animate workspace with folders of bone tracks, keys and the keyframe panel" width="900">
+  <img src="docs/images/app-animate.png" alt="Keyframe Studio: the Animate workspace with a character's bone tracks and keys, and the selected track on the right" width="900">
 </p>
 
 > **Beta.** Keyframe Studio works and is tested against a live CharaStudio, but it's new — expect rough edges.
@@ -67,14 +67,14 @@ paths and onion-skin ghosts, folders (an eye mutes a whole folder or object), se
 <table>
   <tr>
     <td width="50%"><img src="docs/images/app-face.png" alt="Animate › Face: expressions keyed at the playhead with a close-up"></td>
-    <td width="50%"><img src="docs/images/app-look-effects.png" alt="Look › Picture: Studio's settings and Keyframe Studio's effects, grouped into colour, lens and atmosphere"></td>
+    <td width="50%"><img src="docs/images/app-look-picture.png" alt="Look › Picture: Studio's settings and Keyframe Studio's effects, grouped into colour, lens and atmosphere"></td>
   </tr>
   <tr>
     <td><b>Face</b> — expressions keyed at the playhead, lip-sync from audio with vowel shapes, natural blinks.</td>
     <td><b>Look</b> — every render setting, built-in effects (fog, colour, depth of field, grain…), materials, lighting rigs, presets.</td>
   </tr>
   <tr>
-    <td><img src="docs/images/app-render.png" alt="Shoot › Output: a video's sizes, frame rate, file type and framing"></td>
+    <td><img src="docs/images/app-output.png" alt="Shoot › Output: a video's sizes, frame rate, file type and framing"></td>
     <td><img src="docs/images/app-view-options.png" alt="The View options: overlays, handles, paths and ghosts"></td>
   </tr>
   <tr>
