@@ -8814,3 +8814,12 @@ a.btn {
   height: 28px;
   color: var(--text-1);
 }
+
+.mo-tweaks {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 28px;
+  font-size: 11px;
+  color: var(--text-1);
+}

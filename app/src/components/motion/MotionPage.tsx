@@ -346,7 +346,7 @@ export function MotionPage() {
         <button className="btn solid" disabled={!seq} onClick={() => chara != null && clearSeq(chara)} title="Remove this character's motion and its keys (Ctrl+Z brings them back)">
           Clear
         </button>
-        <Help text="Add Studio clips and poses: they play one after another on the character's lane. Drag a block to move it, either edge to trim it, and the handle at the top of its ramp to blend in from the block before. Edges snap to other blocks, the playhead and the start (hold Shift to drag freely); ← / → nudge the selected block a frame (Shift: ten); Ctrl + wheel zooms. With Ripple on, the blocks after one move along when it gets longer or shorter or is removed. Every change is built into keys in the timeline's “Motion” folder, so it plays, scrubs and renders like any animation. Ctrl+Z undoes each change." />
+        <Help text="Add Studio clips and poses: they play one after another on the character's lane. Drag a block to move it, either edge to trim it, and the handle at the top of its ramp to blend in from the block before. Edges snap to other blocks, the playhead and the start (hold Shift to drag freely); ← / → nudge the selected block a frame (Shift: ten); Ctrl + wheel zooms. With Ripple on, the blocks after one move along when it gets longer or shorter or is removed. Every change is built into keys in the timeline's “Motion” folder, so it plays, scrubs and renders like any animation. Edit those keys by hand (in the dope sheet, or posing with FK) and your edits are kept with their block through later changes (✎ on the block). Ctrl+Z undoes each change." />
       </div>
 
       <div className="mo-lanes" ref={wrap} onPointerMove={onMove} onPointerUp={onUp} onWheel={onWheel}>
@@ -388,6 +388,11 @@ export function MotionPage() {
                       <Icon name={iconOf(b.kind)} size={11} />
                       <span className="mo-name">{blockName(b)}</span>
                       {b.mirror && <span className="mo-mirror" title="Mirrored: left and right swapped">⇋</span>}
+                      {b.tweaks && Object.keys(b.tweaks).length > 0 && (
+                        <span className="mo-mirror" title={`Your key edits on ${Object.keys(b.tweaks).length} bone${Object.keys(b.tweaks).length > 1 ? 's' : ''} are kept through rebuilds`}>
+                          ✎
+                        </span>
+                      )}
                     </div>
                   );
                 })}
@@ -460,6 +465,14 @@ export function MotionPage() {
                     {e === 'smooth' ? 'Smooth' : 'Linear'}
                   </button>
                 ))}
+              </div>
+            )}
+            {selBlock.tweaks && Object.keys(selBlock.tweaks).length > 0 && (
+              <div className="mo-tweaks" title={Object.keys(selBlock.tweaks).join(', ')}>
+                Your key edits: {Object.keys(selBlock.tweaks).length} bone{Object.keys(selBlock.tweaks).length > 1 ? 's' : ''}, kept through rebuilds
+                <button className="btn small solid" onClick={() => update({ tweaks: undefined }, 'Clear key edits')}>
+                  Clear them
+                </button>
               </div>
             )}
             <label className="mo-check" title="Play it as in a mirror: left and right swapped (a right-foot step becomes a left-foot one)">

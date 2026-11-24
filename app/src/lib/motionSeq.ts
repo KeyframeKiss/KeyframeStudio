@@ -37,6 +37,8 @@ export interface Block {
   mclip?: MClipRef;
   /** played as in a mirror: left and right swapped */
   mirror?: boolean;
+  /** hand edits to its keys, kept through rebuilds: bone → [block time, x, y, z, w][] (written by the bridge) */
+  tweaks?: Record<string, number[][]>;
 }
 export interface Seq {
   blocks: Block[];

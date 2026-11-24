@@ -227,12 +227,19 @@ namespace StudioEX.Bridge.Api
             var kinRestore = ViewportGizmos.KinematicsRestorer(c);
             var before = Seqs.TryGetValue(id, out var prevSeq) ? prevSeq : null;
 
+            // the previous build's sequence (its result is worked out again to see what was edited by hand)
+            var prevBlocks = before?.GetList("blocks").OfType<Dictionary<string, object>>().OrderBy(BStart).ToList();
+            bool hasKeys = prevBlocks != null && MotionTracks(c).Count > 0;
+            var ai0 = c.oiCharInfo.animeInfo;
+            var own = new[] { ai0.group, ai0.category, ai0.no };
+
             // 1. poses (put on for a frame each, once; remembered by file and date)
             var poseKeys = new Dictionary<Dictionary<string, object>, string>();
             var missing = new List<KeyValuePair<string, string>>();
-            foreach (var b in blocks.Where(x => x.GetString("kind") == "pose"))
+            foreach (var b in blocks.Concat(hasKeys ? prevBlocks : new List<Dictionary<string, object>>()).Where(x => x.GetString("kind") == "pose"))
             {
                 string path = b.GetObject("pose").GetString("path");
+                if (!File.Exists(path)) continue;
                 string key = Path.GetFullPath(path).ToLowerInvariant() + "|" + File.GetLastWriteTimeUtc(path).Ticks + "|" + bones.Count;
                 poseKeys[b] = key;
                 if (!PoseCache.ContainsKey(key) && !missing.Any(m => m.Key == key)) missing.Add(new KeyValuePair<string, string>(key, path));
@@ -263,155 +270,20 @@ namespace StudioEX.Bridge.Api
                 }
             }
 
-            // 2. the clip held underneath: the first clip block's clip (else the character's own), on its first frame
-            var clipBlocks = blocks.Where(x => x.GetString("kind") == "clip").ToList();
-            var baseClip = clipBlocks.Count > 0 ? clipBlocks[0].GetObject("clip") : null;
-            var ai0 = c.oiCharInfo.animeInfo;
-            int bg = baseClip?.GetInt("group") ?? ai0.group, bc = baseClip?.GetInt("category") ?? ai0.category, bn = baseClip?.GetInt("no") ?? ai0.no;
-
-            // 3. what's read where: each output frame takes one block (or two, blending)
-            float end = blocks.Count > 0 ? blocks.Max(BEnd) : 0f;
-            int n = Mathf.Max(1, Mathf.CeilToInt(end * rate));
-            if (n > 7200) throw new BridgeException("The motion is too long to build (2 minutes at most)");
-            var times = new List<float>();
-            for (int k = 0; k <= n; k++) times.Add(Mathf.Min(end, k / rate));
-            var picks = new Pick[times.Count];
-            for (int k = 0; k < times.Count; k++) picks[k] = PickAt(blocks, times[k]);
-
-            // 4. clips: straight from the animator, block by block
-            var clipFrames = new Dictionary<int, Dictionary<int, PoseFrame>>(); // block → (quantized clip time → frame)
-            var clipTime = new Dictionary<int, Func<float, float>>();
-            var lengths = new Dictionary<string, object>();
+            var ctx = new BuildCtx { C = c, Bones = bones, Rate = rate, WantNow = wantNow, HipsNow = hipsNow, RootInv = rootInv, Rt = rt, PoseKeys = poseKeys, OwnClip = own };
             try
             {
-                for (int bi = 0; bi < blocks.Count; bi++)
+                // hand edits to the last build's keys: kept with their blocks, so they survive this rebuild
+                int tweaked = 0;
+                if (hasKeys && prevBlocks.All(b => b.GetString("kind") != "pose" || poseKeys.ContainsKey(b)))
                 {
-                    var b = blocks[bi];
-                    if (b.GetString("kind") != "clip") continue;
-                    var cl = b.GetObject("clip");
-                    c.LoadAnime(cl.GetInt("group"), cl.GetInt("category"), cl.GetInt("no"));
-                    var st = animator.GetCurrentAnimatorStateInfo(0);
-                    int hash = st.shortNameHash;
-                    float len = ClipLength(animator, st);
-                    lengths[b.GetString("id") ?? bi.ToString()] = Math.Round(len, 4);
-                    float speed = b.Has("speed") ? Mathf.Clamp(b.GetFloat("speed"), 0.05f, 10f) : 1f;
-                    float offset = Mathf.Max(0f, b.Has("offset") ? b.GetFloat("offset") : 0f);
-                    float start = BStart(b);
-                    Func<float, float> u = t => offset + (t - start) * speed; // seconds into the clip
-                    clipTime[bi] = u;
-                    var frames = new Dictionary<int, PoseFrame>();
-                    clipFrames[bi] = frames;
-                    var need = new HashSet<int>();
-                    for (int k = 0; k < picks.Length; k++)
-                    {
-                        if (picks[k].A == bi) need.Add(Q(u(picks[k].TA)));
-                        if (picks[k].B == bi) need.Add(Q(u(picks[k].TB)));
-                    }
-                    foreach (int q in need)
-                    {
-                        animator.Play(hash, 0, (q / 10000f) / len);
-                        animator.Update(0f);
-                        frames[q] = new PoseFrame { Want = wantNow(), Hips = hipsNow() };
-                    }
+                    try { tweaked = CaptureTweaks(ctx, Compute(ctx, prevBlocks), blocks); }
+                    catch (Exception e) { StudioBridgePlugin.Logger.LogWarning("Motion: reading hand edits failed: " + e.Message); }
                 }
+                var o = Compute(ctx, blocks);
+                var times = o.Times;
+                float end = o.End;
 
-                // the held clip: read its pose and its bones' parents (the chain the keys sit under)
-                c.LoadAnime(bg, bc, bn);
-                int baseHash = animator.GetCurrentAnimatorStateInfo(0).shortNameHash;
-                animator.Play(baseHash, 0, 0f);
-                animator.Update(0f);
-                var baseWant = wantNow();
-                var baseParent = bones.Select(b => rootInv * (b.guideObject.transformTarget.parent != null ? b.guideObject.transformTarget.parent.rotation : rt.rotation)).ToArray();
-                var hipsBase = hipsNow();
-
-                // the chain the keys sit under: each bone's nearest driven ancestor, and how it hangs off it when held
-                int nb = bones.Count;
-                var tr = bones.Select(b => b.guideObject.transformTarget).ToList();
-                var anc = new int[nb];
-                var link = new Quaternion[nb];
-                for (int i = 0; i < nb; i++)
-                {
-                    anc[i] = -1;
-                    for (var par = tr[i].parent; par != null && anc[i] < 0; par = par.parent) anc[i] = tr.IndexOf(par);
-                    link[i] = anc[i] >= 0 ? Quaternion.Inverse(baseWant[anc[i]]) * baseParent[i] : Quaternion.identity;
-                }
-                Func<int, int> depth = i => { int d = 0; for (int a = anc[i]; a >= 0; a = anc[a]) d++; return d; };
-                var topDown = Enumerable.Range(0, nb).OrderBy(depth).ToList();
-
-                // 4b. Motion clips: their FK keys (bone by bone, at each moment) put together under the held chain;
-                // their position keys move the hips
-                for (int bi = 0; bi < blocks.Count; bi++)
-                {
-                    var b = blocks[bi];
-                    if (b.GetString("kind") != "mclip") continue;
-                    var data = LoadMClip(ClipPath(b.GetObject("mclip").GetString("file")));
-                    lengths[b.GetString("id") ?? bi.ToString()] = Math.Round(data.Length, 4);
-                    float speed = b.Has("speed") ? Mathf.Clamp(b.GetFloat("speed"), 0.05f, 10f) : 1f;
-                    float offset = Mathf.Max(0f, b.Has("offset") ? b.GetFloat("offset") : 0f);
-                    float start = BStart(b), clen = data.Length;
-                    Func<float, float> u = t => Mathf.Clamp(offset + (t - start) * speed, 0f, clen);
-                    clipTime[bi] = u;
-                    var frames = new Dictionary<int, PoseFrame>();
-                    clipFrames[bi] = frames;
-                    var keysOf = tr.Select(x => data.Rot.TryGetValue(x.name, out var ks) ? ks : null).ToArray();
-                    Vector3? p0 = data.Pos != null ? PosOf(Eval(data.Pos, 0f)) : null;
-                    float sc = Mathf.Max(1e-4f, Mathf.Abs(rt.localScale.x));
-                    var need = new HashSet<int>();
-                    for (int k = 0; k < picks.Length; k++)
-                    {
-                        if (picks[k].A == bi) need.Add(Q(u(picks[k].TA)));
-                        if (picks[k].B == bi) need.Add(Q(u(picks[k].TB)));
-                    }
-                    foreach (int q in need)
-                    {
-                        float at = q / 10000f;
-                        var w = new Quaternion[nb];
-                        foreach (int i in topDown)
-                        {
-                            var kd = keysOf[i] != null ? Eval(keysOf[i], at) : null;
-                            var loc = kd != null && IsQuat(kd.A) ? Q(kd.A) : Quaternion.Inverse(baseParent[i]) * baseWant[i];
-                            w[i] = (anc[i] >= 0 ? w[anc[i]] * link[i] : baseParent[i]) * loc;
-                        }
-                        var hp = hipsBase;
-                        if (p0 != null && PosOf(Eval(data.Pos, at)) is Vector3 pu) hp += Quaternion.Inverse(rt.localRotation) * (pu - p0.Value) / sc;
-                        frames[q] = new PoseFrame { Want = w, Hips = hp };
-                    }
-                }
-
-                // 5. mix: each frame's wanted rotations and hips (a mirrored block: left and right swapped and flipped)
-                var partner = tr.Select(x => { var o = MirrorName(x.name); int j = o != null ? tr.FindIndex(y => y.name == o) : -1; return j; }).ToArray();
-                Func<int, float, PoseFrame> frameOf = (bi, t) =>
-                {
-                    var b = blocks[bi];
-                    var f = b.GetString("kind") == "pose" ? PoseCache[poseKeys[b]] : clipFrames[bi][Q(clipTime[bi](t))];
-                    return b.GetBool("mirror") ? Mirrored(f, partner) : f;
-                };
-                var want = new Quaternion[times.Count][];
-                var hips = new Vector3[times.Count];
-                for (int k = 0; k < times.Count; k++)
-                {
-                    var p = picks[k];
-                    if (p.A < 0) { want[k] = baseWant; hips[k] = hipsBase; continue; }
-                    var fa = frameOf(p.A, p.TA);
-                    if (p.B < 0 || p.W >= 1f) { want[k] = fa.Want; hips[k] = fa.Hips; continue; }
-                    var fb = frameOf(p.B, p.TB);
-                    var w = new Quaternion[nb];
-                    for (int i = 0; i < nb; i++) w[i] = Quaternion.Slerp(fb.Want[i], fa.Want[i], p.W);
-                    want[k] = w;
-                    hips[k] = Vector3.Lerp(fb.Hips, fa.Hips, p.W);
-                }
-
-                // 6. into keys: each bone's rotation under the held chain; the root where the held hips land right
-                var local = new Quaternion[nb][];
-                for (int i = 0; i < nb; i++)
-                {
-                    local[i] = new Quaternion[times.Count];
-                    for (int k = 0; k < times.Count; k++)
-                    {
-                        var parent = anc[i] >= 0 ? want[k][anc[i]] * link[i] : baseParent[i];
-                        local[i][k] = Quaternion.Inverse(parent) * want[k][i];
-                    }
-                }
                 // where the character stands: kept from the first build (moving it = "Place here" on the page)
                 var anchorList = seq.GetList("anchor");
                 Vector3 anchor = anchorList.Count == 3 ? new Vector3(Convert.ToSingle(anchorList[0]), Convert.ToSingle(anchorList[1]), Convert.ToSingle(anchorList[2]))
@@ -422,7 +294,7 @@ namespace StudioEX.Bridge.Api
                 var rootM = parentL2W * Matrix4x4.TRS(anchor, rt.localRotation, rt.localScale);
                 var parentW2L = parentL2W.inverse;
                 var pos = new Vector3[times.Count];
-                for (int k = 0; k < times.Count; k++) pos[k] = parentW2L.MultiplyPoint3x4(rootM.MultiplyPoint3x4(hips[k] - hipsBase));
+                for (int k = 0; k < times.Count; k++) pos[k] = parentW2L.MultiplyPoint3x4(rootM.MultiplyPoint3x4(o.Hips[k] - o.HipsBase));
 
                 // 7. write it all: one undo step with the sequence
                 Dictionary<string, object> result;
@@ -442,15 +314,16 @@ namespace StudioEX.Bridge.Api
                         edges.Add(nearest(BEnd(b)));
                         if (b.GetFloat("blend") > 0f) edges.Add(nearest(BStart(b) + b.GetFloat("blend")));
                     }
-                    result = WriteMotion(c, times, bones, local, pos, end, edges.Distinct().ToList());
+                    result = WriteMotion(c, times, bones, o.Local, pos, end, edges.Distinct().ToList());
                 }
                 finally { UndoStack.EndGroup(label); }
                 if (end > TL.duration + 1e-4f) F_duration.SetValue(s, end); // room for all of it
                 RefreshView();
                 AfterEdit();
                 EventPump.RequestRebase();
-                result["lengths"] = lengths;
+                result["lengths"] = o.Lengths;
                 result["end"] = Math.Round(end, 4);
+                result["tweaked"] = tweaked;
                 BuildDone(id, result, null);
                 SeqChanged(id);
             }
@@ -461,6 +334,328 @@ namespace StudioEX.Bridge.Api
                 try { kinRestore(); } catch { }
                 throw;
             }
+        }
+
+        private sealed class BuildCtx
+        {
+            public OCIChar C;
+            public List<OCIChar.BoneInfo> Bones;
+            public float Rate;
+            public Func<Quaternion[]> WantNow;
+            public Func<Vector3> HipsNow;
+            public Quaternion RootInv;
+            public Transform Rt;
+            public Dictionary<Dictionary<string, object>, string> PoseKeys;
+            public int[] OwnClip; // the character's own clip when the build started (held when there's no clip block)
+        }
+
+        private sealed class Output
+        {
+            public List<float> Times;
+            public Pick[] Picks;
+            public List<Dictionary<string, object>> Blocks;
+            public Quaternion[][] Local; // bone → frame
+            public Vector3[] Hips;
+            public Vector3 HipsBase;
+            public float End;
+            public Dictionary<string, object> Lengths = new Dictionary<string, object>();
+        }
+
+        /// <summary>
+        /// A sequence's result (no writing): every frame's FK rotations under the held clip, and the hips. Hand edits kept
+        /// with the blocks ("tweaks") are put on top.
+        /// </summary>
+        private static Output Compute(BuildCtx x, List<Dictionary<string, object>> blocks)
+        {
+            var c = x.C;
+            var bones = x.Bones;
+            var animator = c.charAnimeCtrl.animator;
+            var rt = x.Rt;
+            var wantNow = x.WantNow;
+            var hipsNow = x.HipsNow;
+            float rate = x.Rate;
+            var o = new Output { Blocks = blocks };
+
+            // 2. the clip held underneath: the first clip block's clip (else the character's own), on its first frame
+            var baseClip = blocks.FirstOrDefault(b => b.GetString("kind") == "clip")?.GetObject("clip");
+            int bg = baseClip?.GetInt("group") ?? x.OwnClip[0], bc = baseClip?.GetInt("category") ?? x.OwnClip[1], bn = baseClip?.GetInt("no") ?? x.OwnClip[2];
+
+            // 3. what's read where: each output frame takes one block (or two, blending)
+            float end = blocks.Count > 0 ? blocks.Max(BEnd) : 0f;
+            int n = Mathf.Max(1, Mathf.CeilToInt(end * rate));
+            if (n > 7200) throw new BridgeException("The motion is too long to build (2 minutes at most)");
+            var times = new List<float>();
+            for (int k = 0; k <= n; k++) times.Add(Mathf.Min(end, k / rate));
+            var picks = new Pick[times.Count];
+            for (int k = 0; k < times.Count; k++) picks[k] = PickAt(blocks, times[k]);
+            o.Times = times;
+            o.Picks = picks;
+            o.End = end;
+            var lengths = o.Lengths;
+
+            // 4. clips: straight from the animator, block by block
+            var clipFrames = new Dictionary<int, Dictionary<int, PoseFrame>>(); // block → (quantized clip time → frame)
+            var clipTime = new Dictionary<int, Func<float, float>>();
+            for (int bi = 0; bi < blocks.Count; bi++)
+            {
+                var b = blocks[bi];
+                if (b.GetString("kind") != "clip") continue;
+                var cl = b.GetObject("clip");
+                c.LoadAnime(cl.GetInt("group"), cl.GetInt("category"), cl.GetInt("no"));
+                var st = animator.GetCurrentAnimatorStateInfo(0);
+                int hash = st.shortNameHash;
+                float len = ClipLength(animator, st);
+                lengths[b.GetString("id") ?? bi.ToString()] = Math.Round(len, 4);
+                float speed = b.Has("speed") ? Mathf.Clamp(b.GetFloat("speed"), 0.05f, 10f) : 1f;
+                float offset = Mathf.Max(0f, b.Has("offset") ? b.GetFloat("offset") : 0f);
+                float start = BStart(b);
+                Func<float, float> u = t => offset + (t - start) * speed; // seconds into the clip
+                clipTime[bi] = u;
+                var frames = new Dictionary<int, PoseFrame>();
+                clipFrames[bi] = frames;
+                var need = new HashSet<int>();
+                for (int k = 0; k < picks.Length; k++)
+                {
+                    if (picks[k].A == bi) need.Add(Q(u(picks[k].TA)));
+                    if (picks[k].B == bi) need.Add(Q(u(picks[k].TB)));
+                }
+                foreach (int q in need)
+                {
+                    animator.Play(hash, 0, (q / 10000f) / len);
+                    animator.Update(0f);
+                    frames[q] = new PoseFrame { Want = wantNow(), Hips = hipsNow() };
+                }
+            }
+
+            // the held clip: read its pose and its bones' parents (the chain the keys sit under)
+            c.LoadAnime(bg, bc, bn);
+            int baseHash = animator.GetCurrentAnimatorStateInfo(0).shortNameHash;
+            animator.Play(baseHash, 0, 0f);
+            animator.Update(0f);
+            var baseWant = wantNow();
+            var baseParent = bones.Select(b => x.RootInv * (b.guideObject.transformTarget.parent != null ? b.guideObject.transformTarget.parent.rotation : rt.rotation)).ToArray();
+            var hipsBase = hipsNow();
+
+            // the chain the keys sit under: each bone's nearest driven ancestor, and how it hangs off it when held
+            int nb = bones.Count;
+            var tr = bones.Select(b => b.guideObject.transformTarget).ToList();
+            var anc = new int[nb];
+            var link = new Quaternion[nb];
+            for (int i = 0; i < nb; i++)
+            {
+                anc[i] = -1;
+                for (var par = tr[i].parent; par != null && anc[i] < 0; par = par.parent) anc[i] = tr.IndexOf(par);
+                link[i] = anc[i] >= 0 ? Quaternion.Inverse(baseWant[anc[i]]) * baseParent[i] : Quaternion.identity;
+            }
+            Func<int, int> depth = i => { int d = 0; for (int a = anc[i]; a >= 0; a = anc[a]) d++; return d; };
+            var topDown = Enumerable.Range(0, nb).OrderBy(depth).ToList();
+
+            // 4b. Motion clips: their FK keys (bone by bone, at each moment) put together under the held chain;
+            // their position keys move the hips
+            for (int bi = 0; bi < blocks.Count; bi++)
+            {
+                var b = blocks[bi];
+                if (b.GetString("kind") != "mclip") continue;
+                var data = LoadMClip(ClipPath(b.GetObject("mclip").GetString("file")));
+                lengths[b.GetString("id") ?? bi.ToString()] = Math.Round(data.Length, 4);
+                float speed = b.Has("speed") ? Mathf.Clamp(b.GetFloat("speed"), 0.05f, 10f) : 1f;
+                float offset = Mathf.Max(0f, b.Has("offset") ? b.GetFloat("offset") : 0f);
+                float start = BStart(b), clen = data.Length;
+                Func<float, float> u = t => Mathf.Clamp(offset + (t - start) * speed, 0f, clen);
+                clipTime[bi] = u;
+                var frames = new Dictionary<int, PoseFrame>();
+                clipFrames[bi] = frames;
+                var keysOf = tr.Select(x => data.Rot.TryGetValue(x.name, out var ks) ? ks : null).ToArray();
+                Vector3? p0 = data.Pos != null ? PosOf(Eval(data.Pos, 0f)) : null;
+                float sc = Mathf.Max(1e-4f, Mathf.Abs(rt.localScale.x));
+                var need = new HashSet<int>();
+                for (int k = 0; k < picks.Length; k++)
+                {
+                    if (picks[k].A == bi) need.Add(Q(u(picks[k].TA)));
+                    if (picks[k].B == bi) need.Add(Q(u(picks[k].TB)));
+                }
+                foreach (int q in need)
+                {
+                    float at = q / 10000f;
+                    var w = new Quaternion[nb];
+                    foreach (int i in topDown)
+                    {
+                        var kd = keysOf[i] != null ? Eval(keysOf[i], at) : null;
+                        var loc = kd != null && IsQuat(kd.A) ? Q(kd.A) : Quaternion.Inverse(baseParent[i]) * baseWant[i];
+                        w[i] = (anc[i] >= 0 ? w[anc[i]] * link[i] : baseParent[i]) * loc;
+                    }
+                    var hp = hipsBase;
+                    if (p0 != null && PosOf(Eval(data.Pos, at)) is Vector3 pu) hp += Quaternion.Inverse(rt.localRotation) * (pu - p0.Value) / sc;
+                    frames[q] = new PoseFrame { Want = w, Hips = hp };
+                }
+            }
+
+            // 5. mix: each frame's wanted rotations and hips (a mirrored block: left and right swapped and flipped)
+            var partner = tr.Select(x => { var o = MirrorName(x.name); int j = o != null ? tr.FindIndex(y => y.name == o) : -1; return j; }).ToArray();
+            Func<int, float, PoseFrame> frameOf = (bi, t) =>
+            {
+                var b = blocks[bi];
+                var f = b.GetString("kind") == "pose" ? PoseCache[x.PoseKeys[b]] : clipFrames[bi][Q(clipTime[bi](t))];
+                return b.GetBool("mirror") ? Mirrored(f, partner) : f;
+            };
+            var want = new Quaternion[times.Count][];
+            var hips = new Vector3[times.Count];
+            for (int k = 0; k < times.Count; k++)
+            {
+                var p = picks[k];
+                if (p.A < 0) { want[k] = baseWant; hips[k] = hipsBase; continue; }
+                var fa = frameOf(p.A, p.TA);
+                if (p.B < 0 || p.W >= 1f) { want[k] = fa.Want; hips[k] = fa.Hips; continue; }
+                var fb = frameOf(p.B, p.TB);
+                var w = new Quaternion[nb];
+                for (int i = 0; i < nb; i++) w[i] = Quaternion.Slerp(fb.Want[i], fa.Want[i], p.W);
+                want[k] = w;
+                hips[k] = Vector3.Lerp(fb.Hips, fa.Hips, p.W);
+            }
+
+            // 6. into keys: each bone's rotation under the held chain; the root where the held hips land right
+            var local = new Quaternion[nb][];
+            for (int i = 0; i < nb; i++)
+            {
+                local[i] = new Quaternion[times.Count];
+                for (int k = 0; k < times.Count; k++)
+                {
+                    var parent = anc[i] >= 0 ? want[k][anc[i]] * link[i] : baseParent[i];
+                    local[i][k] = Quaternion.Inverse(parent) * want[k][i];
+                }
+            }
+            // hand edits kept with the blocks, on top
+            for (int bi = 0; bi < blocks.Count; bi++)
+            {
+                var tw = TweaksOf(blocks[bi]);
+                if (tw.Count == 0) continue;
+                var ti = tr.Select(t => tw.TryGetValue(t.name, out var l) ? l : null).ToArray();
+                for (int k = 0; k < times.Count; k++)
+                {
+                    var p = picks[k];
+                    bool asA = p.A == bi, asB = p.B == bi && p.W < 1f;
+                    if (!asA && !asB) continue;
+                    float u = (asA ? p.TA : p.TB) - BStart(blocks[bi]);
+                    float wgt = asA ? (p.B >= 0 ? p.W : 1f) : 1f - p.W;
+                    for (int i = 0; i < nb; i++)
+                        if (ti[i] != null) local[i][k] = local[i][k] * Quaternion.Slerp(Quaternion.identity, TweakAt(ti[i], u), wgt);
+                }
+            }
+            o.Local = local;
+            o.Hips = hips;
+            o.HipsBase = hipsBase;
+            return o;
+        }
+
+        /// <summary>
+        /// What was changed by hand in the last build's keys (key edits on its bone tracks), as offsets kept with each
+        /// block in the block's own time, added to what the block already had. Returns how many bones carry edits.
+        /// </summary>
+        private static int CaptureTweaks(BuildCtx x, Output prev, List<Dictionary<string, object>> next)
+        {
+            var c = x.C;
+            var rotModel = Models.FirstOrDefault(m => m.owner == "Timeline" && m.id == "guideObjectRot");
+            if (rotModel == null) return 0;
+            string folder = MotionFolderName(c);
+            var bones = x.Bones;
+            var times = prev.Times;
+            // per block id → bone → (block time, offset)
+            var found = new Dictionary<string, Dictionary<string, List<KeyValuePair<float, Quaternion>>>>();
+            for (int i = 0; i < bones.Count; i++)
+            {
+                var g = bones[i].guideObject;
+                if (!Interpolables.TryGetValue(new Interpolable(c, g, rotModel).GetHashCode(), out var ip) || !ip.enabled || FolderNameOf(ip) != folder || ip.keyframes.Count == 0) continue;
+                string bone = g.transformTarget.name;
+                var diffs = new Quaternion[times.Count];
+                bool any = false;
+                for (int k = 0; k < times.Count; k++)
+                {
+                    var cur = TrackQuat(ip, times[k]);
+                    diffs[k] = Quaternion.Inverse(prev.Local[i][k]) * cur;
+                    if (Quaternion.Angle(Quaternion.identity, diffs[k]) > 0.6f) any = true;
+                }
+                if (!any) continue;
+                for (int k = 0; k < times.Count; k++)
+                {
+                    var p = prev.Picks[k];
+                    if (p.A < 0 || (p.B >= 0 && p.W < 1f)) continue; // blends follow from the blocks on either side
+                    var b = prev.Blocks[p.A];
+                    string bid = b.GetString("id");
+                    if (bid == null) continue;
+                    if (!found.TryGetValue(bid, out var byBone)) found[bid] = byBone = new Dictionary<string, List<KeyValuePair<float, Quaternion>>>();
+                    if (!byBone.TryGetValue(bone, out var list)) byBone[bone] = list = new List<KeyValuePair<float, Quaternion>>();
+                    list.Add(new KeyValuePair<float, Quaternion>(p.TA - BStart(b), diffs[k]));
+                }
+            }
+            var touched = new HashSet<string>();
+            foreach (var b in next)
+            {
+                string bid = b.GetString("id");
+                if (bid == null || !found.TryGetValue(bid, out var byBone)) continue;
+                var have = TweaksOf(b);
+                var all = new Dictionary<string, object>();
+                foreach (var kv in have) all[kv.Key] = null;
+                foreach (var kv in byBone) all[kv.Key] = null;
+                var outT = new Dictionary<string, object>();
+                foreach (var bone in all.Keys)
+                {
+                    have.TryGetValue(bone, out var old);
+                    byBone.TryGetValue(bone, out var add);
+                    // samples: where the edit was read (or the old ones), the old offset then the new edit on top
+                    var us = (add ?? old).Select(v => v.Key).ToList();
+                    var qs = us.Select(u =>
+                    {
+                        var q0 = old != null ? TweakAt(old, u) : Quaternion.identity;
+                        var q1 = add != null ? TweakAt(add, u) : Quaternion.identity;
+                        return q0 * q1;
+                    }).ToList();
+                    if (qs.All(q => Quaternion.Angle(Quaternion.identity, q) < 0.3f)) continue;
+                    var keep = Simplify(new List<int> { 0, us.Count - 1 }, 0, us.Count - 1, (k, a, bb, f) => Quaternion.Angle(Quaternion.SlerpUnclamped(qs[a], qs[bb], f), qs[k]), 0.3f, us);
+                    outT[bone] = keep.Select(k => (object)new List<object> { Math.Round(us[k], 4), (double)qs[k].x, (double)qs[k].y, (double)qs[k].z, (double)qs[k].w }).ToList();
+                    touched.Add(bone);
+                }
+                if (outT.Count > 0) b["tweaks"] = outT; else b.Remove("tweaks");
+            }
+            return touched.Count;
+        }
+
+        /// <summary>A block's kept hand edits: bone → (block time, offset), in time order.</summary>
+        private static Dictionary<string, List<KeyValuePair<float, Quaternion>>> TweaksOf(Dictionary<string, object> b)
+        {
+            var r = new Dictionary<string, List<KeyValuePair<float, Quaternion>>>();
+            if (!(b.GetObject("tweaks") is Dictionary<string, object> t)) return r;
+            foreach (var kv in t)
+            {
+                if (!(kv.Value is List<object> keys)) continue;
+                var list = new List<KeyValuePair<float, Quaternion>>();
+                foreach (var k in keys.OfType<List<object>>())
+                    if (k.Count == 5)
+                        list.Add(new KeyValuePair<float, Quaternion>(Convert.ToSingle(k[0]), new Quaternion(Convert.ToSingle(k[1]), Convert.ToSingle(k[2]), Convert.ToSingle(k[3]), Convert.ToSingle(k[4]))));
+                if (list.Count > 0) r[kv.Key] = list.OrderBy(x => x.Key).ToList();
+            }
+            return r;
+        }
+
+        private static Quaternion TweakAt(List<KeyValuePair<float, Quaternion>> l, float u)
+        {
+            if (u <= l[0].Key) return l[0].Value;
+            if (u >= l[l.Count - 1].Key) return l[l.Count - 1].Value;
+            int i = 0;
+            while (i < l.Count - 2 && l[i + 1].Key <= u) i++;
+            float span = l[i + 1].Key - l[i].Key;
+            return Quaternion.Slerp(l[i].Value, l[i + 1].Value, span > 1e-6f ? (u - l[i].Key) / span : 0f);
+        }
+
+        /// <summary>A rotation track's value at t, the way Timeline interpolates it.</summary>
+        private static Quaternion TrackQuat(Interpolable ip, float t)
+        {
+            KeyValuePair<float, TLKeyframe>? l = null, r = null;
+            foreach (var kv in ip.keyframes) { if (kv.Key <= t + 1e-5f) l = kv; else { r = kv; break; } }
+            if (l == null) return r != null && r.Value.Value.value is Quaternion q0 ? q0 : Quaternion.identity;
+            var lq = l.Value.Value.value is Quaternion a ? a : Quaternion.identity;
+            if (r == null || !(r.Value.Value.value is Quaternion rq)) return lq;
+            float f = l.Value.Value.curve.Evaluate((t - l.Value.Key) / (r.Value.Key - l.Value.Key));
+            return Quaternion.SlerpUnclamped(lq, rq, f);
         }
 
         private static int Q(float clipSeconds) => Mathf.RoundToInt(clipSeconds * 10000f);

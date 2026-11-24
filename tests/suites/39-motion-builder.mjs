@@ -214,4 +214,46 @@ export default async function (t) {
     await ok('undo');
     await sleep(300);
   });
+
+  await t.step('hand edits to the built keys survive a rebuild (and can be cleared)', async () => {
+    // the built walk + run again, then a key on the left upper arm turned by 35° near 1 s
+    await build(seq, 'Walk then run');
+    const tl = await ok('timeline.get');
+    const arm = tl.tracks.find((x) => x.model === 'guideObjectRot' && /cf_j_arm00_L/.test(x.name));
+    if (!arm) throw new Error('no upper-arm track in the Motion folder: ' + tl.tracks.filter((x) => x.model === 'guideObjectRot').slice(0, 3).map((x) => x.name).join(', '));
+    const kv = Object.values(await ok('timeline.keyValues', { tracks: [arm.id] }))[0];
+    const key = kv.reduce((best, k) => (Math.abs(k[0] - 1) < Math.abs(best[0] - 1) ? k : best));
+    const q = [key[1].valueX, key[1].valueY, key[1].valueZ, key[1].valueW];
+    const h2 = (35 / 2) * (Math.PI / 180);
+    const r = [Math.sin(h2), 0, 0, Math.cos(h2)]; // q * r: turned about the bone's own x
+    const m = [q[3] * r[0] + q[0] * r[3] + q[1] * r[2] - q[2] * r[1], q[3] * r[1] - q[0] * r[2] + q[1] * r[3] + q[2] * r[0], q[3] * r[2] + q[0] * r[1] - q[1] * r[0] + q[2] * r[3], q[3] * r[3] - q[0] * r[0] - q[1] * r[1] - q[2] * r[2]];
+    await ok('timeline.setKeyValue', { track: arm.id, t: key[0], value: { valueX: m[0], valueY: m[1], valueZ: m[2], valueW: m[3] } });
+    await ok('timeline.seek', { t: 0.5 });
+    await sleep(300);
+    const edited = await sample(0, 4);
+    const moved = worstIn(got, edited, (x) => x < 1.99); // the walk part, around the edited key
+    check('the edit moves the hand', moved > 0.015, moved.toFixed(4));
+
+    // something else changes: the run twice as fast → rebuilt, the edit kept with the walk block
+    const fast = { ...seq, blocks: seq.blocks.map((b) => (b.id === 'r' ? { ...b, speed: 2 } : b)) };
+    const res = await build(fast, 'Change speed');
+    const kept = (await ok('motion.seq.get', { id })).blocks.find((b) => b.id === 'w');
+    check('the edit is kept with its block', res.tweaked >= 1 && !!kept?.tweaks?.cf_j_arm00_L, JSON.stringify({ tweaked: res.tweaked, bones: Object.keys(kept?.tweaks ?? {}) }));
+    await ok('timeline.seek', { t: 0.5 });
+    await sleep(300);
+    const after = await sample(0, 4);
+    const still = worstIn(edited, after, (x) => x < 1.99);
+    t.metric('walk with the edit, after a rebuild: worst bone off', still.toFixed(4), 'units');
+    check('after the rebuild the walk still has the edit', still < 0.015, `${still.toFixed(4)} at ${where}`);
+    check('…and the run did change', worstIn(edited, after, (x) => x > 2.5) > 0.05);
+
+    // cleared: back to the plain walk
+    const cleared = { ...fast, blocks: (await ok('motion.seq.get', { id })).blocks.map((b) => { const c = { ...b }; delete c.tweaks; return c; }) };
+    await build(cleared, 'Clear key edits');
+    await ok('timeline.seek', { t: 0.5 });
+    await sleep(300);
+    const plain = await sample(0, 4);
+    check('cleared: the walk is as built', worstIn(got, plain, (x) => x < 1.99) < 0.005, `${worstIn(got, plain, (x) => x < 1.99).toFixed(4)} at ${where}`);
+    check('…and stays cleared', !(await ok('motion.seq.get', { id })).blocks.find((b) => b.id === 'w')?.tweaks);
+  });
 }
