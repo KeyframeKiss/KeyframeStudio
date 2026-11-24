@@ -137,7 +137,7 @@ export function LookPanel() {
         <LookCard title="Vignette" desc="Darkened corners (Studio only has on/off)" on={e.vignette} onToggle={(v) => patch('effects', { vignette: v })}>
           <div className="pn-note">
             Studio's vignette is on or off only. For strength, roundness and colour, use the vignette in{' '}
-            <button className="link-btn" onClick={() => showTab('look', 'effects')}>
+            <button className="btn small solid" onClick={() => showTab('look', 'effects')}>
               Effects
             </button>
             .

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from './Icon';
-import { Field, Page, Panel, Section } from './Page';
+import { SwitchCard } from './EditorBits';
+import { Page, Panel, Section } from './Page';
 import { Help } from './Help';
 import { addAudio, audioName, call, listenAudio, liveTime, pickAudio, refreshAudio, removeAudio, seekNow, setAudio, setAudioDelay, showTab, useStore, type AudioClipInfo } from '../state/store';
 import { clipSpan, fadeAt, fileTimeAt, laneRgb, loudest, timelineTimeAt } from '../lib/audioLanes';
@@ -75,7 +76,7 @@ export function AudioPage() {
             </button>
             <span className="pn-note">
               {clips.length} clip{clips.length > 1 ? 's' : ''} · they play in Studio · lip-sync is in{' '}
-              <button className="link-btn" onClick={() => showTab('animate', 'face')}>
+              <button className="btn small solid" onClick={() => showTab('animate', 'face')}>
                 Animate › Face
               </button>
             </span>
@@ -202,40 +203,72 @@ function ClipPanel({ clip: c, index }: { clip: AudioClipInfo; index: number }) {
         </>
       }
     >
-      <Field label="Starts at (s)">
-        <Secs value={c.offset} min={-600} onCommit={(v) => set({ offset: v })} title="Where on the timeline it starts" />
-        <button className="btn small solid" onClick={() => set({ offset: Math.round(liveTime() * 1000) / 1000 })} title="Start this clip at the playhead">
-          At playhead
-        </button>
-        <button className="btn small solid" onClick={() => set({ offset: 0 })} title="Start this clip at 0 s">
-          At 0
-        </button>
-      </Field>
-      <Field label="Volume">
-        <Slider value={c.volume} min={0} max={1} step={0.05} onChange={(v) => set({ volume: v })} />
-      </Field>
-      <Field label={`Balance · ${balanceLabel(c.pan)}`}>
-        <Slider value={c.pan} min={-1} max={1} step={0.05} onChange={(v) => set({ pan: Math.abs(v) < 0.03 ? 0 : v })} />
-      </Field>
-      <Field label="Speed" help="Faster or slower — the pitch goes up or down with it, like a tape">
-        <Slider value={c.speed} min={0.25} max={4} step={0.05} onChange={(v) => set({ speed: v })} />
-        {Math.abs(c.speed - 1) > 0.001 && (
-          <button className="btn small solid" onClick={() => set({ speed: 1 })} title="Normal speed">
-            1×
-          </button>
-        )}
-      </Field>
-      <Field label="Fade in / out (s)">
-        <Secs value={c.fadeIn} onCommit={(v) => set({ fadeIn: v })} title="Seconds it takes to fade in" />
-        <Secs value={c.fadeOut} onCommit={(v) => set({ fadeOut: v })} title="Seconds it takes to fade out" />
-      </Field>
-      <Field label="Trim start / end (s)" help="Skip seconds of the file at its start or end — silence, a count-in, a tail">
-        <Secs value={c.trimIn} onCommit={(v) => set({ trimIn: v })} title="Seconds skipped at the start of the file" />
-        <Secs value={c.trimOut} onCommit={(v) => set({ trimOut: v })} title="Seconds skipped at the end of the file" />
-      </Field>
-      <label className="rigs-opt" style={{ margin: 0 }}>
-        <input type="checkbox" checked={c.muted} onChange={(e) => set({ muted: e.target.checked })} /> Mute while animating (still in renders)
-      </label>
+      <div className="ed-groups audio-groups">
+        <section className="ed-group">
+          <h4>Timing</h4>
+          <div className="ed-fields">
+            <label>
+              Starts at (s)
+              <span className="ed-pair">
+                <Secs value={c.offset} min={-600} onCommit={(v) => set({ offset: v })} title="Where on the timeline it starts" />
+                <button className="btn small solid" onClick={() => set({ offset: Math.round(liveTime() * 1000) / 1000 })} title="Start this clip at the playhead">
+                  Playhead
+                </button>
+                <button className="btn small solid" onClick={() => set({ offset: 0 })} title="Start this clip at 0 s">
+                  0
+                </button>
+              </span>
+            </label>
+          </div>
+          <div className="ed-fields">
+            <label>
+              Fade in
+              <Secs value={c.fadeIn} onCommit={(v) => set({ fadeIn: v })} title="Seconds it takes to fade in" />
+            </label>
+            <label>
+              Fade out
+              <Secs value={c.fadeOut} onCommit={(v) => set({ fadeOut: v })} title="Seconds it takes to fade out" />
+            </label>
+            <label>
+              <span className="audio-lbl">
+                Trim start
+                <Help text="Skip seconds of the file at its start or end: silence, a count-in, a tail." />
+              </span>
+              <Secs value={c.trimIn} onCommit={(v) => set({ trimIn: v })} title="Seconds skipped at the start of the file" />
+            </label>
+            <label>
+              Trim end
+              <Secs value={c.trimOut} onCommit={(v) => set({ trimOut: v })} title="Seconds skipped at the end of the file" />
+            </label>
+          </div>
+        </section>
+        <section className="ed-group">
+          <h4>Sound</h4>
+          <div className="audio-sliders">
+            <label>
+              <span>Volume</span>
+              <Slider value={c.volume} min={0} max={1} step={0.05} onChange={(v) => set({ volume: v })} />
+            </label>
+            <label>
+              <span>Balance · {balanceLabel(c.pan)}</span>
+              <Slider value={c.pan} min={-1} max={1} step={0.05} onChange={(v) => set({ pan: Math.abs(v) < 0.03 ? 0 : v })} />
+            </label>
+            <label>
+              <span className="audio-lbl">
+                Speed
+                <Help text="Faster or slower: the pitch goes up or down with it, like a tape." />
+                {Math.abs(c.speed - 1) > 0.001 && (
+                  <button className="btn small solid audio-reset" onClick={() => set({ speed: 1 })} title="Normal speed">
+                    1×
+                  </button>
+                )}
+              </span>
+              <Slider value={c.speed} min={0.25} max={4} step={0.05} onChange={(v) => set({ speed: v })} />
+            </label>
+          </div>
+          <SwitchCard on={c.muted} label="Mute while animating" help="Silent while you work in Studio; renders still include it." onChange={(on) => set({ muted: on })} />
+        </section>
+      </div>
       <div className="pn-note">
         Plays {c.offset.toFixed(2)}–{end.toFixed(2)} s ({span.toFixed(1)} s{Math.abs(span - c.duration) > 0.01 ? ` of a ${c.duration.toFixed(1)} s file` : ''}).
         {tl && end > tl.duration + 0.01 ? ` The timeline is ${tl.duration.toFixed(1)} s — make it longer to hear the end.` : ''}

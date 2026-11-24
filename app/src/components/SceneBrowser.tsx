@@ -193,7 +193,9 @@ export function SceneBrowser() {
                     items: [
                       { header: true, label: s.rel.replace(/\.png$/i, '') },
                       { label: 'Load…', action: () => loadScene(s) },
-                      ...(window.studioEx?.openFolder ? [{ label: 'Open folder', action: () => void window.studioEx?.openFolder?.(folderOfPath(s.path)) }] : []),
+                      ...(window.studioEx?.showItem || window.studioEx?.openFolder
+                        ? [{ label: 'Show in folder', action: () => void (window.studioEx?.showItem ? window.studioEx.showItem(s.path) : window.studioEx?.openFolder?.(folderOfPath(s.path))) }]
+                        : []),
                       { sep: true as const },
                       { label: m.favorite ? 'Remove from favorites' : 'Add to favorites', action: () => lib.toggleFavorite(s.rel) },
                       {

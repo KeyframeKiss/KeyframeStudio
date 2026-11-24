@@ -29,6 +29,8 @@ namespace StudioEX.Bridge.Api
     /// </summary>
     internal static partial class TimelineImpl
     {
+        /// <summary>Each character's clip lengths (block id → seconds) from its last build.</summary>
+        private static readonly Dictionary<int, Dictionary<string, object>> LastLengths = new Dictionary<int, Dictionary<string, object>>();
         private static readonly Dictionary<int, Dictionary<string, object>> Seqs = new Dictionary<int, Dictionary<string, object>>();
         private static readonly Dictionary<int, Job> BuildQueue = new Dictionary<int, Job>();
         private static bool _building;
@@ -55,7 +57,15 @@ namespace StudioEX.Bridge.Api
         {
             r.Add("motion.seq.list", a => Seqs.Where(kv => SceneApi.FindOci(kv.Key) is OCIChar)
                 .Select(kv => (object)new Dictionary<string, object> { { "id", kv.Key }, { "blocks", (kv.Value.GetList("blocks")).Count } }).ToList());
-            r.Add("motion.seq.get", a => Seqs.TryGetValue(a.GetInt("id"), out var s) ? s : null);
+            // with the clips' own lengths from the last build (the app's "Fit to the clip"), not saved with the scene
+            r.Add("motion.seq.get", a =>
+            {
+                int id = a.GetInt("id");
+                if (!Seqs.TryGetValue(id, out var s)) return null;
+                var d = new Dictionary<string, object>(s);
+                if (LastLengths.TryGetValue(id, out var l)) d["lengths"] = l;
+                return d;
+            });
             r.Add("motion.seq.set", SeqSet);
             r.Add("motion.seq.clear", SeqClear);
             try { RegisterMotionSceneData(); }
@@ -425,6 +435,7 @@ namespace StudioEX.Bridge.Api
                 AfterEdit();
                 EventPump.RequestRebase();
                 result["lengths"] = o.Lengths;
+                LastLengths[id] = new Dictionary<string, object>(o.Lengths);
                 result["end"] = Math.Round(end, 4);
                 result["tweaked"] = tweaked;
                 BuildDone(id, job.Token, result, null);

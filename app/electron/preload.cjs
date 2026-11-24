@@ -31,6 +31,7 @@ contextBridge.exposeInMainWorld('studioEx', {
   openImage: () => ipcRenderer.invoke('dialog:openImage'),
   savePng: (name, dataUrl) => ipcRenderer.invoke('dialog:savePng', name, dataUrl),
   openFolder: (p) => ipcRenderer.invoke('shell:openFolder', p),
+  showItem: (p) => ipcRenderer.invoke('shell:showItem', p),
   translate: {
     batch: (engine, items, settings) => ipcRenderer.invoke('translate:batch', engine, items, settings),
     models: (settings) => ipcRenderer.invoke('translate:models', settings),

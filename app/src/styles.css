@@ -5752,15 +5752,21 @@ html.frameless .tooltip {
   color: var(--warn, #e0a040) !important;
 }
 .lip-more {
-  border: 1px solid var(--line-soft);
-  border-radius: 6px;
-  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-1);
+  padding: 4px 10px;
+  margin-bottom: 10px;
 }
 .lip-more > summary {
   cursor: pointer;
-  font-size: 11.5px;
-  color: var(--text-2);
-  padding: 2px 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-1);
+  padding: 3px 0;
+}
+.lip-more > summary:hover {
+  color: var(--text-0);
 }
 .lip-more[open] {
   display: flex;
@@ -9433,4 +9439,71 @@ a.btn {
   padding: 0 8px;
   border-radius: 999px;
   font-size: 10.5px;
+}
+
+/* Look › Lighting › Aim lights: one row per light, in the editor look */
+.aim-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
+  gap: 8px;
+}
+.aim-row {
+  --kind: #ffd77a;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-1);
+}
+.aim-row .ed-icon {
+  --kind: inherit;
+}
+.aim-row:not(.on) .ed-icon {
+  opacity: 0.5;
+}
+.aim-row .ed-fields select {
+  min-width: 160px;
+}
+.aim-speed {
+  flex: 1 1 160px;
+}
+.aim-speed > span {
+  display: inline-flex;
+  align-items: center;
+}
+
+/* Shoot › Audio: a clip's settings in the editor look (Timing, Sound), stacked in the narrow card */
+.audio-groups {
+  flex-direction: column;
+  gap: 14px;
+  margin-bottom: 8px;
+}
+.audio-groups .ed-group::before {
+  display: none;
+}
+.audio-groups .ed-fields .input {
+  width: 64px;
+}
+.audio-lbl {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.audio-sliders {
+  display: grid;
+  gap: 6px;
+}
+.audio-sliders > label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 10.5px;
+  color: var(--text-2);
+}
+.audio-reset.btn.small {
+  height: 18px;
+  padding: 0 6px;
+  margin-left: 4px;
 }

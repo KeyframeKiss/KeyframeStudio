@@ -77,6 +77,8 @@ declare global {
       bridgeToken?(): Promise<string>;
       openImage?(): Promise<string | null>;
       openFolder?(path: string): Promise<string>;
+      /** Show a scene file in Explorer, selected. */
+      showItem?(path: string): Promise<string>;
       setup?: {
         status(dir?: string): Promise<BridgeSetup>;
         install(dir: string): Promise<BridgeSetup>;

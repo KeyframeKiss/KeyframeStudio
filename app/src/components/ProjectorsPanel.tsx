@@ -7,6 +7,7 @@ import { Icon } from './Icon';
 import { ColorInput, Switch } from './LookPanel';
 import { Popover } from './Shell';
 import { Section } from './Page';
+import { IconTile, SwitchCard } from './EditorBits';
 
 // Look › Lighting: projectors (light / shadow shapes on characters and the set) and lights that aim at a character.
 
@@ -357,47 +358,65 @@ export function AimLightsPanel() {
       help="A spot or directional light keeps pointing at a character while they move — a key light that follows the face. Turning it off puts the light back where it was."
       actions={
         st.lightManager && (
-          <label className="pj-inline" title="LightManager is installed: it does aiming at the body (spot lights), saved in its own format. Off uses Keyframe Studio's for everything.">
-            Use LightManager <Switch on={st.useLightManager} onChange={(v) => set({ useLightManager: v })} />
-          </label>
+          <SwitchCard
+            on={st.useLightManager}
+            label="Use LightManager"
+            help="LightManager is installed: it does the aiming for spot lights, saved in its own format. Off: Keyframe Studio aims every light."
+            onChange={(v) => set({ useLightManager: v })}
+          />
         )
       }
     >
       {st.lights.length === 0 ? (
-        <div className="pn-note">No spot or directional lights in the scene — add one in Studio, or apply a lighting rig above.</div>
+        <div className="pn-note">No spot or directional lights in the scene. Add one in Studio, or apply a lighting rig above.</div>
       ) : (
-        <div className="pj-aims">
+        <div className="aim-list">
           {st.lights.map((l) => (
-            <div key={l.id} className="pj-aim">
-              <span className="pj-aim-name">
-                <b>{l.name}</b>
-                <small>
-                  {l.type}
-                  {l.provider && ` · ${l.provider}`}
-                </small>
-              </span>
-              <select className="input" value={l.target} onChange={(e) => set({ id: l.id, target: Number(e.target.value) })}>
-                <option value={-1}>Not aimed</option>
-                {charas.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {displayName(c)}
-                  </option>
-                ))}
-              </select>
-              {l.target >= 0 && (
-                <>
-                  <div className="ct-chips">
-                    {st.bones.map((b) => (
-                      <button key={b} className={`btn chip ${l.bone === b ? 'on' : ''}`} onClick={() => set({ id: l.id, bone: b })}>
-                        {BONE_LABEL[b] ?? b}
-                      </button>
-                    ))}
-                  </div>
-                  <span className="pj-speed" title="How quickly it turns to follow">
-                    <Slider value={l.speed} min={0.5} max={20} step={0.5} onChange={(speed) => set({ id: l.id, speed })} />
+            <div key={l.id} className={`aim-row ${l.target >= 0 ? 'on' : ''}`}>
+              <div className="ed-head">
+                <IconTile name="target" />
+                <div className="ed-title">
+                  <b>{l.name}</b>
+                  <span className="sub">
+                    {l.type === 'Spot' ? 'Spot light' : l.type === 'Directional' ? 'Directional light' : l.type}
+                    {l.target >= 0 && l.provider ? ` · ${l.provider}` : ''}
                   </span>
-                </>
-              )}
+                </div>
+              </div>
+              <div className="ed-fields">
+                <label>
+                  Aim at
+                  <select className="input" value={l.target} onChange={(e) => set({ id: l.id, target: Number(e.target.value) })}>
+                    <option value={-1}>Not aimed</option>
+                    {charas.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {displayName(c)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {l.target >= 0 && (
+                  <>
+                    <label>
+                      Part
+                      <div className="seg">
+                        {st.bones.map((b) => (
+                          <button key={b} className={l.bone === b ? 'on' : ''} onClick={() => set({ id: l.id, bone: b })}>
+                            {BONE_LABEL[b] ?? b}
+                          </button>
+                        ))}
+                      </div>
+                    </label>
+                    <label className="aim-speed">
+                      <span>
+                        Turn speed
+                        <Help text="How quickly the light turns to follow: low is a slow, smooth follow; high snaps to the part." />
+                      </span>
+                      <Slider value={l.speed} min={0.5} max={20} step={0.5} onChange={(speed) => set({ id: l.id, speed })} />
+                    </label>
+                  </>
+                )}
+              </div>
             </div>
           ))}
         </div>

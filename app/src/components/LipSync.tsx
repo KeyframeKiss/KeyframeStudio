@@ -242,7 +242,7 @@ export function LipSyncCard({ charId }: { charId: number | undefined }) {
           {delay === 0 && (
             <div className="hint">
               Lips look early while it plays? On Bluetooth headphones the sound arrives late — set{' '}
-              <button className="link-btn" onClick={() => showTab('shoot', 'audio')}>
+              <button className="btn small solid" onClick={() => showTab('shoot', 'audio')}>
                 Headphone delay
               </button>{' '}
               in Shoot › Audio.

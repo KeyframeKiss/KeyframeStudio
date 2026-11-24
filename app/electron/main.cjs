@@ -198,6 +198,18 @@ function createWindow() {
   });
   // the renderer only gets the path the user picked (Studio reads and copies the file itself)
   // open a folder in Explorer — only an existing local directory (never a file, so nothing gets executed)
+  // show a scene file in Explorer, selected — only an existing local .png (Explorer just highlights it; nothing runs)
+  ipcMain.handle('shell:showItem', (_e, p) => {
+    try {
+      if (typeof p === 'string' && /^[a-z]:[\\/]/i.test(p) && /\.png$/i.test(p) && fs.statSync(p).isFile()) {
+        shell.showItemInFolder(p);
+        return '';
+      }
+    } catch {
+      /* missing */
+    }
+    return 'not a scene file';
+  });
   ipcMain.handle('shell:openFolder', (_e, p) => {
     try {
       if (typeof p === 'string' && /^[a-z]:[\\/]/i.test(p) && fs.statSync(p).isDirectory()) return shell.openPath(p);

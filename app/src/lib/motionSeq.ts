@@ -94,13 +94,15 @@ export function listenMotion() {
 }
 
 export async function loadSeq(id: number) {
-  const seq = await bridge.request<Seq | null>('motion.seq.get', { id }).catch(() => null);
+  const got = await bridge.request<(Seq & { lengths?: Record<string, number> }) | null>('motion.seq.get', { id }).catch(() => null);
   if (pending(id)) return; // an edit is still building: the bridge's copy is older than this one
+  // the clips' lengths from the last build come along (for "Fit to the clip" after the app reloads)
+  const { lengths, ...seq } = got ?? ({} as Seq & { lengths?: Record<string, number> });
   useMotion.setState((s) => {
     const seqs = { ...s.seqs };
-    if (seq) seqs[id] = seq;
+    if (got) seqs[id] = seq as Seq;
     else delete seqs[id];
-    return { seqs };
+    return { seqs, lengths: lengths ? { ...s.lengths, ...lengths } : s.lengths };
   });
 }
 
