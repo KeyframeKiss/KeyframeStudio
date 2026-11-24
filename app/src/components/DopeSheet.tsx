@@ -480,11 +480,15 @@ export function DopeSheet({ compact = false }: { compact?: boolean } = {}) {
       playhead: cssVar('--playhead'),
     };
 
+    let drawnTime: number | undefined;
     const draw = () => {
       raf = requestAnimationFrame(draw);
       const st = useStore.getState();
       const playing = !!st.tl?.playing;
-      if (!dirty.current && !playing && inter.current.mode === 'none' && pops.current.size === 0) return;
+      // a seek from anywhere (Home, the frame/key buttons, another panel) moves the playhead too
+      const timeMoved = st.tl?.time !== drawnTime;
+      if (!dirty.current && !playing && !timeMoved && inter.current.mode === 'none' && pops.current.size === 0) return;
+      drawnTime = st.tl?.time;
       dirty.current = false;
       const perfT0 = performance.now();
 

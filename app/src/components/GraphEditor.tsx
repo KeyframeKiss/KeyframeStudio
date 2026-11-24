@@ -350,9 +350,15 @@ export function GraphEditor() {
   useEffect(() => {
     let raf = 0;
     let lastPlayDraw = 0;
+    let drawnTime: number | undefined;
     const draw = () => {
       raf = requestAnimationFrame(draw);
       const st = useStore.getState();
+      // a seek from anywhere (Home, the frame/key buttons, another panel) moves the playhead too
+      if (st.tl?.time !== drawnTime) {
+        drawnTime = st.tl?.time;
+        if (!st.tl?.playing) dirty.current = true; // while playing the throttled redraw below follows it
+      }
       if (!dirty.current && !st.tl?.playing && inter.current.mode === 'none') return;
       // While playing only the playhead moves: redraw at ~20 fps instead of every frame (big graphs are costly).
       const now = performance.now();
