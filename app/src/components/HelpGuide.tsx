@@ -104,10 +104,85 @@ const SECTIONS: Section[] = [
           edit — so you see it before you render. Click the marker at a cut on the track to glide, dip or dissolve into the next shot.
         </li>
         <li>
-          <b>Test a render small first.</b> Try a short, small render before the full-size one. Shoot › Render can make
-          several sizes from one pass.
+          <b>Test a render small first.</b> Tick <b>Draft</b> in Shoot › Render for a quick check of the timing, then render the
+          full-quality one.
         </li>
       </ul>
+    ),
+  },
+  {
+    id: 'motion',
+    title: 'Longer motions: the Motion builder',
+    body: (
+      <>
+        <p>
+          Animate › <b>Motion builder</b> strings Studio's animations, poses and your saved motion clips into one motion, blended
+          into each other, for each character in the scene.
+        </p>
+        <ol>
+          <li>
+            Pick the character's lane, then <b>Add a clip</b>, <b>Add a pose</b> or <b>Add a motion clip</b>. Each new block goes on
+            after the last one and blends in from it.
+          </li>
+          <li>
+            Drag a block to move it, its right edge to change its length and its left edge to trim its start. Drag the ramp at
+            its start to blend in more slowly. Edges snap to the other blocks, the playhead and the ends: hold <K>Shift</K> to
+            drag freely.
+          </li>
+          <li>
+            Click a block for its settings: speed, where in the clip it starts, the blend, <b>Mirror</b> (left and right swapped),
+            <b>Replace</b>, <b>Duplicate</b> and <b>Remove</b>.
+          </li>
+        </ol>
+        <ul>
+          <li>
+            Every change is built straight into ordinary keys in a <b>Motion</b> folder on the timeline, as one undo step. The
+            blocks are saved with the scene.
+          </li>
+          <li>
+            You can fine-tune those keys in the dope sheet or by posing and keying. Your edits stay with their block when the
+            motion is built again (blocks with edits show ✎; <b>Clear them</b> in the block's settings).
+          </li>
+          <li>
+            <b>Ripple</b> moves the blocks after one along when it gets longer, shorter or is removed. <K>←</K> <K>→</K> nudge the
+            selected block a frame (<K>Shift</K>: ten), and <K>Ctrl</K> + the mouse wheel zooms.
+          </li>
+          <li>
+            To have the motion happen somewhere else, move the character in Studio and press <b>Place here</b>.
+          </li>
+        </ul>
+      </>
+    ),
+  },
+  {
+    id: 'render',
+    title: 'Rendering a video',
+    body: (
+      <>
+        <p>
+          Shoot › <b>Render</b> plays the timeline and records it through the VideoExport plugin, with the scene's audio mixed in.
+          Pick the whole timeline or your shots, the sizes, and press <b>Render</b>. Leave Studio alone until it finishes.
+        </p>
+        <ul>
+          <li>
+            <b>Recording: Straight to video</b> sends each frame into the video as it's drawn, so there's no wait for encoding at
+            the end. <b>Image files</b> is VideoExport's own way, and keeps the frames if you want them. GIF and AVI always use
+            image files.
+          </li>
+          <li>
+            <b>Warm-up</b> lets hair and clothes settle before recording. <b>Quick</b> is enough for most scenes; <b>Play through</b>{' '}
+            plays it all once first, so a looping animation joins up seamlessly.
+          </li>
+          <li>
+            <b>Draft</b> renders much faster with slightly rougher edges. For MP4, <b>Balanced</b> encodes quickly, <b>Smallest
+            files</b> takes longer for smaller files, and <b>GPU</b> uses your graphics card (offered when it works on your PC).
+          </li>
+          <li>
+            Tick more than one size to get one video of each, each with its own framing. Videos are saved in VideoExport's
+            output folder, named after the shot or size.
+          </li>
+        </ul>
+      </>
     ),
   },
   {
@@ -151,6 +226,16 @@ const SECTIONS: Section[] = [
         <dd>
           It needs a mod you don't have, or a version it doesn't recognise. <b>About &amp; diagnostics</b> lists each feature, the mod
           it uses and why it's off.
+        </dd>
+        <dt>A message disappeared before you could read it</dt>
+        <dd>
+          Every message is kept in <b>Messages</b>, at the right of the status bar. Messages also stay up while the pointer is
+          on them.
+        </dd>
+        <dt>A character won't play the animation you picked</dt>
+        <dd>
+          If its motion comes from the Motion builder, change it there: the timeline puts its own clip back. Bone keys also play
+          over a clip where they're keyed, so mute them to see the clip on its own.
         </dd>
         <dt>Something moved further than you meant</dt>
         <dd>
