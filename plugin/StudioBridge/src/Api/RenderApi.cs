@@ -50,6 +50,21 @@ namespace StudioEX.Bridge.Api
 
         public static int Warmups() => Plugin == null ? 0 : (int)Get("_prewarmLoopCount");
 
+        /// <summary>
+        /// Before recording, so hair and clothes physics have settled: off; quick (the 1.5 s leading into the start
+        /// played, or held at the start — a second or two, whatever the length); play (the whole range played through
+        /// first, VideoExport's warm-up count times — for seamless loops).
+        /// </summary>
+        public static string Warm = "quick";
+
+        /// <summary>The speed settings (this session): warm, encode (balanced | small | gpu), draft.</summary>
+        internal static void ApplySpeed(Dictionary<string, object> a)
+        {
+            if (a.GetString("warm") is string w && (w == "off" || w == "quick" || w == "play")) Warm = w;
+            if (a.GetString("encode") is string e && (e == "balanced" || e == "small" || e == "gpu")) RenderSpeed.Encode = e;
+            if (a.Has("draft")) RenderSpeed.Draft = a.GetBool("draft");
+        }
+
         public static void Register(CommandRouter r)
         {
             r.Add("render.status", a => Status());
@@ -57,6 +72,7 @@ namespace StudioEX.Bridge.Api
             r.Add("render.start", a =>
             {
                 if ((bool)Get("_isRecording")) throw new BridgeException("Already recording");
+                RenderSpeed.EnsurePatched();
                 Apply(a);
                 // VideoExport only records the screen: in Seconds, Frames and no-limit modes it never starts the
                 // timeline, and its Timeline mode doesn't play the current Timeline either (it records the right
@@ -104,6 +120,7 @@ namespace StudioEX.Bridge.Api
             if (Plugin == null) return "VideoExport is not installed";
             if (Busy()) return "VideoExport is busy";
             Apply(new Dictionary<string, object> { { "limit", "Seconds" }, { "limitNumber", (double)seconds } });
+            RenderSpeed.EnsurePatched();
             AccessTools.Method(T, "RecordVideo").Invoke(Plugin, null);
             return null;
         }
@@ -292,7 +309,7 @@ namespace StudioEX.Bridge.Api
             if (cropW > 0 && cropH > 0)
             {
                 vf = "crop='min(iw,ih*" + cropW + "/" + cropH + ")':'min(ih,iw*" + cropH + "/" + cropW + ")',scale=" + cropW + ":" + cropH + ":flags=lanczos,setsar=1";
-                vcodec = ext == ".webm" ? "libvpx-vp9 -crf 30 -b:v 0" : ext == ".avi" ? "mpeg4 -q:v 2" : "libx264 -crf 18 -preset slow -pix_fmt yuv420p";
+                vcodec = ext == ".webm" ? "libvpx-vp9 -crf 30 -b:v 0" : ext == ".avi" ? "mpeg4 -q:v 2" : RenderSpeed.CropCodec();
             }
             var inv = System.Globalization.CultureInfo.InvariantCulture;
             var args = new System.Text.StringBuilder("-y -hide_banner -loglevel error -i \"" + video + "\"");
@@ -363,6 +380,7 @@ namespace StudioEX.Bridge.Api
         private static object Status()
         {
             if (Plugin == null) throw new BridgeException("VideoExport is not installed");
+            RenderSpeed.TestGpu(Ffmpeg()); // once, in the background: whether the GPU encoder can be offered
             return new Dictionary<string, object>
             {
                 { "recording", Get("_isRecording") },
@@ -383,8 +401,10 @@ namespace StudioEX.Bridge.Api
                         { "autoEncode", Get("_autoGenerateVideo") }, { "deleteFrames", Get("_autoDeleteImages") },
                         { "prewarm", Get("_prewarmLoopCount") },
                         { "audio", WithAudio },
+                        { "warm", Warm }, { "encode", RenderSpeed.Encode }, { "draft", RenderSpeed.Draft },
                     }
                 },
+                { "gpuEncode", RenderSpeed.GpuWorks },
                 { "limits", EnumNames("_selectedLimitDuration") },
                 { "formats", EnumNames("_selectedExtension") },
             };
@@ -429,6 +449,7 @@ namespace StudioEX.Bridge.Api
             if (a.Has("deleteFrames")) Set("_autoDeleteImages", a.GetBool("deleteFrames"));
             if (a.Has("prewarm")) Set("_prewarmLoopCount", Math.Max(0, Math.Min(10, a.GetInt("prewarm"))));
             if (a.Has("audio")) WithAudio = a.GetBool("audio");
+            ApplySpeed(a);
         }
     }
 }

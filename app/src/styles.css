@@ -8988,3 +8988,22 @@ a.btn {
   color: var(--text-2);
   font-size: 12px;
 }
+
+/* Render › Speed: the Draft switch beside the encoder choice */
+.render-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-1);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.render-page .cleanup-row > .render-speed {
+  flex: none;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+  min-width: 0;
+}

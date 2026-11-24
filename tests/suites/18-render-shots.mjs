@@ -70,6 +70,7 @@ export default async function (t) {
       // the bridge's per-frame trace says what the timeline did on every frame (a 0.3 s render is over before a
       // poll from here would see it)
       const tracing = (await req('shots.trace', { on: true })).ok;
+      const sp0 = await ok('render.speed', {});
       const made = await framesMadeBy(async () => {
         await ok('render.start', {});
         for (let i = 0; i < 40; i++) {
@@ -86,6 +87,13 @@ export default async function (t) {
       if (tracing) check('the animation plays while recording (from the playhead)', times.length > 0 && Math.max(...times) > 1.05, times.map((x) => x.toFixed(2)).join(' '));
       const after = await ok('timeline.state');
       check('the playhead goes back to where the render started', near(after.time, 1, 0.02) && !after.playing, String(after.time));
+      // faster frames: JPG through Screencap while rendering, its own settings back afterwards, the time measured
+      const sp = await ok('render.speed', {});
+      const names = made.length ? fs.readdirSync(made[0]) : [];
+      if (sp0.jpg != null) check('frames are captured as JPG while rendering', names.length > 0 && names.every((n) => /\.jpg$/i.test(n)), names.join(', '));
+      check("Screencap's own settings are back after the render", sp.jpg === sp0.jpg && sp.upsample === sp0.upsample, JSON.stringify({ before: sp0, after: sp }));
+      check('the capture time per frame is measured', sp.frames === 3 && sp.captureMsPerFrame > 0, JSON.stringify(sp));
+      t.metric('capture per frame (320×180)', sp.captureMsPerFrame, 'ms');
       // "to the end": from the playhead to the end of the timeline; the chosen length mode stays chosen
       const tl = await ok('timeline.state');
       await ok('render.set', { limit: 'none' });

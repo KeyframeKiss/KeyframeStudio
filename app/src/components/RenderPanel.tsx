@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { pressable } from '../lib/pressable';
 import { Help } from './Help';
 import { bridge } from '../bridge/client';
-import { call, refreshShots, seekNow, setLiveCuts, toast, useStore } from '../state/store';
+import { call, lsSet, refreshShots, seekNow, setLiveCuts, toast, useStore } from '../state/store';
 import { lastVersions, needsVersions, sameSize, SIZES, toWire, useRenderVersions, type RenderVersion } from '../lib/renderVersions';
 import { FramingCard } from './RenderFraming';
 
@@ -15,7 +15,28 @@ interface RenderStatus {
   progress: number;
   outputFolder: string;
   framesFolder: string;
-  settings: { fps: number; exportFps: number; limit: string; limitNumber: number; format: string; resize: boolean; width: number; height: number; autoEncode: boolean; deleteFrames: boolean; prewarm: number; audio: boolean };
+  settings: {
+    fps: number;
+    exportFps: number;
+    limit: string;
+    limitNumber: number;
+    format: string;
+    resize: boolean;
+    width: number;
+    height: number;
+    autoEncode: boolean;
+    deleteFrames: boolean;
+    prewarm: number;
+    audio: boolean;
+    /** before recording, so physics settle: off, quick (1.5 s), play (the range played through first) */
+    warm?: Warm;
+    /** MP4: x264 medium, VideoExport's own preset (smaller, slower), or the NVIDIA encoder */
+    encode?: Encode;
+    /** no supersampling: faster, rougher edges */
+    draft?: boolean;
+  };
+  /** the NVIDIA encoder works here (null while it's being checked) */
+  gpuEncode?: boolean | null;
   limits: string[];
   formats: string[];
 }
@@ -32,6 +53,18 @@ interface QueueState {
   /** the videos made (named after the shot / version) */
   files?: string[];
 }
+
+type Warm = 'off' | 'quick' | 'play';
+type Encode = 'balanced' | 'small' | 'gpu';
+/** The speed choices, kept between sessions (the bridge forgets them when Studio restarts). */
+const SPEED_KEY = 'studioex.render.speed';
+const speedPrefs = (): { warm?: Warm; encode?: Encode; draft?: boolean } => {
+  try {
+    return JSON.parse(localStorage.getItem(SPEED_KEY) ?? '{}');
+  } catch {
+    return {};
+  }
+};
 
 const FORMAT_HINT: Record<string, string> = { MP4: 'Best for sharing', WEBM: 'Web, smaller files', GIF: 'Short loops, no sound', AVI: 'For editing software' };
 
@@ -69,7 +102,11 @@ export function RenderPanel() {
 
   const load = useCallback(async () => {
     try {
-      const r = await bridge.request<RenderStatus>('render.status');
+      let r = await bridge.request<RenderStatus>('render.status');
+      // the speed choices made before (the bridge starts from its defaults each time Studio starts)
+      const p = speedPrefs();
+      if ((p.warm && p.warm !== r.settings.warm) || (p.encode && p.encode !== r.settings.encode) || (p.draft != null && p.draft !== r.settings.draft))
+        r = await bridge.request<RenderStatus>('render.set', p);
       setSt(r);
       bridge.request<typeof capture>('render.capture').then(setCapture).catch(() => undefined);
       setError(null);
@@ -99,8 +136,16 @@ export function RenderPanel() {
     return () => window.clearInterval(poll.current);
   }, [busy, load]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => () => window.clearInterval(qpoll.current), []);
+  // whether the GPU encoder works is checked once in the background: ask again in a moment
+  useEffect(() => {
+    if (!st || st.gpuEncode !== null) return;
+    const t = window.setTimeout(load, 2500);
+    return () => window.clearTimeout(t);
+  }, [st, load]);
 
   const set = async (patch: Record<string, unknown>) => {
+    const speed = Object.fromEntries(Object.entries(patch).filter(([k]) => k === 'warm' || k === 'encode' || k === 'draft'));
+    if (Object.keys(speed).length) lsSet(SPEED_KEY, JSON.stringify({ ...speedPrefs(), ...speed }));
     const r = await call<RenderStatus>('render.set', patch);
     if (r) setSt(r);
   };
@@ -111,7 +156,7 @@ export function RenderPanel() {
   };
   const start = async () => {
     if (what === 'shots') return startQueue();
-    const r = await call<RenderStatus>('render.start', { ...(sendVersions() ? { versions: toWire(versions) } : {}), useShots: shots.length > 0 && liveCuts });
+    const r = await call<RenderStatus>('render.start', { ...speedPrefs(), ...(sendVersions() ? { versions: toWire(versions) } : {}), useShots: shots.length > 0 && liveCuts });
     if (!r) return;
     setSt(r);
     toast('Rendering. Leave Studio alone until it finishes');
@@ -127,7 +172,7 @@ export function RenderPanel() {
   const startQueue = async () => {
     const ids = shots.filter((s) => isIncluded(s.id)).map((s) => s.id);
     if (!ids.length) return toast('Tick at least one shot');
-    const r = await call<QueueState>('render.queue', sendVersions() ? { ids, versions: toWire(versions) } : { ids });
+    const r = await call<QueueState>('render.queue', { ...speedPrefs(), ids, ...(sendVersions() ? { versions: toWire(versions) } : {}) });
     if (!r) return;
     setQueue(r);
     pollQueue();
@@ -216,7 +261,8 @@ export function RenderPanel() {
     versions.length > 1 || what === 'shots' ? `${(what === 'shots' ? picked.length : 1) * versions.length} video${(what === 'shots' ? picked.length : 1) * versions.length === 1 ? '' : 's'}` : '',
     seconds != null ? `${seconds.toFixed(1)} s` : '',
     frames != null ? `${frames.toLocaleString()} frames` : '',
-    s.prewarm ? `${s.prewarm} warm-up play${s.prewarm > 1 ? 's' : ''}` : '',
+    s.warm === 'play' ? `${Math.max(1, s.prewarm)} warm-up play${s.prewarm > 1 ? 's' : ''}` : '',
+    s.draft ? 'draft' : '',
     s.autoEncode && s.audio && audioClips > 0 && s.format !== 'GIF' ? `with audio (${audioClips} clip${audioClips > 1 ? 's' : ''})` : '',
   ].filter(Boolean);
 
@@ -313,14 +359,53 @@ export function RenderPanel() {
             <div className="cleanup-row" style={{ marginTop: 10 }}>
               <span>
                 Warm-up
-                <Help text="Plays what's about to be recorded this many times first (in real time), so hair and clothes physics have settled when recording starts. For shots, each shot warms up on its own." />
+                <Help text="So hair and clothes physics have settled when recording starts. Quick plays the 1.5 s leading into the start (or holds still there). Play through plays the whole range first, in real time: slower, but a looping animation then joins up seamlessly. For shots, each shot warms up on its own." />
               </span>
-              <div className="seg" title="Plays it this many times before recording so hair and clothes physics settle">
-                {[0, 1, 2, 3].map((n) => (
-                  <button key={n} className={s.prewarm === n ? 'on' : ''} disabled={running || (what === 'timeline' && s.limit === 'Animation')} onClick={() => set({ prewarm: n })}>
-                    {n}
+              <div className="seg">
+                {(
+                  [
+                    ['off', 'Off', 'Start recording straight away'],
+                    ['quick', 'Quick', 'Plays the 1.5 s leading into the start (or holds still there) so physics settle'],
+                    ['play', 'Play through', 'Plays the whole range first, in real time — for seamless loops'],
+                  ] as const
+                ).map(([id, label, hint]) => (
+                  <button
+                    key={id}
+                    className={(s.warm ?? 'play') === id ? 'on' : ''}
+                    title={hint}
+                    disabled={running || (what === 'timeline' && s.limit === 'Animation')}
+                    onClick={() => set(id === 'play' ? { warm: id, prewarm: Math.max(1, s.prewarm) } : { warm: id })}
+                  >
+                    {label}
                   </button>
                 ))}
+              </div>
+            </div>
+            <div className="cleanup-row">
+              <span>
+                Speed
+                <Help text="Draft renders without Screencap's supersampling: much faster, with slightly rougher edges — for checking timing. Encoding (MP4): Balanced is quick with about the same file size; Smallest files uses VideoExport's own slower setting; GPU uses the graphics card's encoder (fastest, files a bit larger)." />
+              </span>
+              <div className="render-speed">
+              <label className="render-check" title="No supersampling: much faster, slightly rougher edges">
+                <input type="checkbox" checked={!!s.draft} disabled={running} onChange={(e) => set({ draft: e.target.checked })} />
+                Draft
+              </label>
+              {s.format === 'MP4' && (
+                <div className="seg">
+                  {(
+                    [
+                      ['balanced', 'Balanced', 'x264, medium: quick, about the same size'],
+                      ['small', 'Smallest files', "VideoExport's own encoder setting (slower)"],
+                      ['gpu', 'GPU', st.gpuEncode ? "The graphics card's encoder: fastest, files a bit larger" : st.gpuEncode === false ? 'Needs an NVIDIA graphics card' : 'Checking the graphics card…'],
+                    ] as const
+                  ).map(([id, label, hint]) => (
+                    <button key={id} className={(s.encode ?? 'small') === id ? 'on' : ''} title={hint} disabled={running || (id === 'gpu' && !st.gpuEncode)} onClick={() => set({ encode: id })}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              )}
               </div>
             </div>
           </div>

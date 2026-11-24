@@ -774,6 +774,7 @@ namespace StudioEX.Bridge.Api
             if (TimelineApi.Pending() > 0) throw new BridgeException("Key or reset your unkeyed changes first — rendering plays the timeline");
             // VideoExport must be usable before we start moving the playhead around
             if (RenderApi.Probe() != null) throw new BridgeException("Render needs VideoExport");
+            RenderApi.ApplySpeed(a);
             _renderShots = true; // one video per shot: through the shots' cameras
             _queue = _i.StartCoroutine(_i.RunQueue(Jobs(shots, Versions(a), true), RenderApi.Warmups()));
             return QueueState;
@@ -860,10 +861,28 @@ namespace StudioEX.Bridge.Api
                     if (version != null) RenderApi.UseSize(version);
                     size = RenderApi.PrepareSize();
                     RenderFraming.Active = RenderFraming.From(version?.ContainsKey("framing") == true ? version["framing"] as Dictionary<string, object> : null);
-                    // warm-up: play the range first (in real time) so hair and clothes physics have settled
-                    for (int w = 0; w < warmups && !(bool)QueueState["cancel"]; w++)
+                    // warm-up, so hair and clothes physics have settled: quick — the 1.5 s leading into the start played
+                    // (what there is of it) and the rest held at the start; play — the range played through first
+                    if (RenderApi.Warm == "quick")
                     {
-                        QueueState["phase"] = "Warm-up " + (w + 1) + " of " + warmups;
+                        QueueState["phase"] = "Warm-up";
+                        float lead = Mathf.Min(1.5f, start);
+                        TimelineApi.PauseAt(start - lead);
+                        _liveId = null;
+                        yield return null;
+                        float w0 = Time.realtimeSinceStartup;
+                        if (lead > 0.05f)
+                        {
+                            TimelineApi.Play();
+                            while (Time.realtimeSinceStartup - w0 < lead && !(bool)QueueState["cancel"]) yield return null;
+                        }
+                        TimelineApi.PauseAt(start);
+                        while (Time.realtimeSinceStartup - w0 < 1.5f && !(bool)QueueState["cancel"]) yield return null;
+                    }
+                    int plays = RenderApi.Warm == "play" ? Math.Max(1, warmups) : 0;
+                    for (int w = 0; w < plays && !(bool)QueueState["cancel"]; w++)
+                    {
+                        QueueState["phase"] = "Warm-up " + (w + 1) + " of " + plays;
                         TimelineApi.PauseAt(start);
                         _liveId = null; // this frame already shows the starting shot's camera
                         yield return null;
@@ -880,12 +899,14 @@ namespace StudioEX.Bridge.Api
                     yield return null;
                     yield return new WaitForEndOfFrame();
                     var startedAt = DateTime.Now;
+                    RenderSpeed.Begin(); // JPG frames, Draft, the encoder choice (Screencap's settings come back after)
                     string err = RenderApi.StartSeconds(end - start);
-                    if (err != null) { QueueState["error"] = err; break; }
+                    if (err != null) { RenderSpeed.End(); QueueState["error"] = err; break; }
                     TimelineApi.Play();
                     // VideoExport takes over the frame clock while recording; wait for recording and encoding
                     yield return null;
                     while (RenderApi.Busy()) yield return null;
+                    RenderSpeed.End();
                     TimelineApi.PauseAt(start);
                     RenderFraming.Active = null;
                     // the finished video: cut to shape if it couldn't be rendered at the size, the scene's audio mixed in
@@ -926,6 +947,7 @@ namespace StudioEX.Bridge.Api
             }
             finally
             {
+                RenderSpeed.End();
                 _rendering = false;
                 if (viewBefore != null)
                 {
