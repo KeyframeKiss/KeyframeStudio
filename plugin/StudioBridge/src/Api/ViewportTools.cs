@@ -18,6 +18,38 @@ namespace StudioEX.Bridge.Api
     /// Ghosts are only rebuilt when nothing is waiting to be keyed: seeking back re-applies the keyed pose,
     /// which would otherwise throw away the user's unkeyed edits.
     /// </summary>
+    /// <summary>
+    /// Studio's view, held still while a job steps through the timeline to measure poses (motion sampling, limb
+    /// locks, motion paths, ghosts). Timeline moves a keyed camera on every seek; without this the view flew along
+    /// the camera keys while the job ran and ended on the keyed camera instead of where the user had left it.
+    /// Restore after every seek (so the frames drawn meanwhile keep the view) and at the end.
+    /// </summary>
+    internal struct KeepView
+    {
+        private Studio.CameraControl.CameraData _data;
+        private float _fov;
+        private bool _ok;
+
+        public static KeepView Take()
+        {
+            var cc = Singleton<Studio.Studio>.Instance?.cameraCtrl;
+            return cc == null ? default(KeepView) : new KeepView { _data = cc.Export(), _fov = cc.fieldOfView, _ok = true };
+        }
+
+        public void Restore()
+        {
+            if (!_ok) return;
+            try
+            {
+                var cc = Singleton<Studio.Studio>.Instance?.cameraCtrl;
+                if (cc == null) return;
+                cc.Import(_data);
+                cc.fieldOfView = _fov;
+            }
+            catch (Exception e) { StudioBridgePlugin.Logger.LogDebug("Keeping the view: " + e.Message); }
+        }
+    }
+
     internal sealed class ViewportTools : MonoBehaviour
     {
         public sealed class PathInfo
@@ -421,6 +453,7 @@ namespace StudioEX.Bridge.Api
             }
             var pts = bones.ToDictionary(kv => kv.Key, kv => kv.Value.Select(_ => new Vector3[n]).ToList());
             float back = TimelineApi.PlaybackTime();
+            var view = KeepView.Take();
             bool seeked = false, ok = false;
             try
             {
@@ -428,6 +461,7 @@ namespace StudioEX.Bridge.Api
                 {
                     HoldBusy(); // requests and change detection wait until we're done
                     TimelineApi.SeekTo(dur * i / (n - 1));
+                    view.Restore();
                     seeked = true;
                     yield return new WaitForEndOfFrame(); // FK / IK / animation applied for this time
                     foreach (var kv in bones)
@@ -441,6 +475,7 @@ namespace StudioEX.Bridge.Api
             finally
             {
                 if (seeked) { try { TimelineApi.SeekTo(back); } catch { } }
+                view.Restore();
                 Busy = false;
                 EventPump.RequestRebase();
                 _bodyBake = null;
@@ -552,6 +587,7 @@ namespace StudioEX.Bridge.Api
             _busySince = Time.unscaledTime;
             var sel = Selected();
             float t0 = TimelineApi.PlaybackTime();
+            var view = KeepView.Take();
             bool seeked = false;
             try
             {
@@ -564,6 +600,7 @@ namespace StudioEX.Bridge.Api
                 foreach (var t in times)
                 {
                     TimelineApi.SeekTo(t);
+                    view.Restore();
                     seeked = true;
                     yield return new WaitForEndOfFrame(); // let IK/FK/animation settle for this time
                     if (_ghostRoot == null) yield break; // scene was cleared mid-bake
@@ -577,6 +614,7 @@ namespace StudioEX.Bridge.Api
                     foreach (var oci in sel) Bake(oci, mat);
                 }
                 TimelineApi.SeekTo(t0);
+                view.Restore();
                 seeked = false;
                 yield return null;
             }
@@ -588,6 +626,7 @@ namespace StudioEX.Bridge.Api
                 // Runs on completion, on exceptions and on yield break: never leave Studio at a ghost time
                 // or the bridge muted.
                 if (seeked) { try { TimelineApi.SeekTo(t0); } catch { } }
+                view.Restore();
                 Busy = false;
                 _bake = null;
             }

@@ -154,12 +154,14 @@ namespace StudioEX.Bridge.Api
             var seen = watched.ToDictionary(i => i, i => new LockSample[n]);
             string error = null;
             bool seeked = false, stepped = false;
+            var view = KeepView.Take();
             try
             {
                 for (int k = 0; k < n; k++)
                 {
                     ViewportTools.HoldBusy(); // requests and change detection wait until we're done
                     TL.Seek(job.Times[k]);
+                    view.Restore();
                     seeked = true;
                     yield return new WaitForEndOfFrame(); // animation, FK and IK applied for this moment
                     if (c.charInfo == null) { error = "The character was removed"; yield break; }
@@ -187,6 +189,7 @@ namespace StudioEX.Bridge.Api
             finally
             {
                 if (seeked) { try { TL.Seek(job.Back); } catch { } }
+                view.Restore();
                 ViewportTools.Busy = false;
                 // stopped early (removed character, or something threw): say so instead of leaving the app waiting
                 if (!stepped) Finish(job, null, error ?? "Stepping through the timeline failed — see the BepInEx log");

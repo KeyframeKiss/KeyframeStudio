@@ -171,6 +171,7 @@ namespace StudioEX.Bridge.Api
                     _lineColor = new Color(C(0, 1), C(1, 1), C(2, 1), C(3, _lineColor.a));
                 }
             }
+            StudioBridgePlugin.Instance?.Broadcast("camtools.changed", null); // the app's "camera taken over" chip
             return State();
         }
 
@@ -334,6 +335,55 @@ namespace StudioEX.Bridge.Api
             if (ctrl == null) return;
             float k = 1 - Mathf.Exp(-_followSpeed * Time.unscaledDeltaTime);
             ctrl.targetPos = Vector3.Lerp(ctrl.targetPos, _target.position, k);
+        }
+
+        /// <summary>
+        /// A first person / follow shot's view, worked out without Studio's camera (for the monitor): first person at
+        /// the character's eyes looking where the head looks; follow keeps the shot's angle and distance around the
+        /// body part. False when the character is gone.
+        /// </summary>
+        internal static bool ShotView(string mode, Dictionary<string, object> shot, out Vector3 pos, out Quaternion rot, out float fov, out float near)
+        {
+            pos = Vector3.zero;
+            rot = Quaternion.identity;
+            fov = 23f;
+            near = -1f;
+            var c = shot.Has("who") ? SceneApi.FindOci(shot.GetInt("who")) as OCIChar : null;
+            if (c?.charInfo == null) return false;
+            if (mode == "pov")
+            {
+                var head = c.charInfo.objHeadBone != null ? c.charInfo.objHeadBone.transform : Bone(c, "head");
+                var eyes = Bone(c, "eyes");
+                rot = head.rotation;
+                pos = (eyes != null ? eyes.position : head.position) + rot * Vector3.forward * 0.03f;
+                fov = Instance != null ? Instance._povFov : 70f;
+                near = 0.01f;
+                return true;
+            }
+            string part = shot.GetString("bone");
+            var target = Bone(c, !string.IsNullOrEmpty(part) && Bones.ContainsKey(part) ? part : "chest");
+            var cam = shot.GetObject("cam");
+            Vector3 angles, dist;
+            if (cam != null)
+            {
+                var r = cam.GetList("rot");
+                var d = cam.GetList("dist");
+                angles = new Vector3(Convert.ToSingle(r[0]), Convert.ToSingle(r[1]), Convert.ToSingle(r[2]));
+                dist = new Vector3(Convert.ToSingle(d[0]), Convert.ToSingle(d[1]), Convert.ToSingle(d[2]));
+                fov = cam.GetFloat("fov", 23f);
+            }
+            else
+            {
+                var cc = Singleton<Studio.Studio>.Instance?.cameraCtrl;
+                if (cc == null) return false;
+                var now = cc.Export();
+                angles = now.rotate;
+                dist = now.distance;
+                fov = cc.fieldOfView;
+            }
+            rot = Quaternion.Euler(angles);
+            pos = target.position + rot * dist;
+            return true;
         }
 
         /// <summary>Scene changes: let go of characters that are gone.</summary>

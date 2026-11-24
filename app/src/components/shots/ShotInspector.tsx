@@ -11,9 +11,9 @@ import { ANGLE_DRAG, CamKeyList, keyCamera, reloadCam, useCam } from '../CameraP
 import { canRender, deleteShot, duplicate, fromAngle, lookThrough, patchShot, playShot, setTrans, splitAtPlayhead, STATUSES, TRANSITIONS, transProblem, useCurrentView, workOn } from './actions';
 
 const MODES: { id: ShotCamMode; label: string; hint: string }[] = [
-  { id: 'still', label: 'Still', hint: 'Its own camera: Studio’s view or an angle. With Play the edit on, Studio switches to it as the shot starts. (Camera keys in the shot win over it.)' },
+  { id: 'still', label: 'Still', hint: 'Its own camera: Studio’s view or an angle. With Play the edit on, the monitor and renders switch to it as the shot starts. (Camera keys in the shot win over it.)' },
   { id: 'keys', label: 'Keys', hint: 'The camera moves inside the shot by its camera keys (key it, or add a camera move across the shot).' },
-  { id: 'pov', label: 'First person', hint: 'Through a character’s eyes, turning with the head. With Play the edit on, Studio switches to it for this shot.' },
+  { id: 'pov', label: 'First person', hint: 'Through a character’s eyes, turning with the head. With Play the edit on, the monitor and renders look through them for this shot.' },
   { id: 'follow', label: 'Follow', hint: 'Starts from the shot’s camera and keeps a body part in view as it moves.' },
 ];
 const BONES = ['head', 'eyes', 'chest', 'hips', 'handL', 'handR', 'feet'];
@@ -243,7 +243,7 @@ export function ShotInspector({ shot, index }: { shot: Shot; index: number }) {
                     </div>
                   </div>
                 )}
-                <div className="sq-tip">{mode === 'pov' ? 'With Play the edit on, Studio looks through the character’s eyes for this shot, and back out at the next cut.' : 'It starts from the shot’s camera (Use current view sets it) and keeps the body part in view while you orbit.'}</div>
+                <div className="sq-tip">{mode === 'pov' ? 'With Play the edit on, the monitor and renders look through the character’s eyes for this shot, and back out at the next cut.' : 'It starts from the shot’s camera (Use current view sets it) and keeps the body part in view while you orbit.'}</div>
               </>
             ) : mode === 'still' ? (
               <>
@@ -294,7 +294,7 @@ export function ShotInspector({ shot, index }: { shot: Shot; index: number }) {
           <div className="sq-insp-block">
             <div className="sq-insp-h">
               Frame
-              <Help text="The picture shape shown in Studio's window while this shot is on screen (with Play the edit on, or when you look through it). Off: no frame." />
+              <Help text="The picture shape shown in Studio's window while this shot is on screen (when Studio's view shows the edit, or when you look through it). Off: no frame." />
             </div>
             <div className="ct-chips sq-frames">
               {ASPECTS.filter((a) => typeof a.v === 'number').map((a) => {

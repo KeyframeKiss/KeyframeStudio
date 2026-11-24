@@ -6,6 +6,7 @@ import { PreviewPanel } from './components/PreviewPanel';
 import { AnimationsOverlay } from './components/AnimationsOverlay';
 import { RecordingBadge } from './components/QuickActions';
 import { MessagesButton, ToastItem } from './components/Messages';
+import { CameraTakeoverChip } from './components/CameraToolsCards';
 import { Header, MiniHeader, TransportBar } from './components/Shell';
 import { DopeSheet } from './components/DopeSheet';
 import { SHORTCUTS } from './components/shortcuts';
@@ -269,6 +270,7 @@ export function App() {
           <span>{status === 'connecting' ? 'Connecting to CharaStudio…' : 'Waiting for CharaStudio'}</span>
         )}
         <div className="spacer" />
+        <CameraTakeoverChip />
         <MessagesButton />
         <span>
           <span className="kbd">Ctrl K</span> actions · <span className="kbd">?</span> shortcuts

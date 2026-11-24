@@ -151,6 +151,8 @@ export interface AppState {
   selShotId: string | null;
   /** Studio's camera switches to each shot's camera while the timeline plays */
   liveCuts: boolean;
+  /** Studio's own view follows the edit too (else only the monitor and renders do). */
+  studioEdit: boolean;
   /** the scene's angles (camera setups to reuse) */
   angles: Angle[];
   /** still shots that have camera keys in them: they play those keys */
@@ -261,7 +263,7 @@ export const useStore = create<AppState>(() => ({
   audioListen: null,
   audioDelay: { output: 0, mixer: 0 },
   miniMode: false,
-  shots: [], selShotId: null, liveCuts: false, angles: [], keyedShots: [], workingShotId: null, frameFullTimeline: false, loopShot: false, renderShotIds: null, sceneName: null, sceneFilter: 'all',
+  shots: [], selShotId: null, liveCuts: false, studioEdit: false, angles: [], keyedShots: [], workingShotId: null, frameFullTimeline: false, loopShot: false, renderShotIds: null, sceneName: null, sceneFilter: 'all',
   groupMode: (lsGet('studioex.groupMode') as 'objects' | 'folders') || 'objects',
   settingsOpen: false,
   workspace: WORKSPACES.includes(lsGet('studioex.workspace') as Workspace) && lsGet('studioex.workspace') !== 'settings' ? (lsGet('studioex.workspace') as Workspace) : 'animate',
@@ -297,8 +299,8 @@ export async function saveSceneFile() {
 /** Re-read the scene's shots (and whether Play the edit is on). */
 export async function refreshShots() {
   if (get().hello?.commands.includes('shots.state')) {
-    const r = await bridge.request<{ shots: Shot[]; liveCuts: boolean; angles?: Angle[]; keyed?: string[] }>('shots.state').catch(() => null);
-    set({ shots: r?.shots ?? [], liveCuts: !!r?.liveCuts, angles: r?.angles ?? [], keyedShots: r?.keyed ?? [] });
+    const r = await bridge.request<{ shots: Shot[]; liveCuts: boolean; studioEdit?: boolean; angles?: Angle[]; keyed?: string[] }>('shots.state').catch(() => null);
+    set({ shots: r?.shots ?? [], liveCuts: !!r?.liveCuts, studioEdit: !!r?.studioEdit, angles: r?.angles ?? [], keyedShots: r?.keyed ?? [] });
   } else {
     const s = await bridge.request<Shot[]>('shots.get').catch(() => null);
     set({ shots: s ?? [] });
@@ -329,6 +331,13 @@ export async function saveShots(next: Shot[], label = 'Edit shots') {
   const r = await call<Shot[]>('shots.set', { shots: next, label });
   set({ shots: r ?? before });
   return !!r;
+}
+
+/** Studio's own view follows the edit too (off: Studio's view stays your work camera; the monitor and renders show the edit). */
+export async function setStudioEdit(on: boolean) {
+  set({ studioEdit: on });
+  const r = await call<{ studioEdit: boolean }>('shots.setStudioEdit', { on });
+  if (r) set({ studioEdit: !!r.studioEdit });
 }
 
 export async function setLiveCuts(on: boolean) {
@@ -782,7 +791,7 @@ export function initBridge() {
   });
   bridge.on('scene.file', (name) => set({ sceneName: typeof name === 'string' ? name : null }));
   bridge.on('scene.reset', () => {
-    set({ workingShotId: null, frameFullTimeline: false, loopShot: false, renderShotIds: null, sceneName: null, shots: [], selShotId: null, liveCuts: false, angles: [] });
+    set({ workingShotId: null, frameFullTimeline: false, loopShot: false, renderShotIds: null, sceneName: null, shots: [], selShotId: null, liveCuts: false, studioEdit: false, angles: [] });
     set({ selKeys: new Set(), selTracks: new Set(), clipboard: null });
     window.setTimeout(() => {
       refreshAudio(); // a loaded scene may bring its own audio and shots

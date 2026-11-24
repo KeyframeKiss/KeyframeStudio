@@ -5,6 +5,7 @@ import { displayName, toast, useStore } from '../state/store';
 import { Slider } from './CharacterPanel';
 import { ColorInput, Switch } from './LookPanel';
 import { Field, Panel } from './Page';
+import { Icon } from './Icon';
 
 // Shoot › Shots & camera: what the camera is doing (free / first person / follow) and the frame guides over
 // Studio's window. RealPOV / LockOnPlugin do first person and follow when they're installed (switchable).
@@ -315,3 +316,32 @@ export function FrameGuidesPanel() {
     </Panel>
   );
 }
+
+/**
+ * Status bar: says so while first person or follow has Studio's camera (from the Camera menu or a shot looked
+ * through), with Stop. Otherwise nothing: Studio's view is your own.
+ */
+export function CameraTakeoverChip() {
+  const status = useStore((s) => s.status);
+  const nodes = useStore((s) => s.nodes);
+  const t = useCamTools((s) => s.t);
+  useStore((s) => s.showEnglish);
+  useEffect(() => {
+    if (status === 'open') loadCamTools();
+  }, [status]);
+  if (status !== 'open' || !t || !(t.pov.on || t.follow.on)) return null;
+  const pov = t.pov.on;
+  const who = nodes[pov ? t.pov.id : t.follow.id];
+  const name = who ? displayName(who) : 'a character';
+  const text = pov ? `First person: ${name}` : `Camera follows ${name}${t.follow.bone ? `'s ${BONE_WORDS[t.follow.bone] ?? t.follow.bone}` : ''}`;
+  return (
+    <span className="cam-takeover" title="Studio's camera is being moved for you. Stop gives you your own view back.">
+      <Icon name={pov ? 'target' : 'follow'} size={12} />
+      {text}
+      <button className="btn small solid" onClick={() => setCamTools({ pov: { on: false }, follow: { on: false } })}>
+        Stop
+      </button>
+    </span>
+  );
+}
+const BONE_WORDS: Record<string, string> = { head: 'head', eyes: 'eyes', chest: 'chest', hips: 'hips', handL: 'left hand', handR: 'right hand', feet: 'feet' };

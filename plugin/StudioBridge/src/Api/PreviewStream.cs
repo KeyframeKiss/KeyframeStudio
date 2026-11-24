@@ -195,14 +195,16 @@ namespace StudioEX.Bridge.Api
             var keepPos = cam.transform.position;
             var keepRot = cam.transform.rotation;
             float keepFov = cam.fieldOfView;
+            float keepNear = cam.nearClipPlane;
             bool moved = false;
             try
             {
-                if (_program && ShotApi.ProgramCamera(out var p, out var r, out var f))
+                if (_program && ShotApi.ProgramCamera(out var p, out var r, out var f, out var nr))
                 {
                     cam.transform.position = p;
                     cam.transform.rotation = r;
                     cam.fieldOfView = f;
+                    if (nr > 0f) cam.nearClipPlane = nr;
                     moved = true;
                 }
                 // the transition at the playhead (dip, dissolve) shows on the monitor even without live cuts
@@ -219,6 +221,7 @@ namespace StudioEX.Bridge.Api
                     cam.transform.position = keepPos;
                     cam.transform.rotation = keepRot;
                     cam.fieldOfView = keepFov;
+                    cam.nearClipPlane = keepNear;
                 }
             }
             _renderMs = Ema(_renderMs, _sw.Elapsed.TotalMilliseconds);

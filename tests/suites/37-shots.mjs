@@ -13,6 +13,7 @@ export default async function (t) {
   const changed = () => studio.waitFor('shots.changed', () => true, 5000);
   t.defer(async () => {
     await req('shots.setLiveCuts', { on: false });
+    await req('shots.setStudioEdit', { on: false });
     await req('shots.set', { shots: [] });
     await req('camtools.set', { guides: { aspect: 0 }, pov: { on: false }, follow: { on: false } });
     await req('angles.set', { angles: [] });
@@ -64,9 +65,29 @@ export default async function (t) {
     check('new pictures for the still shots', n === 2, String(n));
   });
 
-  await t.step('live cuts switch cameras at the cuts', async () => {
+  await t.step('Studio’s view is your work camera: Play the edit alone never moves it', async () => {
     await ok('shots.setLiveCuts', { on: true });
-    check('on, and saved in the state', (await state()).liveCuts === true);
+    check('on, and saved in the state; Studio’s view not following by default', (await state()).liveCuts === true && (await state()).studioEdit === false);
+    await ok('timeline.seek', { t: 0.5 });
+    await sleep(300);
+    await ok('camera.setFov', { fov: 33 });
+    for (const tm of [3, 0.7, 3.4]) {
+      await ok('timeline.seek', { t: tm });
+      await sleep(300);
+    }
+    check('scrubbing across cuts leaves Studio’s view alone', near(await fovNow(), 33, 0.05), String(await fovNow()));
+    await ok('timeline.seek', { t: 0.2 });
+    await ok('timeline.play');
+    await sleep(500);
+    const playing = await fovNow();
+    await ok('timeline.pause');
+    check('…and so does playing', near(playing, 33, 0.05), String(playing));
+  });
+
+  await t.step('live cuts switch cameras at the cuts (In Studio’s view too)', async () => {
+    await ok('shots.setLiveCuts', { on: true });
+    const st0 = await ok('shots.setStudioEdit', { on: true });
+    check('In Studio’s view too: on', st0.studioEdit === true);
     await ok('timeline.seek', { t: 0.5 });
     await sleep(400);
     check('in shot A: its camera', near(await fovNow(), 23, 0.05), String(await fovNow()));
@@ -188,6 +209,7 @@ export default async function (t) {
   await t.step('camera types: first person and follow switch at the cuts', async () => {
     if (!chara) return t.say('no character in the sample: skipped');
     await ok('shots.setLiveCuts', { on: true });
+    await ok('shots.setStudioEdit', { on: true });
     const s0 = await state();
     await ok('shots.set', { shots: s0.shots.map((x) => (x.id === 'B' ? { ...x, camMode: 'pov', who: chara.id } : x)), label: 'Shot camera: first person' });
     await ok('timeline.seek', { t: 0.5 });
@@ -209,6 +231,15 @@ export default async function (t) {
     await ok('timeline.seek', { t: 0.5 });
     await sleep(500);
     check('…and lets go at the next cut', !(await ok('camtools.get')).follow.on);
+    // Studio's view back to your own: a follow shot doesn't take it, and turning it off lets go
+    await ok('timeline.seek', { t: 3 });
+    await sleep(500);
+    await ok('shots.setStudioEdit', { on: false });
+    await sleep(200);
+    check('turning In Studio’s view too off lets go of follow', !(await ok('camtools.get')).follow.on);
+    await ok('timeline.seek', { t: 3.3 });
+    await sleep(500);
+    check('…and a follow shot no longer takes Studio’s view', !(await ok('camtools.get')).follow.on);
     await ok('undo');
     await ok('undo');
   });
@@ -229,6 +260,7 @@ export default async function (t) {
 
   await t.step('transitions: glide, dips, dissolve', async () => {
     await ok('shots.setLiveCuts', { on: true });
+    await ok('shots.setStudioEdit', { on: true });
     await ok('camera.setFov', { fov: 20 });
     await sleep(200);
     await ok('shots.set', { shots: [{ id: 'A', name: 'Wide', start: 0, end: 2 }, { id: 'B', name: 'Close', start: 2, end: 4 }], label: 'Shots' });
@@ -287,6 +319,7 @@ export default async function (t) {
   await t.step('a render with Play the edit: first frame, the cut, a dip', async () => {
     if (!t.has('render')) return t.say('VideoExport not usable: skipped');
     await ok('shots.setLiveCuts', { on: true });
+    await ok('shots.setStudioEdit', { on: false }); // renders follow the edit whatever Studio's view does
     await ok('camera.setFov', { fov: 30 });
     await sleep(200);
     await ok('shots.set', { shots: [{ id: 'A', name: 'Wide', start: 0, end: 2 }, { id: 'B', name: 'Close', start: 2, end: 4, trans: { type: 'dipBlack', dur: 1, ease: 'linear' } }], label: 'Shots' });
@@ -330,6 +363,7 @@ export default async function (t) {
 
   await t.step('camera keys win; scrubbing shows the edit; one switch for Studio and renders', async () => {
     await ok('shots.setLiveCuts', { on: true });
+    await ok('shots.setStudioEdit', { on: true });
     await ok('timeline.seek', { t: 0 });
     await sleep(200);
     await ok('camera.setFov', { fov: 30 });
@@ -371,6 +405,7 @@ export default async function (t) {
     const original = (await ok('render.status')).settings;
     t.defer(() => req('render.set', { fps: original.fps, exportFps: original.exportFps, limit: original.limit, limitNumber: original.limitNumber, format: original.format, resize: original.resize, width: original.width, height: original.height, autoEncode: original.autoEncode, deleteFrames: original.deleteFrames, prewarm: original.prewarm }));
     await ok('render.set', { fps: 30, limit: 'Seconds', limitNumber: 4, autoEncode: false, deleteFrames: true, resize: true, width: 160, height: 90, prewarm: 0 });
+    await ok('shots.setStudioEdit', { on: false }); // renders follow Play the edit on their own
     const renderTrace = async (on) => {
       await ok('shots.setLiveCuts', { on });
       await ok('timeline.resetPose');

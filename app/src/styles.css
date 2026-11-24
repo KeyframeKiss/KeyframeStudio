@@ -9415,3 +9415,22 @@ a.btn {
   filter: blur(14px) saturate(0.85);
   transform: scale(1.15);
 }
+
+/* status bar: something has Studio's camera (first person / follow), with Stop */
+.cam-takeover {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 1px 2px 1px 8px;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--text-0);
+  white-space: nowrap;
+}
+.cam-takeover .btn.small {
+  height: 18px;
+  padding: 0 8px;
+  border-radius: 999px;
+  font-size: 10.5px;
+}

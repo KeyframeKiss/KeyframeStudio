@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { call, editTimeline, refreshShots, renderShots, saveShots, setLiveCuts, setSettings, toast, useStore } from '../../state/store';
+import { call, editTimeline, refreshShots, renderShots, saveShots, setLiveCuts, setSettings, setStudioEdit, toast, useStore } from '../../state/store';
 import { byStart, covered, fixOverlaps, pastEnd, problems, trimToEnd } from '../../lib/shots';
 import { ContextMenu, type MenuItem } from '../ContextMenu';
 import { Help } from '../Help';
@@ -24,6 +24,7 @@ export function ShotsPage() {
   const shots = useStore((s) => s.shots);
   const sel = useStore((s) => s.selShotId);
   const live = useStore((s) => s.liveCuts);
+  const studioEdit = useStore((s) => s.studioEdit);
   const sceneName = useStore((s) => s.sceneName);
   const duration = useStore((s) => s.tl?.duration ?? 10);
   const [view, setView] = useState<View>(() => {
@@ -141,13 +142,30 @@ export function ShotsPage() {
             onClick={() => setLiveCuts(!live)}
             title={
               live
-                ? 'Play the edit is on: Studio’s view (playing and scrubbing), the monitor and renders all follow the shots — their cameras, cuts and transitions. Shots with camera keys play their keys. Click to turn off'
-                : 'Play the edit is off: Studio, the monitor and renders play the timeline’s own camera and ignore the shots. Click to turn on'
+                ? 'Play the edit is on: the monitor and renders follow the shots (their cameras, cuts and transitions). Click to turn off'
+                : 'Play the edit is off: the monitor and renders play the timeline’s own camera and ignore the shots. Click to turn on'
             }
           >
             <span className="sq-live-dot" />
             Play the edit
           </button>
+          {live && (
+            <button
+              className={`sq-live ${studioEdit ? 'on' : ''}`}
+              role="switch"
+              aria-checked={studioEdit}
+              disabled={status !== 'open'}
+              onClick={() => setStudioEdit(!studioEdit)}
+              title={
+                studioEdit
+                  ? 'Studio’s view follows the edit too: it switches cameras at the cuts while playing and scrubbing. Click to keep Studio’s view as your own work camera'
+                  : 'Studio’s view is your work camera: the shots never move it. Click to make Studio’s view follow the edit too'
+              }
+            >
+              <span className="sq-live-dot" />
+              In Studio’s view too
+            </button>
+          )}
           <button className="btn small primary" disabled={status !== 'open'} onClick={() => addShotAt()} title="A shot from the playhead to the next shot (or 3 s), with Studio's camera as it is now">
             <Icon name="plus" size={12} /> Shot at playhead
           </button>
@@ -175,7 +193,7 @@ export function ShotsPage() {
                 Frame a view in Studio and keep it as an angle (<b>Angles › + From Studio’s view</b>). Make one for each camera position.
               </li>
               <li>Drag an angle onto the track where the shot should be — or put the playhead there and press <b>+ Shot at playhead</b>.</li>
-              <li>Press play: with Play the edit on, Studio, the monitor and renders switch cameras at every cut.</li>
+              <li>Press play: with Play the edit on, the monitor and renders switch cameras at every cut (and Studio’s view too, if you turn that on).</li>
             </ol>
           </div>
         )}

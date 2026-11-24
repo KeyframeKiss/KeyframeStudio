@@ -40,7 +40,17 @@ namespace StudioEX.Bridge.Api
         /// <summary>A render (one range or the shot queue) is under way.</summary>
         internal static bool Rendering => (bool)QueueState["running"];
         /// <summary>Shots drive the camera: live cuts, or a render that uses the shots.</summary>
-        private static bool ShotsActive => _liveCuts;
+        // Studio's view is the user's work camera: the shots move it only while a render records, or when the user
+        // asks Studio to show the edit too. Otherwise Play the edit is the monitor and renders.
+        private static bool _studioEdit;
+        private static bool ShotsActive => _liveCuts && (_rendering || _studioEdit);
+
+        /// <summary>A shot left first person / follow switched on for Studio's camera: let go (the work view is free).</summary>
+        private static void ReleaseShotModes()
+        {
+            if (_shots.Any(s => s.GetString("camMode") == "pov" || s.GetString("camMode") == "follow")) CameraTools.ShotMode(null, -1, null);
+            if (TransitionFx.Live != null) { TransitionFx.Live = null; TransitionFx.Sync(Camera.main); }
+        }
         private static List<object> _trace;
         private static string _traceShot;
         private static bool _traceApplied;
@@ -134,6 +144,16 @@ namespace StudioEX.Bridge.Api
             {
                 _liveCuts = a.GetBool("on");
                 _liveId = null; // the next frame switches to the shot under the playhead
+                if (!ShotsActive) ReleaseShotModes();
+                Broadcast();
+                return State();
+            });
+            // whether Studio's own view follows the edit too (else only the monitor and renders do)
+            r.Add("shots.setStudioEdit", a =>
+            {
+                _studioEdit = a.GetBool("on");
+                _liveId = null;
+                if (!ShotsActive) ReleaseShotModes();
                 Broadcast();
                 return State();
             });
@@ -160,7 +180,7 @@ namespace StudioEX.Bridge.Api
         private static Dictionary<string, object> State()
         {
             var keyed = _shots.Where(x => x.GetString("camMode") == "still" && Mode(x) == "keys").Select(x => (object)x.GetString("id")).ToList();
-            var d = new Dictionary<string, object> { { "shots", _shots }, { "liveCuts", _liveCuts }, { "angles", _angles }, { "keyed", keyed } };
+            var d = new Dictionary<string, object> { { "shots", _shots }, { "liveCuts", _liveCuts }, { "studioEdit", _studioEdit }, { "angles", _angles }, { "keyed", keyed } };
             var tr = TransitionFx.Live;
             if (tr != null) d["transition"] = new Dictionary<string, object> { { "type", tr.Type }, { "f", Math.Round(tr.F, 4) }, { "fade", Math.Round(tr.FadeA, 4) }, { "out", Math.Round(tr.OutA, 4) }, { "id", tr.Id } };
             return d;
@@ -563,16 +583,22 @@ namespace StudioEX.Bridge.Api
             return null;
         }
 
-        /// <summary>For the monitor: where the playhead's shot looks from, when it's a still shot with a camera.</summary>
-        internal static bool ProgramCamera(out Vector3 pos, out Quaternion rot, out float fov)
+        /// <summary>
+        /// For the monitor: where the playhead's shot looks from — a still shot's camera, a transition's, or a first
+        /// person / follow shot worked out from its character (without touching Studio's view). near &lt; 0: keep.
+        /// </summary>
+        internal static bool ProgramCamera(out Vector3 pos, out Quaternion rot, out float fov, out float near)
         {
             pos = Vector3.zero;
             rot = Quaternion.identity;
             fov = 0f;
+            near = -1f;
             if (_shots.Count == 0 || !TimelineApi.Available) return false;
             float t = TimelineApi.PlaybackTime();
             var shot = ShotAt(t);
             var tr = Compute(t);
+            if (tr?.Cam == null && shot != null && (Mode(shot) == "pov" || Mode(shot) == "follow"))
+                return CameraTools.ShotView(Mode(shot), shot, out pos, out rot, out fov, out near);
             var cam = tr?.Cam != null ? tr.Cam.GetObject("cam") : shot != null && Mode(shot) == "still" ? shot.GetObject("cam") : null;
             if (cam == null) return false;
             rot = Quaternion.Euler(V(cam.GetList("rot")));
@@ -963,6 +989,7 @@ namespace StudioEX.Bridge.Api
             {
                 RenderSpeed.End();
                 _rendering = false;
+                if (!ShotsActive) ReleaseShotModes();
                 if (viewBefore != null)
                 {
                     try

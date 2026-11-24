@@ -54,6 +54,7 @@ namespace StudioEX.Bridge.Api
         {
             Running = true;
             float back = TimelineApi.PlaybackTime();
+            var view = KeepView.Take();
             var times = new List<object>();
             var series = names.ToDictionary(x => x, x => new List<object>());
             double height = 0;
@@ -66,6 +67,7 @@ namespace StudioEX.Bridge.Api
                     ViewportTools.HoldBusy(); // requests and change detection wait until we're done
                     float t = n == 1 ? t0 : t0 + (t1 - t0) * i / (n - 1);
                     TimelineApi.SeekTo(t);
+                    view.Restore();
                     seeked = true;
                     yield return new WaitForEndOfFrame(); // IK/FK and animation applied for this time
                     if (c.charInfo == null) { error = "The character was removed"; yield break; }
@@ -82,6 +84,7 @@ namespace StudioEX.Bridge.Api
             finally
             {
                 if (seeked) { try { TimelineApi.SeekTo(back); } catch { } }
+                view.Restore();
                 ViewportTools.Busy = false;
                 Running = false;
                 EventPump.RequestRebase();
