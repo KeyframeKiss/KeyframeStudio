@@ -415,11 +415,20 @@ export function MotionPage() {
       </div>
 
       {chara != null && selBlock && (
-        <div className="mo-inspector">
+        <div className={`mo-inspector ${selBlock.kind}`}>
           <div className="mo-insp-head">
-            <Icon name={iconOf(selBlock.kind)} size={13} />
-            <b>{blockName(selBlock)}</b>
-            <span className="sub">{selBlock.kind === 'clip' ? 'Studio clip' : selBlock.kind === 'mclip' ? 'Motion clip' : 'Pose (held)'}</span>
+            <span className="mo-insp-icon">
+              <Icon name={iconOf(selBlock.kind)} size={14} />
+            </span>
+            <div className="mo-insp-title">
+              <b>{blockName(selBlock)}</b>
+              <span className="sub">
+                {selBlock.kind === 'clip' ? 'Studio clip' : selBlock.kind === 'mclip' ? 'Motion clip' : 'Pose (held)'}
+                <span className="mo-insp-range">
+                  {fmt(selBlock.start)} – {fmt(blockEnd(selBlock))}
+                </span>
+              </span>
+            </div>
             <span className="spacer" />
             <button className="btn small solid" onClick={() => setPicker({ kind: selBlock.kind, replace: selBlock.id })}>
               Replace…
@@ -428,70 +437,119 @@ export function MotionPage() {
               Duplicate
             </button>
             <button className="btn small solid danger" onClick={() => remove(chara, selBlock.id)}>
+              <Icon name="trash" size={12} />
               Remove
             </button>
           </div>
-          <div className="mo-fields">
-            <label>
-              Starts at
-              <NumberField value={selBlock.start} format={fmt} parse={parseS} onCommit={(v) => update({ start: snapT(v) }, 'Move block')} />
-            </label>
-            <label>
-              Length
-              <NumberField value={selBlock.len} format={fmt} parse={parseS} onCommit={(v) => update({ len: Math.max(1 / fps, snapT(v)) }, 'Change block length')} />
-            </label>
-            {plays(selBlock) && (
-              <>
+          <div className="mo-groups">
+            <section className="mo-group">
+              <h4>Timing</h4>
+              <div className="mo-row-fields">
                 <label>
-                  Speed
-                  <NumberField value={selBlock.speed ?? 1} format={(v) => `${v.toFixed(2)}×`} parse={(s) => {
-                    const v = Number(s.replace(/x|×/gi, '').trim());
-                    return Number.isFinite(v) && v > 0 ? Math.min(10, Math.max(0.05, v)) : null;
-                  }} onCommit={(v) => update({ speed: v }, 'Change speed')} />
+                  Starts at
+                  <NumberField value={selBlock.start} format={fmt} parse={parseS} onCommit={(v) => update({ start: snapT(v) }, 'Move block')} />
                 </label>
                 <label>
-                  Clip starts at
-                  <NumberField value={selBlock.offset ?? 0} format={fmt} parse={parseS} onCommit={(v) => update({ offset: Math.max(0, v) }, 'Change clip start')} />
+                  Length
+                  <NumberField value={selBlock.len} format={fmt} parse={parseS} onCommit={(v) => update({ len: Math.max(1 / fps, snapT(v)) }, 'Change block length')} />
                 </label>
-              </>
-            )}
-            {seq && seq.blocks[0]?.id !== selBlock.id && (
-              <label>
-                Blend in
-                <NumberField value={selBlock.blend} format={fmt} parse={parseS} onCommit={(v) => update({ blend: Math.min(selBlock.len, Math.max(0, v)) }, 'Change blend')} />
-              </label>
-            )}
-            {seq && seq.blocks[0]?.id !== selBlock.id && (
-              <div className="seg mo-ease" title="How the blend moves: smooth eases in and out, linear goes at an even pace">
-                {(['smooth', 'linear'] as const).map((e) => (
-                  <button key={e} className={selBlock.ease === e ? 'on' : ''} onClick={() => update({ ease: e }, 'Change blend')}>
-                    {e === 'smooth' ? 'Smooth' : 'Linear'}
+                {natural != null && (
+                  <button
+                    className="btn small solid mo-fit"
+                    onClick={() => update({ len: Math.max(1 / fps, snapT(natural / (selBlock.speed ?? 1))) }, 'Change block length')}
+                    title="Make the block one pass of the clip at this speed"
+                  >
+                    <Icon name="fit" size={12} />
+                    Fit {(natural / (selBlock.speed ?? 1)).toFixed(2)} s
                   </button>
-                ))}
+                )}
               </div>
+            </section>
+            {plays(selBlock) && (
+              <section className="mo-group">
+                <h4>Playback</h4>
+                <div className="mo-row-fields">
+                  <label>
+                    Speed
+                    <NumberField value={selBlock.speed ?? 1} format={(v) => `${v.toFixed(2)}×`} parse={(s) => {
+                      const v = Number(s.replace(/x|×/gi, '').trim());
+                      return Number.isFinite(v) && v > 0 ? Math.min(10, Math.max(0.05, v)) : null;
+                    }} onCommit={(v) => update({ speed: v }, 'Change speed')} />
+                  </label>
+                  <label>
+                    Clip starts at
+                    <NumberField value={selBlock.offset ?? 0} format={fmt} parse={parseS} onCommit={(v) => update({ offset: Math.max(0, v) }, 'Change clip start')} />
+                  </label>
+                </div>
+              </section>
             )}
-            {selBlock.tweaks && Object.keys(selBlock.tweaks).length > 0 && (
-              <div className="mo-tweaks" title={Object.keys(selBlock.tweaks).join(', ')}>
-                Your key edits: {Object.keys(selBlock.tweaks).length} bone{Object.keys(selBlock.tweaks).length > 1 ? 's' : ''}, kept through rebuilds
-                <button className="btn small solid" onClick={() => update({ tweaks: undefined, clearTweaks: true }, 'Clear key edits')}>
-                  Clear them
+            {seq && seq.blocks[0]?.id !== selBlock.id && (
+              <section className="mo-group">
+                <h4>Blend in</h4>
+                <div className="mo-row-fields">
+                  <label>
+                    Length
+                    <NumberField value={selBlock.blend} format={fmt} parse={parseS} onCommit={(v) => update({ blend: Math.min(selBlock.len, Math.max(0, v)) }, 'Change blend')} />
+                  </label>
+                  <label>
+                    Curve
+                    <div className="seg mo-ease" title="How the blend moves: smooth eases in and out, linear goes at an even pace">
+                      {(['smooth', 'linear'] as const).map((e) => (
+                        <button key={e} className={selBlock.ease === e ? 'on' : ''} onClick={() => update({ ease: e }, 'Change blend')}>
+                          <svg width="18" height="12" viewBox="0 0 18 12" aria-hidden="true">
+                            <path d={e === 'smooth' ? 'M1 11 C 8 11, 10 1, 17 1' : 'M1 11 L 17 1'} />
+                          </svg>
+                          {e === 'smooth' ? 'Smooth' : 'Linear'}
+                        </button>
+                      ))}
+                    </div>
+                  </label>
+                </div>
+              </section>
+            )}
+            <section className="mo-group mo-options">
+              <h4>Options</h4>
+              <div className="mo-row-fields">
+                <button
+                  className={`mo-option ${selBlock.feet ? 'on' : ''}`}
+                  aria-pressed={!!selBlock.feet}
+                  onClick={() => update({ feet: !selBlock.feet }, selBlock.feet ? 'Unplant feet' : 'Plant feet')}
+                  title="A foot on the ground stays on its spot while it's down: no sliding, and a walk or run on the spot moves across the floor"
+                >
+                  <span className={`switch ${selBlock.feet ? 'on' : ''}`}>
+                    <span />
+                  </span>
+                  <span className="mo-option-text">
+                    <b>Feet planted</b>
+                    <span>No sliding while a foot is down</span>
+                  </span>
+                </button>
+                <button
+                  className={`mo-option ${selBlock.mirror ? 'on' : ''}`}
+                  aria-pressed={!!selBlock.mirror}
+                  onClick={() => update({ mirror: !selBlock.mirror }, selBlock.mirror ? 'Unmirror block' : 'Mirror block')}
+                  title="Play it as in a mirror: left and right swapped (a right-foot step becomes a left-foot one)"
+                >
+                  <span className={`switch ${selBlock.mirror ? 'on' : ''}`}>
+                    <span />
+                  </span>
+                  <span className="mo-option-text">
+                    <b>Mirror</b>
+                    <span>Left and right swapped</span>
+                  </span>
                 </button>
               </div>
-            )}
-            <label className="mo-check" title="A foot on the ground stays on its spot while it's down: no sliding, and a walk or run on the spot moves across the floor">
-              <input type="checkbox" checked={!!selBlock.feet} onChange={(e) => update({ feet: e.target.checked }, e.target.checked ? 'Plant feet' : 'Unplant feet')} />
-              Feet planted
-            </label>
-            <label className="mo-check" title="Play it as in a mirror: left and right swapped (a right-foot step becomes a left-foot one)">
-              <input type="checkbox" checked={!!selBlock.mirror} onChange={(e) => update({ mirror: e.target.checked }, e.target.checked ? 'Mirror block' : 'Unmirror block')} />
-              Mirror
-            </label>
-            {natural != null && (
-              <button className="btn small solid" onClick={() => update({ len: Math.max(1 / fps, snapT(natural / (selBlock.speed ?? 1))) }, 'Change block length')} title="One pass of the clip at this speed">
-                Fit to the clip ({(natural / (selBlock.speed ?? 1)).toFixed(2)} s)
-              </button>
-            )}
+            </section>
           </div>
+          {selBlock.tweaks && Object.keys(selBlock.tweaks).length > 0 && (
+            <div className="mo-tweaks" title={Object.keys(selBlock.tweaks).join(', ')}>
+              <Icon name="key" size={12} />
+              Your key edits on {Object.keys(selBlock.tweaks).length} bone{Object.keys(selBlock.tweaks).length > 1 ? 's' : ''} are kept through rebuilds.
+              <button className="btn small solid" onClick={() => update({ tweaks: undefined, clearTweaks: true }, 'Clear key edits')}>
+                Clear them
+              </button>
+            </div>
+          )}
         </div>
       )}
 

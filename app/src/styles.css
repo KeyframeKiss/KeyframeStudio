@@ -8641,36 +8641,193 @@ a.btn {
   pointer-events: none;
   z-index: 4;
 }
+/* the selected block: a coloured edge for its kind, then its settings in groups */
 .mo-inspector {
+  --kind: #4f8fff;
+  position: relative;
   border-top: 1px solid var(--line);
-  padding: 10px 12px;
-  background: var(--bg-1);
+  padding: 12px 14px 14px 16px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--kind) 6%, var(--bg-1)), var(--bg-1) 70%);
+}
+.mo-inspector.pose {
+  --kind: #b26bff;
+}
+.mo-inspector.mclip {
+  --kind: #3fbf8f;
+}
+.mo-inspector::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--kind);
 }
 .mo-insp-head {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 10px;
+  margin-bottom: 12px;
 }
-.mo-insp-head .sub {
+.mo-insp-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius);
+  color: var(--kind);
+  background: color-mix(in srgb, var(--kind) 16%, var(--bg-2));
+  border: 1px solid color-mix(in srgb, var(--kind) 35%, transparent);
+}
+.mo-insp-title {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.mo-insp-title b {
+  font-size: 13px;
+  color: var(--text-0);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mo-insp-title .sub {
   color: var(--text-2);
   font-size: 11px;
 }
-.mo-fields {
+.mo-insp-range {
+  margin-left: 8px;
+  padding-left: 8px;
+  border-left: 1px solid var(--line);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-1);
+}
+.mo-insp-head .btn {
+  gap: 5px;
+}
+/* groups side by side with a divider between; when they wrap, the divider of a row's first group falls
+   outside the box and is clipped */
+.mo-groups {
   display: flex;
   flex-wrap: wrap;
-  align-items: flex-end;
-  gap: 10px 16px;
+  align-items: stretch;
+  gap: 12px 37px;
+  overflow: hidden;
 }
-.mo-fields label {
+.mo-group {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.mo-group::before {
+  content: '';
+  position: absolute;
+  left: -19px;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--line);
+}
+.mo-group h4 {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-1);
+}
+.mo-row-fields {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+}
+.mo-row-fields label {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  font-size: 11px;
+  font-size: 10.5px;
   color: var(--text-2);
 }
-.mo-fields .input {
-  width: 96px;
+.mo-row-fields .input {
+  width: 84px;
+}
+.mo-fit {
+  gap: 5px;
+  height: 26px;
+}
+.mo-ease button {
+  gap: 6px;
+  height: 22px;
+}
+.mo-ease svg path {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+}
+.mo-ease button.on svg path {
+  stroke: var(--accent);
+}
+.mo-option {
+  appearance: none;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 200px;
+  padding: 5px 10px 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-2);
+  color: var(--text-1);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color var(--t-med) var(--ease-out),
+    background-color var(--t-med) var(--ease-out);
+}
+.mo-option:hover {
+  border-color: var(--bg-4);
+  background: var(--bg-3);
+}
+.mo-option.on {
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  background: var(--accent-soft);
+}
+.mo-option:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.mo-option .switch {
+  flex: none;
+  pointer-events: none;
+}
+.mo-option-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+}
+.mo-option-text b {
+  font-size: 12px;
+  color: var(--text-0);
+}
+.mo-option-text span {
+  font-size: 10.5px;
+  color: var(--text-2);
+}
+.mo-tweaks {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 6px 10px;
+  border-radius: var(--radius);
+  background: var(--accent-2-soft);
+  font-size: 11px;
+  color: var(--text-1);
+}
+.mo-tweaks .btn {
+  margin-left: auto;
 }
 .mo-pose-picker {
   width: min(900px, calc(100vw - 32px));
@@ -8807,22 +8964,7 @@ a.btn {
   color: var(--text-1);
   font-size: 12px;
 }
-.mo-fields .mo-check {
-  flex-direction: row;
-  align-items: center;
-  gap: 6px;
-  height: 28px;
-  color: var(--text-1);
-}
 
-.mo-tweaks {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  height: 28px;
-  font-size: 11px;
-  color: var(--text-1);
-}
 
 /* ---- toasts you can read: they stay up for their reading time, pause on hover, close with × ---- */
 .toast:not(.notice) {
