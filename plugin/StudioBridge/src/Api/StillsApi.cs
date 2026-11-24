@@ -143,6 +143,10 @@ namespace StudioEX.Bridge.Api
             }
         }
 
+        /// <summary>Studio's camera at this size (supersampled), for straight-to-video renders without Screencap.</summary>
+        internal static Texture2D RenderCamera(int width, int height, int supersample) =>
+            OurCapture(new Opts { Width = width, Height = height, Supersample = Mathf.Clamp(supersample, 1, 4) });
+
         /// <summary>Render Studio's camera at (size × supersample) and scale down in halving steps (smooth, no shimmer).</summary>
         private static Texture2D OurCapture(Opts o)
         {

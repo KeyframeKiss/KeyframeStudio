@@ -116,6 +116,9 @@ namespace StudioEX.Bridge.Api
             Encode == "gpu" && GpuWorks == true ? "h264_nvenc -preset p6 -tune hq -rc vbr -cq 19 -b:v 0 -pix_fmt yuv420p"
             : "libx264 -crf 18 -preset " + (Encode == "balanced" ? "medium" : "slow") + " -pix_fmt yuv420p";
 
+        /// <summary>Screencap's supersampling (its "upsampling ratio"), else 2.</summary>
+        internal static int Supersampling() => Screencap("DownscalingRate") is int r && r >= 1 ? Mathf.Min(r, 4) : 2;
+
         // ---------------- one render's settings, put back afterwards ----------------
 
         private static object[] _saved;

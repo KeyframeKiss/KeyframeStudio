@@ -36,7 +36,9 @@ export default async function (t) {
   let original = null;
   if (hasRender) {
     original = (await ok('render.status')).settings;
-    t.defer(() => req('render.set', { fps: original.fps, exportFps: original.exportFps, limit: original.limit, limitNumber: original.limitNumber, format: original.format, resize: original.resize, width: original.width, height: original.height, autoEncode: original.autoEncode, deleteFrames: original.deleteFrames, prewarm: original.prewarm }));
+    t.defer(() => req('render.set', { fps: original.fps, exportFps: original.exportFps, limit: original.limit, limitNumber: original.limitNumber, format: original.format, resize: original.resize, width: original.width, height: original.height, autoEncode: original.autoEncode, deleteFrames: original.deleteFrames, prewarm: original.prewarm, warm: original.warm, encode: original.encode, draft: original.draft, frames: original.frames }));
+    // VideoExport's own image files for the checks that count them (straight to video has its own step below)
+    await ok('render.set', { frames: 'files' });
   }
 
   /** wait until VideoExport is idle; the frames folder made during `fn`, if any */
@@ -109,8 +111,9 @@ export default async function (t) {
       await ok('render.set', { limit: 'Timeline', limitNumber: 1, prewarm: 1 });
       await ok('timeline.seek', { t: 0.6 });
       await sleep(300);
-      const times3 = [];
       let warmed = false;
+      // what the timeline did on each recorded frame: the bridge's per-frame trace (recording is quicker than polling)
+      const tracing3 = (await req('shots.trace', { on: true })).ok;
       const made3 = await framesMadeBy(async () => {
         await ok('render.start', {});
         for (let i = 0; i < 120; i++) {
@@ -118,10 +121,10 @@ export default async function (t) {
           const q = await ok('render.queueStatus');
           if (q.phase) warmed = true;
           if (!st.recording && !q.running) break;
-          if (st.recording) times3.push((await ok('timeline.state')).time);
           await sleep(30);
         }
       });
+      const times3 = tracing3 ? (await ok('shots.trace', {})).filter((r) => r[2]).map((r) => r[1]) : [];
       const frames3 = made3.length ? fs.readdirSync(made3[0]).length : 0;
       check('"all of it": warm-up first, then the whole timeline plays while recording', warmed && frames3 === 10 && times3.length > 0 && Math.min(...times3) < 0.55 && Math.max(...times3) > Math.min(...times3) + 0.2, `${frames3} frames, warm-up ${warmed}, ${times3.map((x) => x.toFixed(2)).join(' ')}`);
       await ok('timeline.setSettings', { duration: tl.duration });
@@ -217,6 +220,76 @@ export default async function (t) {
       check('VideoExport\'s capture and Screencap size are put back after', cap1.selected === cap0.selected && JSON.stringify(cap1.screencapSize) === JSON.stringify(cap0.screencapSize) && (await ok('render.status')).settings.resize === true, `${JSON.stringify(cap0)} → ${JSON.stringify(cap1)}`);
       const bad = await req('render.set', { format: 'MOV' });
       check('unknown format refused', !bad.ok);
+    });
+
+  if (hasRender)
+    await t.step('straight to video: frames into the encoder as they render, no image files', async () => {
+      const st = await ok('render.status');
+      const outDir = st.outputFolder;
+      const ffmpeg = path.join(path.dirname(t.paths.userData), 'BepInEx', 'plugins', 'VideoExport', 'ffmpeg', 'ffmpeg-64.exe');
+      await ok('render.set', { frames: 'direct', format: 'MP4', fps: 20, limit: 'Seconds', limitNumber: 1, autoEncode: true, resize: true, width: 320, height: 180, warm: 'off' });
+      await ok('timeline.seek', { t: 0 });
+      await sleep(300);
+      const outBefore = new Set(fs.readdirSync(outDir));
+      const framesBefore = new Set(fs.existsSync(st.framesFolder) ? fs.readdirSync(st.framesFolder) : []);
+      await ok('render.start', {});
+      let q;
+      for (let i = 0; i < 120; i++) {
+        q = await ok('render.queueStatus');
+        if (!q.running) break;
+        await sleep(100);
+      }
+      const made = fs.readdirSync(outDir).filter((f) => !outBefore.has(f) && /\.mp4$/.test(f));
+      t.defer(() => made.forEach((f) => fs.rmSync(path.join(outDir, f), { force: true })));
+      check('one video, no error', made.length === 1 && !q.error && (q.files ?? []).length === 1, JSON.stringify({ made, q }));
+      const info = made.length ? spawnSync(ffmpeg, ['-hide_banner', '-i', path.join(outDir, made[0]), '-map', '0:v', '-f', 'null', '-'], { encoding: 'utf8' }).stderr : '';
+      const frames = Number([...info.matchAll(/frame=\s*(\d+)/g)].at(-1)?.[1] ?? 0); // the last progress line
+      check('20 frames at 320×180 (1 s at 20 fps)', frames === 20 && /320x180/.test(info), `${frames} frames; ${/Video: [^\n]*/.exec(info)?.[0]}`);
+      const framesAfter = fs.existsSync(st.framesFolder) ? fs.readdirSync(st.framesFolder).filter((f) => !framesBefore.has(f)) : [];
+      check('no image files left behind', framesAfter.length === 0, framesAfter.join(', '));
+      const back = await ok('render.status');
+      check('not recording or encoding afterwards', !back.recording && !back.encoding);
+
+      // WEBM, with the scene's audio mixed in afterwards (the same pass as for image-file renders)
+      const wav = path.join(t.paths.userData, 'audio', 'StudioEX direct tone.wav');
+      makeTone(wav, 2);
+      t.defer(() => fs.existsSync(wav) && fs.unlinkSync(wav));
+      await ok('audio.clear');
+      t.defer(() => req('audio.clear'));
+      await ok('audio.add', { file: 'StudioEX direct tone.wav', offset: 0 });
+      await ok('render.set', { format: 'WEBM', audio: true });
+      const outBeforeW = new Set(fs.readdirSync(outDir));
+      await ok('render.start', {});
+      for (let i = 0; i < 200; i++) {
+        q = await ok('render.queueStatus');
+        if (!q.running) break;
+        await sleep(100);
+      }
+      const madeW = fs.readdirSync(outDir).filter((f) => !outBeforeW.has(f) && /\.webm$/.test(f));
+      t.defer(() => madeW.forEach((f) => fs.rmSync(path.join(outDir, f), { force: true })));
+      const infoW = madeW.length ? spawnSync(ffmpeg, ['-hide_banner', '-i', path.join(outDir, madeW[0])], { encoding: 'utf8' }).stderr : '';
+      check('WEBM straight to video, with the audio mixed in', madeW.length === 1 && !q.error && !q.audioError && /Video: vp9/.test(infoW) && /Audio: opus/.test(infoW), `${madeW.join(', ')} ${q.error ?? ''} ${q.audioError ?? ''} ${(infoW.match(/(Video|Audio): \w+/g) ?? []).join(', ')}`);
+      await ok('audio.clear');
+      await ok('render.set', { format: 'MP4' });
+
+      // Stop partway: no half-made file
+      await ok('render.set', { limitNumber: 6 });
+      const outBefore2 = new Set(fs.readdirSync(outDir));
+      await ok('render.start', {});
+      for (let i = 0; i < 40; i++) {
+        const s = await ok('render.status');
+        if (s.recording && s.frame > 5) break;
+        await sleep(50);
+      }
+      await ok('render.queueCancel', {});
+      for (let i = 0; i < 100; i++) {
+        if (!(await ok('render.queueStatus')).running) break;
+        await sleep(100);
+      }
+      const made2 = fs.readdirSync(outDir).filter((f) => !outBefore2.has(f));
+      t.defer(() => made2.forEach((f) => fs.rmSync(path.join(outDir, f), { force: true })));
+      check('stopped: the half-made video is removed', made2.length === 0, made2.join(', '));
+      await ok('render.set', { frames: 'files', warm: original.warm });
     });
 
   await t.step('shots, camera cuts', async () => {

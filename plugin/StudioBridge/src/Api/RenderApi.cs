@@ -60,6 +60,7 @@ namespace StudioEX.Bridge.Api
         /// <summary>The speed settings (this session): warm, encode (balanced | small | gpu), draft.</summary>
         internal static void ApplySpeed(Dictionary<string, object> a)
         {
+            if (a.GetString("frames") is string fr && (fr == "direct" || fr == "files")) DirectRender.Frames = fr;
             if (a.GetString("warm") is string w && (w == "off" || w == "quick" || w == "play")) Warm = w;
             if (a.GetString("encode") is string e && (e == "balanced" || e == "small" || e == "gpu")) RenderSpeed.Encode = e;
             if (a.Has("draft")) RenderSpeed.Draft = a.GetBool("draft");
@@ -103,15 +104,19 @@ namespace StudioEX.Bridge.Api
             });
             // what VideoExport captures with (for diagnostics and tests)
             r.Add("render.capture", a => CaptureInfo());
-            r.Add("render.stop", a => { AccessTools.Method(T, "StopRecording").Invoke(Plugin, null); return Status(); });
+            r.Add("render.stop", a => { Stop(); return Status(); });
         }
 
         /// <summary>Recording or encoding right now.</summary>
         public static bool Busy() => Plugin != null && ((bool)Get("_isRecording") || (bool)Get("_generatingVideo"));
 
+        /// <summary>
+        /// Stop VideoExport's recording — only while it records: its stop is a flag that stays set otherwise, and would
+        /// cut the next recording off after its first frame (a Stop during a warm-up or a straight-to-video render).
+        /// </summary>
         public static void Stop()
         {
-            if (Plugin != null) AccessTools.Method(T, "StopRecording").Invoke(Plugin, null);
+            if (Plugin != null && (bool)Get("_isRecording")) AccessTools.Method(T, "StopRecording").Invoke(Plugin, null);
         }
 
         /// <summary>Record `seconds` from now (the caller plays the timeline). Null when started, else why not.</summary>
@@ -278,8 +283,44 @@ namespace StudioEX.Bridge.Api
                 .FirstOrDefault();
         }
 
+        // ---------------- what straight-to-video renders take from VideoExport's settings ----------------
+
+        internal static string Format() => Plugin == null ? "MP4" : Get("_selectedExtension").ToString();
+        internal static int Fps() => Plugin == null ? 30 : (int)Get("_fps");
+        internal static bool AutoEncode() => Plugin != null && (bool)Get("_autoGenerateVideo");
+        internal static string OutputFolder() => Get("_outputFolder") as string ?? Path.Combine(BepInEx.Paths.GameRootPath, "UserData\\VideoExport\\Output");
+        internal static bool DynamicBonesEveryFrame() => Plugin != null && AccessTools.Field(T, "_selectedUpdateDynamicBones")?.GetValue(Plugin)?.ToString() == "EveryFrame";
+
+        /// <summary>An encoder's quality setting in VideoExport (its x264 CRF, its VP9 CRF).</summary>
+        private static int ExtQuality(int index, int fallback)
+        {
+            try
+            {
+                if (Get("_extensions") is IList list && list.Count > index && list[index] != null)
+                {
+                    var f = AccessTools.Field(list[index].GetType(), "_quality");
+                    if (f != null) return Convert.ToInt32(f.GetValue(list[index]));
+                }
+            }
+            catch { }
+            return fallback;
+        }
+        internal static int Mp4Quality() => Mathf.Clamp(ExtQuality(0, 18), 0, 51);
+        internal static int WebmQuality() => Mathf.Clamp(ExtQuality(1, 15) * 2, 4, 63);
+
+        /// <summary>The video's size: the size set, else Screencap's (when VideoExport records through it), else the window.</summary>
+        internal static int[] DirectSize()
+        {
+            if (Plugin != null && (bool)Get("_resize")) return new[] { Math.Max(16, (int)Get("_resizeX")), Math.Max(16, (int)Get("_resizeY")) };
+            int index = -1;
+            var shot = Plugin != null ? Screencap(out index) : null;
+            if (shot != null && Convert.ToInt32(Get("_selectedPlugin")) == index && SizeValue(shot, "_resolutionX") is object x && SizeValue(shot, "_resolutionY") is object y)
+                return new[] { Convert.ToInt32(x), Convert.ToInt32(y) };
+            return new[] { Screen.width, Screen.height };
+        }
+
         /// <summary>VideoExport's own ffmpeg.</summary>
-        private static string Ffmpeg()
+        internal static string Ffmpeg()
         {
             // VideoExport.dll sits in plugins (or its own folder); its ffmpeg is in VideoExport/ffmpeg
             var dir = Path.GetDirectoryName(T.Assembly.Location);
@@ -383,12 +424,12 @@ namespace StudioEX.Bridge.Api
             RenderSpeed.TestGpu(Ffmpeg()); // once, in the background: whether the GPU encoder can be offered
             return new Dictionary<string, object>
             {
-                { "recording", Get("_isRecording") },
-                { "encoding", Get("_generatingVideo") },
-                { "frame", Get("_currentRecordingFrame") },
-                { "frameLimit", Get("_recordingFrameLimit") },
-                { "message", Get("_currentMessage") as string ?? "" },
-                { "progress", Convert.ToDouble(Get("_progressBarPercentage")) },
+                { "recording", DirectRender.Recording || (bool)Get("_isRecording") },
+                { "encoding", DirectRender.Finishing || (bool)Get("_generatingVideo") },
+                { "frame", DirectRender.Recording ? DirectRender.Frame : Get("_currentRecordingFrame") },
+                { "frameLimit", DirectRender.Recording ? DirectRender.FrameLimit : Get("_recordingFrameLimit") },
+                { "message", DirectRender.Finishing ? "Finishing the video" : Get("_currentMessage") as string ?? "" },
+                { "progress", DirectRender.Recording ? (double)DirectRender.Frame / Math.Max(1, DirectRender.FrameLimit) : Convert.ToDouble(Get("_progressBarPercentage")) },
                 { "outputFolder", Get("_outputFolder") as string ?? "" },
                 { "framesFolder", Get("_globalFramesFolder") as string ?? "" },
                 { "settings", new Dictionary<string, object>
@@ -401,7 +442,7 @@ namespace StudioEX.Bridge.Api
                         { "autoEncode", Get("_autoGenerateVideo") }, { "deleteFrames", Get("_autoDeleteImages") },
                         { "prewarm", Get("_prewarmLoopCount") },
                         { "audio", WithAudio },
-                        { "warm", Warm }, { "encode", RenderSpeed.Encode }, { "draft", RenderSpeed.Draft },
+                        { "warm", Warm }, { "encode", RenderSpeed.Encode }, { "draft", RenderSpeed.Draft }, { "frames", DirectRender.Frames },
                     }
                 },
                 { "gpuEncode", RenderSpeed.GpuWorks },

@@ -859,7 +859,9 @@ namespace StudioEX.Bridge.Api
                     float start = s.GetFloat("start"), end = s.GetFloat("end");
                     // this version's picture size (rendered at that size, never stretched) and camera framing
                     if (version != null) RenderApi.UseSize(version);
-                    size = RenderApi.PrepareSize();
+                    // (only when a video is wanted: "keep the frames, no video" is image files by definition)
+                    bool direct = DirectRender.Frames == "direct" && DirectRender.Supports(RenderApi.Format()) && RenderApi.AutoEncode();
+                    size = direct ? null : RenderApi.PrepareSize(); // straight to video renders at the size itself
                     RenderFraming.Active = RenderFraming.From(version?.ContainsKey("framing") == true ? version["framing"] as Dictionary<string, object> : null);
                     // warm-up, so hair and clothes physics have settled: quick — the 1.5 s leading into the start played
                     // (what there is of it) and the rest held at the start; play — the range played through first
@@ -899,14 +901,26 @@ namespace StudioEX.Bridge.Api
                     yield return null;
                     yield return new WaitForEndOfFrame();
                     var startedAt = DateTime.Now;
-                    RenderSpeed.Begin(); // JPG frames, Draft, the encoder choice (Screencap's settings come back after)
-                    string err = RenderApi.StartSeconds(end - start);
-                    if (err != null) { RenderSpeed.End(); QueueState["error"] = err; break; }
-                    TimelineApi.Play();
-                    // VideoExport takes over the frame clock while recording; wait for recording and encoding
-                    yield return null;
-                    while (RenderApi.Busy()) yield return null;
-                    RenderSpeed.End();
+                    string directVideo = null;
+                    if (direct)
+                    {
+                        // straight to video: frames into ffmpeg as they're rendered (this plays the timeline)
+                        string derr = null;
+                        var rec = DirectRender.Record(end - start, () => (bool)QueueState["cancel"], (v, e) => { directVideo = v; derr = e; });
+                        while (rec.MoveNext()) yield return rec.Current;
+                        if (derr != null) { QueueState["error"] = derr; break; }
+                    }
+                    else
+                    {
+                        RenderSpeed.Begin(); // JPG frames, Draft, the encoder choice (Screencap's settings come back after)
+                        string err = RenderApi.StartSeconds(end - start);
+                        if (err != null) { RenderSpeed.End(); QueueState["error"] = err; break; }
+                        TimelineApi.Play();
+                        // VideoExport takes over the frame clock while recording; wait for recording and encoding
+                        yield return null;
+                        while (RenderApi.Busy()) yield return null;
+                        RenderSpeed.End();
+                    }
                     TimelineApi.PauseAt(start);
                     RenderFraming.Active = null;
                     // the finished video: cut to shape if it couldn't be rendered at the size, the scene's audio mixed in
@@ -914,7 +928,7 @@ namespace StudioEX.Bridge.Api
                     var clips = RenderApi.WithAudio ? AudioTrack.ForRender(start, end) : null;
                     bool crop = size != null && size.CropW > 0;
                     string suffix = s.GetString("suffix") ?? "";
-                    var video = !(bool)QueueState["cancel"] ? RenderApi.NewestVideo(startedAt) : null;
+                    var video = (bool)QueueState["cancel"] ? null : direct ? directVideo : RenderApi.NewestVideo(startedAt);
                     if (video != null && ((clips != null && clips.Count > 0) || crop))
                     {
                         QueueState["phase"] = crop ? "Cutting to size" + (clips != null && clips.Count > 0 ? " and adding the audio" : "") : "Adding the audio";

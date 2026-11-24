@@ -34,6 +34,8 @@ interface RenderStatus {
     encode?: Encode;
     /** no supersampling: faster, rougher edges */
     draft?: boolean;
+    /** straight to video (frames piped into the encoder as they're rendered) or VideoExport's image files */
+    frames?: Frames;
   };
   /** the NVIDIA encoder works here (null while it's being checked) */
   gpuEncode?: boolean | null;
@@ -56,9 +58,12 @@ interface QueueState {
 
 type Warm = 'off' | 'quick' | 'play';
 type Encode = 'balanced' | 'small' | 'gpu';
+type Frames = 'direct' | 'files';
+/** what straight to video can make; the others go through VideoExport's image files */
+const DIRECT_FORMATS = ['MP4', 'WEBM'];
 /** The speed choices, kept between sessions (the bridge forgets them when Studio restarts). */
 const SPEED_KEY = 'studioex.render.speed';
-const speedPrefs = (): { warm?: Warm; encode?: Encode; draft?: boolean } => {
+const speedPrefs = (): { warm?: Warm; encode?: Encode; draft?: boolean; frames?: Frames } => {
   try {
     return JSON.parse(localStorage.getItem(SPEED_KEY) ?? '{}');
   } catch {
@@ -105,7 +110,7 @@ export function RenderPanel() {
       let r = await bridge.request<RenderStatus>('render.status');
       // the speed choices made before (the bridge starts from its defaults each time Studio starts)
       const p = speedPrefs();
-      if ((p.warm && p.warm !== r.settings.warm) || (p.encode && p.encode !== r.settings.encode) || (p.draft != null && p.draft !== r.settings.draft))
+      if ((p.warm && p.warm !== r.settings.warm) || (p.encode && p.encode !== r.settings.encode) || (p.draft != null && p.draft !== r.settings.draft) || (p.frames && p.frames !== r.settings.frames))
         r = await bridge.request<RenderStatus>('render.set', p);
       setSt(r);
       bridge.request<typeof capture>('render.capture').then(setCapture).catch(() => undefined);
@@ -144,7 +149,7 @@ export function RenderPanel() {
   }, [st, load]);
 
   const set = async (patch: Record<string, unknown>) => {
-    const speed = Object.fromEntries(Object.entries(patch).filter(([k]) => k === 'warm' || k === 'encode' || k === 'draft'));
+    const speed = Object.fromEntries(Object.entries(patch).filter(([k]) => k === 'warm' || k === 'encode' || k === 'draft' || k === 'frames'));
     if (Object.keys(speed).length) lsSet(SPEED_KEY, JSON.stringify({ ...speedPrefs(), ...speed }));
     const r = await call<RenderStatus>('render.set', patch);
     if (r) setSt(r);
@@ -263,6 +268,7 @@ export function RenderPanel() {
     frames != null ? `${frames.toLocaleString()} frames` : '',
     s.warm === 'play' ? `${Math.max(1, s.prewarm)} warm-up play${s.prewarm > 1 ? 's' : ''}` : '',
     s.draft ? 'draft' : '',
+    s.frames === 'direct' && DIRECT_FORMATS.includes(s.format) && s.autoEncode ? 'straight to video' : '',
     s.autoEncode && s.audio && audioClips > 0 && s.format !== 'GIF' ? `with audio (${audioClips} clip${audioClips > 1 ? 's' : ''})` : '',
   ].filter(Boolean);
 
@@ -379,6 +385,30 @@ export function RenderPanel() {
                     {label}
                   </button>
                 ))}
+              </div>
+            </div>
+            <div className="cleanup-row">
+              <span>
+                Recording
+                <Help text="Straight to video sends each frame into the video as it's rendered: no image files on disk and no encoding wait at the end, so it's the fastest. Image files is VideoExport's own way (each frame saved as a picture, then put together) — use it if you want to keep the frames. GIF and AVI always use image files." />
+              </span>
+              <div className="seg">
+                {(
+                  [
+                    ['direct', 'Straight to video', 'Each frame goes into the video as it renders: no image files, no wait at the end'],
+                    ['files', 'Image files', "VideoExport's own way: frames saved as pictures, then put together"],
+                  ] as const
+                ).map(([id, label, hint]) => {
+                  const direct = DIRECT_FORMATS.includes(s.format) && s.autoEncode; // keeping only the frames is image files
+                  const can = id === 'files' || direct;
+                  const on = id === 'direct' ? s.frames === 'direct' && direct : s.frames !== 'direct' || !direct;
+                  const why = !s.autoEncode ? 'Making the video is off: the frames are kept as image files' : `${s.format} always uses image files`;
+                  return (
+                    <button key={id} className={on ? 'on' : ''} title={can ? hint : why} disabled={running || !can} onClick={() => set({ frames: id })}>
+                      {label}
+                    </button>
+                  );
+                })}
               </div>
             </div>
             <div className="cleanup-row">
