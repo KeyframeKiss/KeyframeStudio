@@ -333,6 +333,8 @@ Builds on the existing Timeline integration.
 - **Apply:** at the playhead, on the same or another character (parameters are re-resolved on the target, like Timeline's single-file load). Replace, or add on top (the clip's movement as an offset: a nod over an idle). Strength, blend in/out, speed, repeats. Missing tracks are created. One undo step.
 - **Tests:** suite 20 (save, retarget, replace/add/strength/blend, speed and loops, end-of-timeline trim, undo).
 
+**Update (2026-11-24, 0.1.3): the Motion builder** (Animate › Motion builder) replaced the clip tools in the side panel. Studio animations, poses and saved motion clips go in a row on a lane per character and blend into each other (smooth or linear); drag, trim, blend, snapping, ripple, nudge and zoom. Per block: speed, in-point, mirror and **feet planted** (contacts found from the feet's height and speed, held by two-bone IK on thigh and knee; Studio's on-the-spot walks and runs travel by the stance foot's movement, carried through a run's flight). Built into ordinary keys in a Motion folder as one undo step; edits to those keys survive rebuilds; saved with the scene. Tests: suite 39 (ankle slide 0.65 → ~0.001 units on a walk).
+
 ### 6.2 Facial Animation and Lip-Sync
 Lip-sync needs audio that plays in sync with Timeline inside Studio. Treat that as its own sub-project, and first check which installed mods already handle audio playback.
 
@@ -459,6 +461,7 @@ First check what installed screenshot and recording mods already do; drive them 
 - **Audio in the video:** the audio clips are mixed and added with VideoExport's own ffmpeg.
 - **Other shapes are framed, not squished:** a vertical or square render is captured at that size, with an adjustable crop of the view.
 - **Versions:** several sizes and framings from one render (for example 16:9, 9:16 and 1:1), each named and saved as its own file; remembered across scenes.
+- **Speed (2026-11-24, 0.1.3):** about half the time with the same picture. JPG frames at quality 100 (half the capture time of PNG), **Warm-up: Quick** (1.5 s instead of a play-through), **Draft** (no supersampling), MP4 encoding Balanced / Smallest files / GPU (NVENC, offered after a test encode). **Straight to video** pipes each captured frame into ffmpeg as it renders: no image files and no encoding wait (1080p, 10 s: 32.9 s → 21.4 s). Suite 18.
 
 **Stills (2026-11-18):** Shoot › Stills.
 - Pictures can be 1–4× supersampled, PNG or JPG, with an optional transparent background.

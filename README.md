@@ -30,6 +30,7 @@ tiny gizmos and a lot of clicking. Keyframe Studio keeps Studio doing what it's 
 editor beside it — ideal on a second monitor:
 
 - **A real timeline.** Dope sheet and graph editor, keys you drag and snap, easing curves, folders, search, undo for everything.
+- **Longer motions from Studio's own.** The Motion builder strings animations, poses and your clips together, blended, with feet that stay planted.
 - **Pose where you look.** Click a joint in Studio's view and turn it on its rings; drag IK targets, props, lights, cameras and accessories.
 - **Everything else in one place.** Faces and lip-sync, looks and effects, lighting rigs, cameras and shots, audio, rendering with several versions at once.
 - **Nothing locked in.** Animations are stored by the existing **Timeline** plugin, so scenes stay compatible with vanilla Timeline and other people's setups.
@@ -77,7 +78,7 @@ paths and onion-skin ghosts, folders (an eye mutes a whole folder or object), se
     <td><img src="docs/images/app-view-options.png" alt="The View options: overlays, handles, paths and ghosts"></td>
   </tr>
   <tr>
-    <td><b>Shoot</b> — shots and cameras, audio clips, video renders (several sizes and framings from one render, audio mixed in), stills.</td>
+    <td><b>Shoot</b> — shots and cameras, audio clips, video renders (straight to video, several sizes and framings from one render, audio mixed in), stills.</td>
     <td><b>View</b> — overlays, handles, motion paths and ghosts, toggled from the bottom bar.</td>
   </tr>
 </table>
@@ -112,6 +113,7 @@ Thank you for testing! When something goes wrong:
 3. Screenshots help — please keep them **safe for work** (crop or blur anything explicit).
 
 Most edits are one `Ctrl+Z` away, and nothing is saved into your scene until you save it in Studio.
+Missed a popup? Everything that popped up is kept in **Messages** in the status bar.
 
 ## Workspaces
 
@@ -252,8 +254,8 @@ Commands live in `plugin/StudioBridge/src/Api/*.cs`, wire types in `app/src/brid
 
 ## Roadmap
 
-What's done and what's next is in [FUTURE_ROADMAP.md](FUTURE_ROADMAP.md). Next up: code signing, an uninstall
-button and update checks; foot and hand locking; click-to-light; editing a camera move's path in the viewport.
+What's done and what's next is in [FUTURE_ROADMAP.md](FUTURE_ROADMAP.md). Next up: code signing and an uninstall
+button; click-to-light; editing a camera move's path in the viewport.
 
 ## License
 
