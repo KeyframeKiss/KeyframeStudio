@@ -48,6 +48,8 @@ namespace StudioEX.Bridge.Api
         private static string _outFor;   // the outgoing shot OutRT shows
         private static int _outFrame = -10;
         internal static bool RenderingOut;
+        /// <summary>The last frame the outgoing shot was blended in (for the shots trace).</summary>
+        internal static int OutDrawnFrame = -1;
         private static Material _mat;
         private static int _calls, _drawn;
         private static string _lastError;
@@ -88,7 +90,11 @@ namespace StudioEX.Bridge.Api
 
         private static bool OutReady(State s) => s?.Out != null && OutRT != null && _outFor == s.Out.GetString("id") && Time.frameCount - _outFrame <= 3;
 
-        private static bool Needs(State s) => s != null && (s.FadeA > 0.002f || (s.OutA > 0.002f && OutReady(s)));
+        // (or about to be drawn this frame: it's drawn just before Studio's camera, after this is decided — without
+        // this the effect stayed off on a dissolve's first frame and the incoming shot flashed in full)
+        private static bool OutComing(State s) => s?.Out != null && _pendingOut != null && _pendingOut.GetString("id") == s.Out.GetString("id");
+
+        private static bool Needs(State s) => s != null && (s.FadeA > 0.002f || (s.OutA > 0.002f && (OutReady(s) || OutComing(s))));
 
         /// <summary>Switch the effect on Studio's camera on or off for what has to show now.</summary>
         internal static void Sync(Camera cam)
@@ -139,7 +145,11 @@ namespace StudioEX.Bridge.Api
             GL.LoadOrtho();
             try
             {
-                if (s.OutA > 0.002f && OutReady(s)) Quad(m, _outOpaque ?? (Texture)OutRT, new Color(1f, 1f, 1f, s.OutA));
+                if (s.OutA > 0.002f && OutReady(s))
+                {
+                    Quad(m, _outOpaque ?? (Texture)OutRT, new Color(1f, 1f, 1f, s.OutA));
+                    OutDrawnFrame = Time.frameCount;
+                }
                 if (s.FadeA > 0.002f) Quad(m, Texture2D.whiteTexture, new Color(s.Fade.r, s.Fade.g, s.Fade.b, s.FadeA));
             }
             catch (Exception e) { _lastError = e.Message; }

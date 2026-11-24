@@ -81,7 +81,7 @@ namespace StudioEX.Bridge.Api
                     if (_trace != null && _trace.Count < 4000)
                     {
                         var c = Camera.main;
-                        _trace.Add(new List<object> { Time.frameCount, Math.Round(TimelineApi.PlaybackTime(), 4), TimelineApi.Playing(), _traceShot, _traceApplied, c != null ? Math.Round(c.fieldOfView, 2) : -1, TransitionFx.Live?.Type, Math.Round(Time.deltaTime, 4) });
+                        _trace.Add(new List<object> { Time.frameCount, Math.Round(TimelineApi.PlaybackTime(), 4), TimelineApi.Playing(), _traceShot, _traceApplied, c != null ? Math.Round(c.fieldOfView, 2) : -1, TransitionFx.Live?.Type, Math.Round(Time.deltaTime, 4), TransitionFx.OutDrawnFrame == Time.frameCount });
                         _traceApplied = false;
                     }
                     if (_shots.Count == 0 || !TimelineApi.Available || ViewportTools.Busy) continue;
