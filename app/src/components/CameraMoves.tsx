@@ -3,6 +3,7 @@ import { Field, Panel } from './Page';
 import { call, liveTime, refreshTimeline, seekNow, toast, togglePlay, useStore } from '../state/store';
 import { Slider } from './CharacterPanel';
 import { DragNumber } from './DragNumber';
+import { Icon } from './Icon';
 
 type Move = 'orbit' | 'dolly' | 'zoom' | 'pan' | 'crane' | 'truck';
 
@@ -82,12 +83,12 @@ export function CameraMoves({ onDone, start, length, title = 'Camera moves', bar
           </button>
         </div>
       </Field>
-      <div style={{ display: 'flex', gap: 6 }}>
-        <button className="btn primary" style={{ flex: 1 }} disabled={!(secs > 0)} onClick={add} title={start != null ? 'Starts at the shot\'s start, from the camera there' : 'Starts from the camera as it is now, at the playhead'}>
+      <div className="cam-moves-actions">
+        <button className="btn primary" disabled={!(secs > 0)} onClick={add} title={start != null ? 'Starts at the shot\'s start, from the camera there' : 'Starts from the camera as it is now, at the playhead'}>
           Add {m.label.toLowerCase()} {start != null ? 'across the shot' : 'at playhead'}
         </button>
-        <button className="btn solid" disabled={!last} onClick={preview} title="Play the last move from its start">
-          ▶ Preview
+        <button className="btn icon solid" disabled={!last} onClick={preview} title="Preview: play the last move from its start" aria-label="Preview the last move">
+          <Icon name="play" size={13} />
         </button>
       </div>
     </>

@@ -435,8 +435,8 @@ html.compact .btn {
   background: var(--bg-2);
   border: 1px solid var(--line);
   color: var(--text-1);
-  font-family: var(--mono);
-  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  font-size: 11.5px;
   height: 28px;
 }
 .btn.attention {
@@ -10026,15 +10026,86 @@ a.btn {
 .pn.bare > .pn-body {
   padding: 10px 12px 12px;
 }
-/* narrow column: a field's label above its control */
-.pn.bare .pn-field {
+/* narrow column: a field's label above its control, controls wrap instead of running out of the panel */
+.pn.bare .pn-field,
+.cam-menu .pn-field {
   display: flex;
   flex-direction: column;
   align-items: stretch;
   gap: 4px;
+  min-height: 0;
+}
+.pn.bare .pn-field > label,
+.cam-menu .pn-field > label,
+.cam-menu-row > span {
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+}
+.pn.bare .pn-control,
+.cam-menu .pn-control {
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.cam-menu .pn-control > .seg {
+  flex: 1;
+}
+.pn.bare .pn-control > :only-child,
+.cam-menu .pn-control > :only-child {
+  flex: 1;
+}
+.cam-menu .pn-control > .seg > button {
+  flex: 1;
 }
 .group-content > .cam-menu {
   padding: 10px 12px 12px;
+  gap: 6px;
+}
+/* one heading style for the parts of the camera section */
+.cam-menu-h,
+.cam-menu-moves > summary {
+  margin-top: 10px;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--text-1);
+}
+.cam-menu-moves > summary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.cam-menu-moves > summary::-webkit-details-marker {
+  display: none;
+}
+.cam-menu-moves > summary::before {
+  content: '';
+  width: 5px;
+  height: 5px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform var(--t-fast, 0.12s) ease;
+}
+.cam-menu-moves[open] > summary::before {
+  transform: rotate(45deg);
+}
+.cam-menu-moves[open] > summary {
+  margin-bottom: 8px;
+}
+.cam-menu-moves .pn-field + .pn-field {
+  margin-top: 8px;
+}
+.cam-moves-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+}
+.cam-moves-actions > .btn.primary {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 /* the camera menu's own headings already name each part */
 .cam-menu .pn {
