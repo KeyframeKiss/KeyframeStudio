@@ -67,7 +67,8 @@ export default async function (t) {
 
   await t.step('Studio’s view is your work camera: Play the edit alone never moves it', async () => {
     await ok('shots.setLiveCuts', { on: true });
-    check('on, and saved in the state; Studio’s view not following by default', (await state()).liveCuts === true && (await state()).studioEdit === false);
+    await ok('shots.setStudioEdit', { on: false }); // (it stays as it was set until Studio restarts)
+    check('on, and saved in the state; Studio’s view not following', (await state()).liveCuts === true && (await state()).studioEdit === false);
     await ok('timeline.seek', { t: 0.5 });
     await sleep(300);
     await ok('camera.setFov', { fov: 33 });

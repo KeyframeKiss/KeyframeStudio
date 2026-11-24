@@ -717,7 +717,7 @@ namespace StudioEX.Bridge.Api
                         PlaceMainCamera(tr.Cam);
                     }
                     // a dissolve's outgoing picture for this very frame (its first frame included)
-                    if (tr.Out != null) TransitionFx.RenderOutgoing(Camera.main, tr.Out);
+                    if (tr.Out != null) TransitionFx.RequestOutgoing(tr.Out);
                     TransitionFx.Sync(Camera.main);
                     return;
                 }

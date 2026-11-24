@@ -41,6 +41,10 @@ namespace StudioEX.Bridge.Api
         internal static State Override;
 
         internal static RenderTexture OutRT;
+        // the outgoing picture without its alpha: Koikatsu leaves eye whites, hair edges and the like part-transparent
+        // in the alpha channel; blended with that alpha, the incoming shot showed through them (dark eyes, broken hair).
+        // A copy in a format with no alpha reads as fully opaque, so the whole picture fades evenly.
+        private static RenderTexture _outOpaque;
         private static string _outFor;   // the outgoing shot OutRT shows
         private static int _outFrame = -10;
         internal static bool RenderingOut;
@@ -135,7 +139,7 @@ namespace StudioEX.Bridge.Api
             GL.LoadOrtho();
             try
             {
-                if (s.OutA > 0.002f && OutReady(s)) Quad(m, OutRT, new Color(1f, 1f, 1f, s.OutA));
+                if (s.OutA > 0.002f && OutReady(s)) Quad(m, _outOpaque ?? (Texture)OutRT, new Color(1f, 1f, 1f, s.OutA));
                 if (s.FadeA > 0.002f) Quad(m, Texture2D.whiteTexture, new Color(s.Fade.r, s.Fade.g, s.Fade.b, s.FadeA));
             }
             catch (Exception e) { _lastError = e.Message; }
@@ -179,6 +183,7 @@ namespace StudioEX.Bridge.Api
                 cam.targetTexture = OutRT;
                 RenderingOut = true;
                 cam.Render();
+                OpaqueCopy(w, h);
                 _outFor = outShot.GetString("id");
                 _outFrame = Time.frameCount;
             }
@@ -190,6 +195,66 @@ namespace StudioEX.Bridge.Api
                 cam.transform.rotation = rot;
                 cam.fieldOfView = fov;
             }
+        }
+
+        // ---- drawing the outgoing shot at the right moment ----
+        // Unity skins each character once per frame, the first time it's drawn. Drawn from LateUpdate, the outgoing
+        // shot came before the characters were finished for the frame (hair physics, eye look, neck), and that
+        // half-done pose was reused for the main picture too: hair not following the head, dark eyes. So it's drawn
+        // from a camera that renders nothing, just before Studio's: rendering only starts once every update is done.
+        private static Dictionary<string, object> _pendingOut;
+        private static Camera _trigger;
+
+        /// <summary>Draw the outgoing shot this frame, once the scene is fully posed (before Studio's camera renders).</summary>
+        internal static void RequestOutgoing(Dictionary<string, object> outShot)
+        {
+            var main = Camera.main;
+            if (main == null || outShot == null) return;
+            _pendingOut = outShot;
+            if (_trigger == null)
+            {
+                var go = new GameObject("StudioEX.DissolveTrigger") { hideFlags = HideFlags.HideAndDontSave };
+                DontDestroyOnLoad(go);
+                _trigger = go.AddComponent<Camera>();
+                _trigger.cullingMask = 0;                      // draws nothing itself
+                _trigger.clearFlags = CameraClearFlags.Nothing;
+                _trigger.useOcclusionCulling = false;
+                go.AddComponent<OutgoingTrigger>();
+            }
+            _trigger.depth = main.depth - 1; // just before Studio's camera
+            _trigger.enabled = true;
+        }
+
+        private sealed class OutgoingTrigger : MonoBehaviour
+        {
+            private void OnPreCull()
+            {
+                var shot = _pendingOut;
+                _pendingOut = null;
+                if (shot == null) return;
+                try { RenderOutgoing(Camera.main, shot); }
+                catch (Exception e) { _lastError = e.Message; }
+            }
+
+            // nothing asked for next frame: stop rendering
+            private void OnPostRender()
+            {
+                if (_pendingOut == null) GetComponent<Camera>().enabled = false;
+            }
+        }
+
+        /// <summary>The outgoing picture copied into a texture with no alpha channel (see _outOpaque).</summary>
+        private static void OpaqueCopy(int w, int h)
+        {
+            var fmt = SystemInfo.SupportsRenderTextureFormat(RenderTextureFormat.RGB111110Float) ? RenderTextureFormat.RGB111110Float
+                : SystemInfo.SupportsRenderTextureFormat(RenderTextureFormat.RGB565) ? RenderTextureFormat.RGB565 : RenderTextureFormat.ARGB32;
+            if (fmt == RenderTextureFormat.ARGB32) { _outOpaque = null; return; } // nothing without alpha here: blend as before
+            if (_outOpaque == null || _outOpaque.width != w || _outOpaque.height != h || _outOpaque.format != fmt)
+            {
+                if (_outOpaque != null) { _outOpaque.Release(); Destroy(_outOpaque); }
+                _outOpaque = new RenderTexture(w, h, 0, fmt) { name = "StudioEX.DissolveOpaque" };
+            }
+            Graphics.Blit(OutRT, _outOpaque);
         }
 
         /// <summary>A scene change: nothing in transition, and the dissolve picture belongs to no shot.</summary>
