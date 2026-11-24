@@ -66,7 +66,7 @@ const STARTERS: Record<string, Partial<ProjValues>> = {
   leaves: { mode: 'shadow', color: [0.15, 0.25, 0.15, 0.7], count: 6, angle: 50 },
 };
 
-export function ProjectorsPanel() {
+export function ProjectorsPanel({ onChanged }: { onChanged?: () => void } = {}) {
   const status = useStore((s) => s.status);
   const revision = useStore((s) => s.revision);
   const [items, setItems] = useState<Proj[] | null>(null);
@@ -165,7 +165,19 @@ export function ProjectorsPanel() {
       ) : (
         <div className="fx-cards">
           {items.map((p) => (
-            <ProjectorCard key={p.id} p={p} onSet={(v) => set(p.id, v)} />
+            <ProjectorCard
+              key={p.id}
+              p={p}
+              onSet={(v) => set(p.id, v)}
+              onRemove={() =>
+                call<{ items: Proj[] }>('proj.remove', { id: p.id }).then((r) => {
+                  if (!r) return;
+                  setItems(r.items);
+                  onChanged?.();
+                  toast(`Removed ${p.name.replace(/^Projector · /, "")}, Ctrl+Z to undo`);
+                })
+              }
+            />
           ))}
         </div>
       )}
@@ -198,9 +210,9 @@ function Anim({ id, model, what }: { id: number; model: string; what?: string })
 
 function Chips<T extends { id: string; label: string; help?: string }>({ list, value, onPick }: { list: T[]; value: string; onPick: (id: string) => void }) {
   return (
-    <div className="ct-chips">
+    <div className="seg pj-seg">
       {list.map((x) => (
-        <button key={x.id} className={`btn chip ${value === x.id ? 'on' : ''}`} onClick={() => onPick(x.id)} title={x.help}>
+        <button key={x.id} className={value === x.id ? 'on' : ''} onClick={() => onPick(x.id)} title={x.help}>
           {x.label}
         </button>
       ))}
@@ -208,7 +220,7 @@ function Chips<T extends { id: string; label: string; help?: string }>({ list, v
   );
 }
 
-function ProjectorCard({ p, onSet }: { p: Proj; onSet: (v: Partial<ProjValues>) => void }) {
+function ProjectorCard({ p, onSet, onRemove }: { p: Proj; onSet: (v: Partial<ProjValues>) => void; onRemove: () => void }) {
   const v = p.values;
   const [more, setMore] = useState(false);
   return (
@@ -221,6 +233,10 @@ function ProjectorCard({ p, onSet }: { p: Proj; onSet: (v: Partial<ProjValues>) 
           <Icon name="target" size={13} />
         </button>
         <Switch on={p.visible} onChange={(on) => setNodeVisible(p.id, on)} />
+        <button className="btn small solid danger" title="Remove this projector (Ctrl+Z brings it back)" onClick={onRemove}>
+          <Icon name="trash" size={12} />
+          Remove
+        </button>
       </div>
       <div className="look-card-body">
         <Chips list={SHAPES} value={v.shape} onPick={(shape) => onSet({ shape })} />

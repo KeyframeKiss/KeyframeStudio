@@ -21,14 +21,13 @@ import { Icon } from './Icon';
 import { Inspector, useGettingStarted } from './Inspector';
 import { RenderPanel } from './RenderPanel';
 import { OutfitPanel } from './OutfitPanel';
-import { LightRigsPanel } from './LightRigsPanel';
+import { LightingPage } from './LightRigsPanel';
 import { LookPanel } from './LookPanel';
 import { MaterialEditorPage } from './MaterialEditor';
 import { EffectsPage } from './EffectsPage';
 import { ItemLibrary } from './ItemLibrary';
 import { Col, Columns, Page } from './Page';
 import { StillsPage } from './StillsPage';
-import { AimLightsPanel, ProjectorsPanel } from './ProjectorsPanel';
 import { StudioWindowPage } from './StudioWindowPage';
 import { LookPresets } from './LookPresets';
 import { ModSettings } from './ModSettings';
@@ -421,9 +420,7 @@ export function LookWorkspace() {
             {tab === 'materials' && <MaterialEditorPage />}
             {tab === 'lighting' && (
               <Page>
-                <LightRigsPanel />
-                <ProjectorsPanel />
-                <AimLightsPanel />
+                <LightingPage />
               </Page>
             )}
           </ErrorBoundary>

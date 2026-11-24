@@ -31,6 +31,15 @@ namespace StudioEX.Bridge.Api
             r.Add("proj.list", a => List());
             r.Add("proj.add", Add);
             r.Add("proj.set", SetProj);
+            // takes a projector off (its folder too, unless other things were put in it); undoable
+            r.Add("proj.remove", a =>
+            {
+                var f = SceneApi.FindOci(a.GetInt("id")) as OCIFolder;
+                var p = f != null ? ProjectorOf(f) : null;
+                if (p == null) throw new BridgeException("That projector is gone");
+                UndoStack.Push(new ProjAddUndo(f, p.Data.Copy(), "Remove projector").Restore());
+                return List();
+            });
             // shader debug view: 0 off, 1 solid, 2 projected uv, 3 distance, 4 facing
             r.Add("proj.debug", a => { foreach (var kv in ProjectorFolders()) ProjectorOf(kv.Value).Debug(a.GetFloat("mode")); return true; });
             r.Add("aim.list", a => AimList());
@@ -334,8 +343,9 @@ namespace StudioEX.Bridge.Api
         {
             private readonly OCIFolder _f;
             private readonly ProjData _d;
-            public ProjAddUndo(OCIFolder f, ProjData d) { _f = f; _d = d; }
-            public string Label => "Add projector";
+            private readonly string _label;
+            public ProjAddUndo(OCIFolder f, ProjData d, string label = "Add projector") { _f = f; _d = d; _label = label; }
+            public string Label => _label;
             public bool Absorbs(IUndoEntry newer) => false;
             public IUndoEntry Restore()
             {
@@ -348,10 +358,10 @@ namespace StudioEX.Bridge.Api
                 {
                     // the folder holds other things now: keep it, take only the projector off it
                     if (p != null) UnityEngine.Object.DestroyImmediate(p.gameObject);
-                    return new ProjReattachUndo(_f, d, id);
+                    return new ProjReattachUndo(_f, d, id, _label);
                 }
                 if (_f.treeNodeObject != null) S.treeNodeCtrl.DeleteNode(_f.treeNodeObject);
-                return new ProjReAddUndo(d, pos, rot, id);
+                return new ProjReAddUndo(d, pos, rot, id, _label);
             }
         }
 
@@ -359,15 +369,15 @@ namespace StudioEX.Bridge.Api
         {
             private readonly OCIFolder _f;
             private readonly ProjData _d;
-            private readonly string _id;
-            public ProjReattachUndo(OCIFolder f, ProjData d, string id) { _f = f; _d = d; _id = id; }
-            public string Label => "Add projector";
+            private readonly string _id, _label;
+            public ProjReattachUndo(OCIFolder f, ProjData d, string id, string label) { _f = f; _d = d; _id = id; _label = label; }
+            public string Label => _label;
             public bool Absorbs(IUndoEntry newer) => false;
             public IUndoEntry Restore()
             {
                 if (_f?.objectItem == null) return null;
                 Attach(_f, _d, _id);
-                return new ProjAddUndo(_f, _d);
+                return new ProjAddUndo(_f, _d, _label);
             }
         }
 
@@ -375,9 +385,9 @@ namespace StudioEX.Bridge.Api
         {
             private readonly ProjData _d;
             private readonly Vector3 _pos, _rot;
-            private readonly string _id;
-            public ProjReAddUndo(ProjData d, Vector3 pos, Vector3 rot, string id) { _d = d; _pos = pos; _rot = rot; _id = id; }
-            public string Label => "Add projector";
+            private readonly string _id, _label;
+            public ProjReAddUndo(ProjData d, Vector3 pos, Vector3 rot, string id, string label) { _d = d; _pos = pos; _rot = rot; _id = id; _label = label; }
+            public string Label => _label;
             public bool Absorbs(IUndoEntry newer) => false;
             public IUndoEntry Restore()
             {
@@ -386,7 +396,7 @@ namespace StudioEX.Bridge.Api
                 f.objectInfo.changeAmount.pos = _pos;
                 f.objectInfo.changeAmount.rot = _rot;
                 Attach(f, _d, _id);
-                return new ProjAddUndo(f, _d);
+                return new ProjAddUndo(f, _d, _label);
             }
         }
 

@@ -30,6 +30,13 @@ namespace StudioEX.Bridge.Api
             r.Add("light.sceneRigs", a => SceneRigs());
             r.Add("light.setRigEnabled", SetEnabled);
             r.Add("light.removeRig", Remove);
+            // one light (Studio's own delete: not undoable, like deleting it in Studio)
+            r.Add("light.remove", a =>
+            {
+                var l = SceneApi.FindOci(a.GetInt("id")) as OCILight ?? throw new BridgeException("That light is gone");
+                Singleton<Studio.Studio>.Instance.treeNodeCtrl.DeleteNode(l.treeNodeObject);
+                return SceneRigs();
+            });
             r.Add("light.saveRig", Save);
             r.Add("light.deleteRig", Delete);
         }

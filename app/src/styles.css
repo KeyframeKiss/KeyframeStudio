@@ -680,6 +680,17 @@ html.compact .btn {
 .btn.danger:hover {
   color: var(--danger);
 }
+.btn.solid.danger {
+  color: color-mix(in srgb, var(--danger) 80%, var(--text-0));
+}
+.btn.solid.danger:hover:not(:disabled) {
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 16%, var(--bg-3));
+}
+.btn.solid.danger,
+.btn.icon.danger {
+  gap: 5px;
+}
 .btn:disabled {
   opacity: 0.4;
   pointer-events: none;
@@ -2746,63 +2757,6 @@ html.compact .btn {
   color: var(--text-1);
   font-size: 12px;
 }
-.rig-list {
-  display: grid;
-  gap: 6px;
-}
-.rig-card {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 10px;
-  border: 1px solid var(--line-soft);
-  border-radius: 8px;
-  background: var(--bg-1);
-}
-.rig-card > div:first-child {
-  flex: 1;
-  min-width: 0;
-}
-.rig-card b {
-  display: block;
-  font-size: 12px;
-}
-.rig-card small {
-  display: block;
-  color: var(--text-3);
-  font-size: 11px;
-  margin-top: 2px;
-}
-.rig-card small.rig-roles {
-  color: var(--text-2);
-  font-size: 10px;
-}
-.rig-actions {
-  display: flex;
-  gap: 4px;
-}
-.rig-scene {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 4px;
-}
-.rig-scene label {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-}
-.rig-scene label span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.rig-scene label small {
-  color: var(--text-3);
-}
-
 /* Pose › Outfit */
 .outfit-list {
   display: grid;
@@ -5553,16 +5507,6 @@ html.frameless .tooltip {
 }
 .pn .cam-slots {
   max-width: 460px;
-}
-
-.rig-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-  gap: 8px;
-}
-.rig-grid .rig-card {
-  margin: 0;
-  height: 100%;
 }
 
 /* Render: two columns, rows of related cards */
@@ -9188,7 +9132,7 @@ a.btn {
 .cleanup-page {
   container-type: inline-size;
 }
-.cleanup-scope {
+.ed-scope {
   padding: 10px 12px;
   margin-bottom: 6px;
   border: 1px solid var(--line);
@@ -9202,20 +9146,20 @@ a.btn {
   padding: 16px 2px;
   border-top: 1px solid var(--line-soft);
 }
-.cleanup-scope {
+.ed-scope {
   flex-wrap: wrap;
 }
-.cleanup-scope .ed-title {
+.ed-scope .ed-title {
   flex: 1 1 240px;
 }
-.cleanup-scope .ed-pair {
+.ed-scope .ed-pair {
   flex-wrap: wrap;
   gap: 6px;
 }
-.cleanup-scope .btn {
+.ed-scope .btn {
   white-space: nowrap;
 }
-.cleanup-scope + .tool {
+.ed-scope + .tool {
   border-top: 0;
 }
 .tool-about {
@@ -9272,4 +9216,161 @@ a.btn {
   .tool-finds {
     grid-template-columns: 1fr;
   }
+}
+
+/* ---- Look › Lighting ---- */
+/* everything added to the scene: one row each, with on / off, select and Remove */
+.ls-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
+  gap: 8px;
+}
+.ls-row {
+  --kind: #ffb648;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-1);
+  transition: opacity var(--t-med) var(--ease-out);
+}
+.ls-row .ed-icon {
+  --kind: inherit;
+}
+.ls-row.proj {
+  --kind: #c78bff;
+}
+.ls-row.light {
+  --kind: #ffd77a;
+}
+.ls-row.off .ed-title,
+.ls-row.off .ed-icon {
+  opacity: 0.45;
+}
+.ls-row .spacer {
+  flex: 1;
+}
+.ls-row .switch {
+  flex: none;
+}
+/* rigs: a diagram over each */
+.rig-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 10px;
+}
+.rig-card {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-1);
+  overflow: hidden;
+  transition: border-color var(--t-med) var(--ease-out);
+}
+.rig-card:hover {
+  border-color: var(--bg-4);
+}
+.rig-card-new {
+  justify-content: center;
+  border-style: dashed;
+}
+.rig-diagram {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-bottom: 1px solid var(--line-soft);
+}
+.rig-diagram .rig-ring {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.07);
+  stroke-dasharray: 2 3;
+}
+.rig-diagram .rig-body {
+  fill: #4a4f5c;
+}
+.rig-diagram .rig-head {
+  fill: #c9ccd6;
+}
+.rig-diagram .rig-nose {
+  fill: #c9ccd6;
+}
+.rig-diagram .rig-nose-side {
+  fill: none;
+  stroke: #c9ccd6;
+  stroke-width: 1.2;
+}
+.rig-diagram .rig-lamp {
+  stroke: #111216;
+  stroke-width: 1.4;
+}
+.rig-diagram .rig-lamp-label {
+  font: 700 7px var(--font, sans-serif);
+  fill: #111216;
+  text-anchor: middle;
+}
+.rig-diagram .rig-ground {
+  stroke: rgba(255, 255, 255, 0.18);
+}
+.rig-diagram .rig-stick {
+  stroke: #5b6070;
+  stroke-width: 3;
+  stroke-linecap: round;
+}
+.rig-diagram .rig-ray {
+  stroke-width: 1;
+  stroke-dasharray: 2 2;
+  opacity: 0.55;
+}
+.rig-diagram .rig-caption {
+  font: 500 6.5px var(--font, sans-serif);
+  fill: rgba(255, 255, 255, 0.35);
+  text-anchor: middle;
+}
+.rig-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px 10px;
+}
+.rig-card-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 26px;
+}
+.rig-card-title b {
+  font-size: 12.5px;
+  color: var(--text-0);
+}
+.rig-card-title .spacer {
+  flex: 1;
+}
+.rig-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  font-size: 10.5px;
+  color: var(--text-2);
+}
+.rig-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.rig-legend i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5);
+}
+/* projector pickers wrap like chips but look like the app's other segmented controls */
+.pj-seg {
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.pj-seg > button {
+  white-space: nowrap;
 }

@@ -161,7 +161,7 @@ export function CleanupPanel() {
 
   return (
     <div className="cleanup-page">
-      <header className="ed-head cleanup-scope">
+      <header className="ed-head ed-scope">
         <IconTile name="key" />
         <div className="ed-title">
           <b>
