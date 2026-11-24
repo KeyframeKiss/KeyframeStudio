@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { onThemeChange, tokenColor, tokenRgba } from '../lib/theme';
 import type { WireTrack } from '../bridge/types';
 import { curveKind, PRESETS, toFlat } from '../lib/curve';
 import { niceStep, snapToFrame } from '../lib/time';
@@ -469,7 +470,8 @@ export function DopeSheet({ compact = false }: { compact?: boolean } = {}) {
   // ---------------- drawing ----------------
   useEffect(() => {
     let raf = 0;
-    const colors = {
+    const readColors = () => ({
+      text0: cssVar('--text-0'),
       bg0: cssVar('--bg-0'),
       bg1: cssVar('--bg-1'),
       bg2: cssVar('--bg-2'),
@@ -481,7 +483,13 @@ export function DopeSheet({ compact = false }: { compact?: boolean } = {}) {
       accent: cssVar('--accent'),
       accent2: cssVar('--accent-2'),
       playhead: cssVar('--playhead'),
-    };
+    });
+    let colors = readColors();
+    // a new theme or accent: new colours, drawn at once
+    const offTheme = onThemeChange(() => {
+      colors = readColors();
+      dirty.current = true;
+    });
 
     let drawnTime: number | undefined;
     const draw = () => {
@@ -534,7 +542,7 @@ export function DopeSheet({ compact = false }: { compact?: boolean } = {}) {
           ctx.fillStyle = colors.bg2;
           ctx.fillRect(0, y, w, ROW_H);
         } else if (selTr.has(row.track.id)) {
-          ctx.fillStyle = 'rgba(90,169,255,0.10)';
+          ctx.fillStyle = tokenRgba('--accent-2', 0.1);
           ctx.fillRect(0, y, w, ROW_H);
         }
         ctx.fillStyle = colors.lineSoft;
@@ -544,12 +552,12 @@ export function DopeSheet({ compact = false }: { compact?: boolean } = {}) {
       // beyond-duration shade
       const xEnd = xOf(duration);
       if (xEnd < w) {
-        ctx.fillStyle = 'rgba(0,0,0,0.35)';
+        ctx.fillStyle = tokenRgba('--shade', 0.35);
         ctx.fillRect(Math.max(0, xEnd), RULER_H, w - xEnd, h - RULER_H);
       }
       const xStart = xOf(0);
       if (xStart > 0) {
-        ctx.fillStyle = 'rgba(0,0,0,0.35)';
+        ctx.fillStyle = tokenRgba('--shade', 0.35);
         ctx.fillRect(0, RULER_H, xStart, h - RULER_H);
       }
 
@@ -559,10 +567,10 @@ export function DopeSheet({ compact = false }: { compact?: boolean } = {}) {
       const tA = tOf(0);
       const tB = tOf(w);
       if (minor * v.pps >= 5) {
-        ctx.fillStyle = 'rgba(255,255,255,0.025)';
+        ctx.fillStyle = tokenRgba('--ink', 0.025);
         for (let t = Math.ceil(tA / minor) * minor, gi = 0; t <= tB && gi < 2000; t += minor, gi++) ctx.fillRect(Math.round(xOf(t)), RULER_H, 1, h - RULER_H);
       }
-      ctx.fillStyle = 'rgba(255,255,255,0.06)';
+      ctx.fillStyle = tokenRgba('--ink', 0.06);
       for (let t = Math.ceil(tA / major) * major, gi = 0; t <= tB && gi < 2000; t += major, gi++) ctx.fillRect(Math.round(xOf(t)), RULER_H, 1, h - RULER_H);
 
       // keys
@@ -577,10 +585,10 @@ export function DopeSheet({ compact = false }: { compact?: boolean } = {}) {
           ctx.lineTo(x - r, y);
           ctx.closePath();
         }
-        ctx.fillStyle = selected ? colors.accent : dim ? colors.text3 : '#d9dce4';
+        ctx.fillStyle = selected ? colors.accent : dim ? colors.text3 : colors.text0;
         ctx.fill();
         ctx.lineWidth = 1;
-        ctx.strokeStyle = selected ? '#fff3dc' : 'rgba(0,0,0,0.55)';
+        ctx.strokeStyle = selected ? tokenColor('--glint') : tokenRgba('--bg-0', 0.85); // a rim in the ground colour keeps dense keys apart in either theme
         ctx.stroke();
       };
 
@@ -597,7 +605,7 @@ export function DopeSheet({ compact = false }: { compact?: boolean } = {}) {
       const halo = (x: number, y: number, r: number) => {
         ctx.beginPath();
         ctx.arc(x, y, r + 4, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(255,159,46,0.18)';
+        ctx.fillStyle = tokenRgba('--accent', 0.18);
         ctx.fill();
       };
       /** a ring that grows and fades around a key that just appeared */
@@ -605,7 +613,7 @@ export function DopeSheet({ compact = false }: { compact?: boolean } = {}) {
         const p = age / POP_MS;
         ctx.beginPath();
         ctx.arc(x, y, 6 + p * 9, 0, Math.PI * 2);
-        ctx.strokeStyle = `rgba(255,159,46,${(1 - p) * 0.9})`;
+        ctx.strokeStyle = tokenRgba('--accent', (1 - p) * 0.9);
         ctx.lineWidth = 2 * (1 - p) + 0.5;
         ctx.stroke();
       };
@@ -623,7 +631,7 @@ export function DopeSheet({ compact = false }: { compact?: boolean } = {}) {
           const k0 = Math.max(0, firstKeyAtOrAfter(keys, tLo) - 1);
           const k1 = Math.min(keys.length - 1, firstKeyAtOrAfter(keys, tHi));
           // segment bars
-          ctx.fillStyle = dim ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.09)';
+          ctx.fillStyle = dim ? tokenRgba('--ink', 0.04) : tokenRgba('--ink', 0.09);
           let prevSel = isSel(tr.id, keys[k0][0]);
           for (let k = k0; k < k1; k++) {
             const nextSel = isSel(tr.id, keys[k + 1][0]);
@@ -701,7 +709,7 @@ export function DopeSheet({ compact = false }: { compact?: boolean } = {}) {
           if (dragging) {
             // picked up: it lifts off the lane
             ctx.save();
-            ctx.shadowColor = 'rgba(0,0,0,0.55)';
+            ctx.shadowColor = tokenRgba('--shade', 0.55);
             ctx.shadowBlur = 12;
             ctx.shadowOffsetY = 3;
             ctx.fillStyle = `rgba(${rgb},0.24)`;
@@ -757,7 +765,7 @@ export function DopeSheet({ compact = false }: { compact?: boolean } = {}) {
           x1 = Math.min(w, xOf(sh.end));
         if (x1 <= x0) return;
         const picked = sh.id === st.selShotId;
-        ctx.fillStyle = picked ? colors.accent : i % 2 ? 'rgba(255,159,46,0.55)' : 'rgba(139,123,255,0.65)';
+        ctx.fillStyle = picked ? colors.accent : i % 2 ? tokenRgba('--accent', 0.55) : tokenRgba('--kind-proj', 0.65);
         ctx.fillRect(x0 + 1, 0, Math.max(1, x1 - x0 - 2), picked ? SHOT_BAND : SHOT_BAND - 2);
       });
       ctx.fillStyle = colors.line;
@@ -792,7 +800,7 @@ export function DopeSheet({ compact = false }: { compact?: boolean } = {}) {
       if (sh && (mode === 'drag' || mode === 'scrub' || mode === 'audio')) {
         const sx = Math.round(xOf(sh.t)) + 0.5;
         ctx.save();
-        ctx.strokeStyle = 'rgba(255,170,60,0.85)';
+        ctx.strokeStyle = tokenRgba('--accent', 0.85);
         ctx.setLineDash([3, 3]);
         ctx.beginPath();
         ctx.moveTo(sx, RULER_H);
@@ -801,11 +809,11 @@ export function DopeSheet({ compact = false }: { compact?: boolean } = {}) {
         ctx.restore();
         ctx.font = '600 10px Segoe UI, system-ui, sans-serif';
         const tw = ctx.measureText(sh.label).width + 10;
-        ctx.fillStyle = 'rgba(255,170,60,0.95)';
+        ctx.fillStyle = tokenRgba('--accent', 0.95);
         ctx.beginPath();
         ctx.roundRect(sx + 4, RULER_H + 3, tw, 15, 4);
         ctx.fill();
-        ctx.fillStyle = '#1a1206';
+        ctx.fillStyle = tokenColor('--on-accent');
         ctx.textBaseline = 'middle';
         ctx.fillText(sh.label, sx + 9, RULER_H + 11);
       }
@@ -816,7 +824,7 @@ export function DopeSheet({ compact = false }: { compact?: boolean } = {}) {
         ctx.fillStyle = colors.playhead;
         ctx.fillRect(px, RULER_H - 2, 1.5, h - RULER_H + 2);
         // a soft glow either side, so the playhead reads at a glance
-        ctx.fillStyle = 'rgba(255,77,106,0.16)';
+        ctx.fillStyle = tokenRgba('--playhead', 0.16);
         ctx.fillRect(px - 2, RULER_H - 2, 5.5, h - RULER_H + 2);
         ctx.fillStyle = colors.playhead;
         const label = `${Math.round(now * fps)}`;
@@ -835,7 +843,7 @@ export function DopeSheet({ compact = false }: { compact?: boolean } = {}) {
       if (it.mode === 'box') {
         const x = Math.min(it.x0, it.x1);
         const y = Math.min(it.y0, it.y1);
-        ctx.fillStyle = 'rgba(90,169,255,0.12)';
+        ctx.fillStyle = tokenRgba('--accent-2', 0.12);
         ctx.strokeStyle = colors.accent2;
         ctx.fillRect(x, y, Math.abs(it.x1 - it.x0), Math.abs(it.y1 - it.y0));
         ctx.strokeRect(x + 0.5, y + 0.5, Math.abs(it.x1 - it.x0), Math.abs(it.y1 - it.y0));
@@ -850,7 +858,10 @@ export function DopeSheet({ compact = false }: { compact?: boolean } = {}) {
       perfRecord('dopeDraw', performance.now() - perfT0);
     };
     raf = requestAnimationFrame(draw);
-    return () => cancelAnimationFrame(raf);
+    return () => {
+      cancelAnimationFrame(raf);
+      offTheme();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

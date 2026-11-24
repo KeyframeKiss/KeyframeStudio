@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { tokenRgba } from '../lib/theme';
 import { Help } from './Help';
 import { Slider } from './CharacterPanel';
 import { Secs } from './AudioPage';
@@ -275,7 +276,7 @@ function VoiceStrip({ clip, index, range }: { clip: AudioClipInfo; index: number
     const span = clipSpan(clip);
     const xOf = (t: number) => ((t - clip.offset) / span) * w;
     if (range) {
-      g.fillStyle = 'rgba(255,159,46,0.16)';
+      g.fillStyle = tokenRgba('--accent', 0.16);
       g.fillRect(xOf(range[0]), 0, xOf(range[1]) - xOf(range[0]), h);
     }
     if (!peaks) return;

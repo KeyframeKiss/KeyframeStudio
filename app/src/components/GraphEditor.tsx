@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { onThemeChange, tokenColor, tokenRgba } from '../lib/theme';
 import type { WireTrack } from '../bridge/types';
 import { evaluate, fromFlat } from '../lib/curve';
 import { eulerFromQuat, quatFromEuler, slerp, unwrap, type Euler, type Quat } from '../lib/rotation';
@@ -26,8 +27,10 @@ import { perfRecord } from '../lib/perf';
 const RULER_H = 28;
 const PAD_L = 54; // value labels
 const HIT = 7;
-const AXIS_COLORS = ['#ff6b6b', '#5ee08a', '#5aa9ff', '#f5d76e'];
-const PALETTE = ['#ff9f2e', '#c792ea', '#5ad8e6', '#ff7ab6', '#9ccc65', '#ffd54f', '#80cbc4', '#f48fb1'];
+// axis curves take the theme's axis colours (resolved while drawing, so a new theme recolours them)
+const AXIS_COLORS = ['--axis-x', '--axis-y', '--axis-z', '--axis-w'];
+const col = (c: string) => (c.startsWith('--') ? tokenColor(c) : c);
+const PALETTE = ['--series-1', '--series-2', '--series-3', '--series-4', '--series-5', '--series-6', '--series-7', '--series-8'];
 
 type RawKey = { t: number; attrs: Record<string, number>; curve?: number[] };
 
@@ -375,11 +378,11 @@ export function GraphEditor() {
       const fps = st.tl?.fps ?? 60;
       const dur = st.tl?.duration ?? 10;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ctx.fillStyle = '#111216';
+      ctx.fillStyle = tokenColor('--bg-0');
       ctx.fillRect(0, 0, w, h);
 
       // duration shading
-      ctx.fillStyle = 'rgba(0,0,0,0.35)';
+      ctx.fillStyle = tokenRgba('--shade', 0.35);
       if (X(dur) < w) ctx.fillRect(Math.max(PAD_L, X(dur)), RULER_H, w, h);
       if (X(0) > PAD_L) ctx.fillRect(PAD_L, RULER_H, X(0) - PAD_L, h);
 
@@ -396,16 +399,16 @@ export function GraphEditor() {
       ctx.textBaseline = 'middle';
       for (let val = Math.ceil(v.yMin / vStep) * vStep, n = 0; val <= v.yMax && n < 200; val += vStep, n++) {
         const y = Math.round(Y(val));
-        ctx.fillStyle = Math.abs(val) < vStep / 2 ? 'rgba(255,255,255,0.14)' : 'rgba(255,255,255,0.05)';
+        ctx.fillStyle = Math.abs(val) < vStep / 2 ? tokenRgba('--ink', 0.14) : tokenRgba('--ink', 0.05);
         ctx.fillRect(PAD_L, y, w - PAD_L, 1);
-        ctx.fillStyle = '#7d828f';
+        ctx.fillStyle = tokenColor('--text-2');
         const label = Math.abs(vStep) >= 1 ? val.toFixed(0) : val.toFixed(Math.min(4, Math.max(1, -Math.floor(Math.log10(vStep)))));
         ctx.fillText(label, 6, y);
       }
       // time grid
       const major = niceStep(v.pps, 72, fps);
       for (let t = Math.ceil(T(PAD_L) / major) * major, gi = 0; t <= T(w) && gi < 2000; t += major, gi++) {
-        ctx.fillStyle = 'rgba(255,255,255,0.05)';
+        ctx.fillStyle = tokenRgba('--ink', 0.05);
         ctx.fillRect(Math.round(X(t)), RULER_H, 1, h);
       }
 
@@ -446,7 +449,7 @@ export function GraphEditor() {
           ly = y;
           if (poly[i * 2] > tVisHi) break;
         }
-        ctx.strokeStyle = ch.color;
+        ctx.strokeStyle = col(ch.color);
         ctx.globalAlpha = ch.track.enabled ? 0.95 : 0.35;
         ctx.lineWidth = 1.6;
         ctx.stroke();
@@ -474,55 +477,55 @@ export function GraphEditor() {
           if (sel) anyPicked = true;
         }
         ctx.lineWidth = 1.5;
-        ctx.fillStyle = '#111216';
+        ctx.fillStyle = tokenColor('--bg-0');
         ctx.fill(plain);
-        ctx.strokeStyle = ch.color;
+        ctx.strokeStyle = col(ch.color);
         ctx.stroke(plain);
         if (anyPicked) {
-          ctx.fillStyle = '#ff9f2e';
+          ctx.fillStyle = tokenColor('--accent');
           ctx.fill(picked);
-          ctx.strokeStyle = '#fff3dc';
+          ctx.strokeStyle = tokenColor('--glint');
           ctx.stroke(picked);
         }
       }
       ctx.restore();
 
       // ruler
-      ctx.fillStyle = '#17181d';
+      ctx.fillStyle = tokenColor('--bg-1');
       ctx.fillRect(0, 0, w, RULER_H);
-      ctx.fillStyle = '#2b2e37';
+      ctx.fillStyle = tokenColor('--line');
       ctx.fillRect(0, RULER_H - 1, w, 1);
       ctx.textBaseline = 'top';
       for (let t = Math.ceil(T(PAD_L) / major) * major, gi = 0; t <= T(w) && gi < 2000; t += major, gi++) {
         const x = Math.round(X(t));
-        ctx.fillStyle = '#575b66';
+        ctx.fillStyle = tokenColor('--text-3');
         ctx.fillRect(x, RULER_H - 9, 1, 8);
-        ctx.fillStyle = '#7d828f';
+        ctx.fillStyle = tokenColor('--text-2');
         ctx.fillText(major < 1 ? `${t.toFixed(2)}s` : `${Math.round(t)}s`, x + 3, 6);
       }
-      ctx.fillStyle = '#17181d';
+      ctx.fillStyle = tokenColor('--bg-1');
       ctx.fillRect(0, 0, PAD_L, RULER_H);
       if (state.current.normalize) {
-        ctx.fillStyle = '#ff9f2e';
+        ctx.fillStyle = tokenColor('--accent');
         ctx.fillText('NORM', 8, 8);
       }
 
       // playhead
       const px = Math.round(X(liveTime()));
       if (px >= PAD_L) {
-        ctx.fillStyle = '#ff4d6a';
+        ctx.fillStyle = tokenColor('--playhead');
         ctx.fillRect(px, RULER_H - 2, 1.5, h);
         ctx.beginPath();
         ctx.roundRect(px - 14, 4, 28, 16, 4);
         ctx.fill();
-        ctx.fillStyle = '#fff';
+        ctx.fillStyle = tokenColor('--on-danger');
         ctx.textBaseline = 'middle';
         ctx.font = '600 10px Segoe UI, system-ui, sans-serif';
         const label = String(Math.round(liveTime() * fps));
         ctx.fillText(label, px - ctx.measureText(label).width / 2, 12);
       }
       if (drag && drag.axis !== 'none') {
-        ctx.fillStyle = '#ff9f2e';
+        ctx.fillStyle = tokenColor('--accent');
         ctx.font = '600 11px Segoe UI, system-ui, sans-serif';
         ctx.textBaseline = 'bottom';
         const txt = drag.axis === 'time' ? `Δt ${drag.dt >= 0 ? '+' : ''}${drag.dt.toFixed(3)}s` : `Δ ${drag.dv >= 0 ? '+' : ''}${drag.dv.toFixed(4)}${state.current.normalize ? ' (normalized)' : ''}`;
@@ -531,7 +534,14 @@ export function GraphEditor() {
       perfRecord('graphDraw', performance.now() - perfT0);
     };
     raf = requestAnimationFrame(draw);
-    return () => cancelAnimationFrame(raf);
+    // a new theme or accent: drawn again at once
+    const offTheme = onThemeChange(() => {
+      dirty.current = true;
+    });
+    return () => {
+      cancelAnimationFrame(raf);
+      offTheme();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -723,7 +733,7 @@ export function GraphEditor() {
                 onClick={(e) => toggle(c.id, e.altKey)}
                 title="Click to show/hide · Alt+click to solo"
               >
-                <span style={{ width: 10, height: 10, borderRadius: 3, background: hidden.has(c.id) ? 'transparent' : c.color, border: `1.5px solid ${c.color}` }} />
+                <span style={{ width: 10, height: 10, borderRadius: 3, background: hidden.has(c.id) ? 'transparent' : col(c.color), border: `1.5px solid ${col(c.color)}` }} />
                 <span className="name">{c.label}</span>
                 <span className="sub">
                   {c.min.toFixed(2)}…{c.max.toFixed(2)}

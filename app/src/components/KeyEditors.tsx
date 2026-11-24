@@ -7,9 +7,9 @@ import { DragNumber } from './DragNumber';
 import { Icon } from './Icon';
 
 const AXIS = [
-  ['X', '#f0545c'],
-  ['Y', '#72d95a'],
-  ['Z', '#5599ff'],
+  ['X', 'var(--axis-x)'],
+  ['Y', 'var(--axis-y)'],
+  ['Z', 'var(--axis-z)'],
 ] as const;
 
 /**

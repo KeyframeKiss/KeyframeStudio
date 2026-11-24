@@ -133,7 +133,7 @@ export function Vec({ label, v, step, onChange }: { label: string; v: [number, n
           key={i}
           v={v[i]}
           step={step}
-          color={['#ff6b6b', '#5ee08a', '#5aa9ff'][i]}
+          color={['var(--axis-x)', 'var(--axis-y)', 'var(--axis-z)'][i]}
           onChange={(n) => {
             const next = [...v] as [number, number, number];
             next[i] = n;

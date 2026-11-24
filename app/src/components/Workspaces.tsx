@@ -43,6 +43,7 @@ import { ErrorBoundary } from './ErrorBoundary';
 import { SHORTCUTS } from './shortcuts';
 import { DiagnosticsPage } from './DiagnosticsPage';
 import { HelpGuide } from './HelpGuide';
+import { AppearancePage } from './AppearancePage';
 
 export function Disconnected() {
   const status = useStore((s) => s.status);
@@ -546,6 +547,7 @@ const LIBRARY_PAGES: PageDef[] = [
 ];
 const SETTINGS_PAGES: PageDef[] = [
   { id: 'help', label: 'Help & guide', icon: 'book', hint: 'Getting started, good habits, fixes' },
+  { id: 'appearance', label: 'Appearance', icon: 'look', hint: 'Dark or light theme, accent colour' },
   { id: 'settings', label: 'Mod settings', icon: 'settings', hint: 'Every plugin option' },
   { id: 'studio', label: 'Studio window', icon: 'eyeOff', hint: "Hide Studio's menus: just the picture" },
   { id: 'translate', label: 'Translations', icon: 'translate', hint: 'Fix Japanese → English names' },
@@ -603,6 +605,7 @@ export function SettingsWorkspace() {
         {page === 'settings' && <ModSettings />}
         {page === 'about' && <DiagnosticsPage />}
         {page === 'help' && <HelpGuide />}
+        {page === 'appearance' && <AppearancePage />}
         {page === 'studio' && <StudioWindowPage />}
         {page === 'shortcuts' && (
           <div className="page">

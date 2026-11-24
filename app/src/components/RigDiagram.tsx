@@ -44,8 +44,8 @@ export function RigDiagram({ lights, id }: { lights: DiagramLight[]; id: string 
     <svg className="rig-diagram" viewBox="0 0 210 108" role="img" aria-label={`Lights: ${lights.map((l) => l.role).join(', ')}`}>
       <defs>
         <radialGradient id={gid} cx="50%" cy="50%" r="60%">
-          <stop offset="0%" stopColor="#2a2d36" />
-          <stop offset="100%" stopColor="#15161b" />
+          <stop offset="0%" style={{ stopColor: 'var(--stage-top)' }} />
+          <stop offset="100%" style={{ stopColor: 'var(--stage-bottom)' }} />
         </radialGradient>
         {top.map(({ l, x, y }, i) => (
           <linearGradient key={`lg${i}`} id={`${gid}-b${i}`} gradientUnits="userSpaceOnUse" x1={x} y1={y} x2={cx + (cx - x) * 0.4} y2={cy + (cy - y) * 0.4}>

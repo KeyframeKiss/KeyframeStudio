@@ -5,7 +5,9 @@ const fs = require('fs');
 
 // The app is called Keyframe Studio (it was Studio EX). Keep the data folder it has always used
 // (%APPDATA%\studio-ex: window position, settings, logs) so nothing is lost by the rename.
-app.setPath('userData', path.join(app.getPath('appData'), 'studio-ex'));
+const dataDir = path.join(app.getPath('appData'), 'studio-ex');
+// development: KF_USER_DATA runs a second copy with its own settings (theme checks without touching yours)
+app.setPath('userData', process.env.KF_USER_DATA && path.isAbsolute(process.env.KF_USER_DATA) ? process.env.KF_USER_DATA : dataDir);
 app.setName('Keyframe Studio');
 if (process.platform === 'win32') app.setAppUserModelId('KeyframeStudio');
 const APP_ICON = path.join(__dirname, '..', 'build', 'icon.ico');
@@ -222,7 +224,7 @@ function createWindow() {
   // read fresh each time, so it works when Studio starts after the app
   ipcMain.handle('bridge:token', () => {
     try {
-      return fs.readFileSync(path.join(app.getPath('userData'), 'bridge-token'), 'utf8').trim();
+      return fs.readFileSync(path.join(dataDir, 'bridge-token'), 'utf8').trim(); // where the bridge writes it, whatever folder this copy uses
     } catch {
       return '';
     }
