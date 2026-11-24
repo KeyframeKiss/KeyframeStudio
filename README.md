@@ -83,6 +83,15 @@ paths and onion-skin ghosts, folders (an eye mutes a whole folder or object), se
   </tr>
 </table>
 
+### Longer motions from Studio's own animations
+
+<p align="center"><img src="docs/images/app-motion-builder.png" alt="Animate › Motion builder: a walk, a run and a pose in a row on a character's lane, blended, with Feet planted on" width="860"></p>
+
+The **Motion builder** puts Studio's animations, poses and your motion clips in a row on a lane for each character
+and blends each into the next. Drag, trim and blend the blocks; set speed, mirror and **Feet planted**, which keeps
+a foot still while it's down, so Studio's on-the-spot walks and runs really cross the floor. It's all built into
+ordinary keys you can edit, as one undo step.
+
 ## Get started
 
 **You need:** Koikatsu (or Koikatsu Party) with CharaStudio, BepInEx 5.4 and KKAPI — any HF Patch or BetterRepack
