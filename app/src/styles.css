@@ -9374,3 +9374,15 @@ a.btn {
 .pj-seg > button {
   white-space: nowrap;
 }
+
+/* Library › Scenes: pictures blurred on request (the blur is clipped to the picture) */
+.scene-pic {
+  overflow: hidden;
+}
+.scene-pic img {
+  transition: filter var(--t-med) var(--ease-out);
+}
+.scene-grid.blurred .scene-pic img {
+  filter: blur(14px) saturate(0.85);
+  transform: scale(1.15);
+}

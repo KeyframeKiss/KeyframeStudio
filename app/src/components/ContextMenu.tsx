@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { pressable } from '../lib/pressable';
 
 export type MenuItem =
@@ -50,7 +51,8 @@ export function ContextMenu({ x, y, items, onClose }: { x: number; y: number; it
     };
   }, [onClose]);
 
-  return (
+  // on the page itself: inside a moved or animated panel a fixed box is placed relative to that panel
+  return createPortal(
     <div className="menu" role="menu" ref={ref} style={{ left: pos.x, top: pos.y }} onContextMenu={(e) => e.preventDefault()} onKeyDown={move}>
       {items.map((it, i) => {
         if ('sep' in it) return <div key={i} className="menu-sep" />;
@@ -71,6 +73,7 @@ export function ContextMenu({ x, y, items, onClose }: { x: number; y: number; it
           </div>
         );
       })}
-    </div>
+    </div>,
+    document.body,
   );
 }

@@ -5,6 +5,7 @@ import { saveSceneFile, call, setWorkspace, toast, useStore } from '../state/sto
 import { ContextMenu, type MenuItem } from './ContextMenu';
 import { PromptDialog, type PromptState } from './PromptDialog';
 import { StarIcon } from './StarIcon';
+import { SwitchCard } from './EditorBits';
 
 type Show = 'all' | 'fav' | 'recent';
 type Sort = 'modified' | 'opened' | 'name';
@@ -17,6 +18,8 @@ interface SceneFile {
 
 const canThumb = !!window.studioEx?.isElectron;
 const thumbUrl = (p: string) => `sximg://thumb/?p=${encodeURIComponent(p)}`;
+const BLUR_KEY = 'kf.scenes.blur';
+const folderOfPath = (p: string) => p.replace(/[\\/][^\\/]*$/, '');
 
 export function SceneBrowser() {
   const [scenes, setScenes] = useState<SceneFile[]>([]);
@@ -30,6 +33,21 @@ export function SceneBrowser() {
   const [menu, setMenu] = useState<{ x: number; y: number; items: MenuItem[] } | null>(null);
   const [prompt, setPrompt] = useState<PromptState | null>(null);
   const lib = useLibMeta('scenes');
+  const [blur, setBlurState] = useState(() => {
+    try {
+      return localStorage.getItem(BLUR_KEY) === '1';
+    } catch {
+      return false;
+    }
+  });
+  const setBlur = (on: boolean) => {
+    setBlurState(on);
+    try {
+      localStorage.setItem(BLUR_KEY, on ? '1' : '0');
+    } catch {
+      /* storage unavailable */
+    }
+  };
   const close = () => setWorkspace('animate');
 
   const load = () => call<SceneFile[]>('scene.list').then((s) => s && setScenes(s.sort((a, b) => b.modified - a.modified)));
@@ -118,6 +136,7 @@ export function SceneBrowser() {
               <option value="name">Name</option>
             </select>
           )}
+          {canThumb && <SwitchCard on={blur} label="Blur pictures" help="Blurs the scene pictures, for example while sharing your screen. Names and the rest stay readable." onChange={setBlur} />}
           <span className="spacer" style={{ flex: 1 }} />
           <button
             className="btn solid"
@@ -156,7 +175,7 @@ export function SceneBrowser() {
           </div>
         )}
         <div className="panel-body" style={{ padding: 12 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))', gap: 10 }}>
+          <div className={`scene-grid ${blur ? 'blurred' : ''}`} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))', gap: 10 }}>
             {list.map((s) => {
               const m = lib.get(s.rel);
               return (
@@ -174,6 +193,8 @@ export function SceneBrowser() {
                     items: [
                       { header: true, label: s.rel.replace(/\.png$/i, '') },
                       { label: 'Load…', action: () => loadScene(s) },
+                      ...(window.studioEx?.openFolder ? [{ label: 'Open folder', action: () => void window.studioEx?.openFolder?.(folderOfPath(s.path)) }] : []),
+                      { sep: true as const },
                       { label: m.favorite ? 'Remove from favorites' : 'Add to favorites', action: () => lib.toggleFavorite(s.rel) },
                       {
                         label: 'Edit tags…',
@@ -210,7 +231,7 @@ export function SceneBrowser() {
                 >
                   <StarIcon filled={!!m.favorite} />
                 </button>
-                <div style={{ aspectRatio: '16 / 9', background: 'var(--bg-0)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-3)' }}>
+                <div className="scene-pic" style={{ aspectRatio: '16 / 9', background: 'var(--bg-0)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-3)' }}>
                   {canThumb ? <img src={thumbUrl(s.path)} loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="" /> : 'PNG'}
                 </div>
                 <div style={{ padding: '6px 8px' }}>
