@@ -37,6 +37,8 @@ export interface Block {
   mclip?: MClipRef;
   /** played as in a mirror: left and right swapped */
   mirror?: boolean;
+  /** feet planted: a foot on the ground stays on its spot (the leg bends to reach it) */
+  feet?: boolean;
   /** hand edits to its keys, kept through rebuilds: bone → [block time, x, y, z, w][] (the bridge owns these) */
   tweaks?: Record<string, number[][]>;
   /** sent once to drop the kept hand edits (the bridge keeps them otherwise, whatever this copy says) */

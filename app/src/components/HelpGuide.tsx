@@ -130,8 +130,12 @@ const SECTIONS: Section[] = [
             drag freely.
           </li>
           <li>
-            Click a block for its settings: speed, where in the clip it starts, the blend, <b>Mirror</b> (left and right swapped),
-            <b>Replace</b>, <b>Duplicate</b> and <b>Remove</b>.
+            Click a block for its settings: speed, where in the clip it starts, the blend, <b>Feet planted</b>, <b>Mirror</b> (left
+            and right swapped), <b>Replace</b>, <b>Duplicate</b> and <b>Remove</b>.
+          </li>
+          <li>
+            <b>Feet planted</b> keeps a foot still while it's on the ground. Studio's walks and runs are on the spot, so with it on
+            the character really walks or runs across the floor instead of sliding its feet back.
           </li>
         </ol>
         <ul>

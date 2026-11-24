@@ -553,6 +553,10 @@ namespace StudioEX.Bridge.Api
             }
             Func<int, int> depth = i => { int d = 0; for (int a = anc[i]; a >= 0; a = anc[a]) d++; return d; };
             var topDown = Enumerable.Range(0, nb).OrderBy(depth).ToList();
+            // where each bone sits on its driven ancestor (for the feet: where they are at each frame)
+            var basePos = tr.Select(t => rt.InverseTransformPoint(t.position)).ToArray();
+            var rel = new Vector3[nb];
+            for (int i = 0; i < nb; i++) rel[i] = anc[i] >= 0 ? Quaternion.Inverse(baseWant[anc[i]]) * (basePos[i] - basePos[anc[i]]) : Vector3.zero;
 
             // 4b. Motion clips: their FK keys (bone by bone, at each moment) put together under the held chain;
             // their position keys move the hips
@@ -617,6 +621,10 @@ namespace StudioEX.Bridge.Api
                 hips[k] = Vector3.Lerp(fb.Hips, fa.Hips, p.W);
             }
 
+            // 5b. feet planted (blocks that ask for it): a foot on the ground stays on its spot, the leg bends to reach it
+            if (blocks.Any(b => b.GetBool("feet")))
+                PlantFeet(blocks, picks, want, hips, tr, anc, rel, rate);
+
             // 6. into keys: each bone's rotation under the held chain; the root where the held hips land right
             var local = new Quaternion[nb][];
             for (int i = 0; i < nb; i++)
@@ -649,6 +657,160 @@ namespace StudioEX.Bridge.Api
             o.Hips = hips;
             o.HipsBase = hipsBase;
             return o;
+        }
+
+        /// <summary>
+        /// Feet planted: in the frames that come from blocks with "feet" on, each foot that's on the ground (low, and
+        /// hardly moving, with the motion's travel counted) is held on one spot for as long as it's down; the leg bends
+        /// to reach it (thigh and knee, in the plane the knee already bends in) and the foot keeps its own angle. The hold
+        /// eases in and out over a few frames, and follows the blend into and out of such blocks.
+        /// </summary>
+        private static void PlantFeet(List<Dictionary<string, object>> blocks, Pick[] picks, Quaternion[][] want, Vector3[] hips,
+            List<Transform> tr, int[] anc, Vector3[] rel, float rate)
+        {
+            int n = want.Length;
+            int ih = tr.FindIndex(t => t.name == "cf_j_hips");
+            if (ih < 0) return;
+            // how much each frame asks for planted feet (blends count partly)
+            var f = new float[n];
+            for (int k = 0; k < n; k++)
+            {
+                var p = picks[k];
+                if (p.A >= 0 && blocks[p.A].GetBool("feet")) f[k] += p.B >= 0 ? p.W : 1f;
+                if (p.B >= 0 && p.W < 1f && blocks[p.B].GetBool("feet")) f[k] += 1f - p.W;
+            }
+            Func<int, int, Vector3> pos = null;
+            pos = (k, i) => i == ih ? hips[k] : anc[i] < 0 ? Vector3.zero : pos(k, anc[i]) + want[k][anc[i]] * rel[i];
+            int ramp = Mathf.Max(1, Mathf.RoundToInt(0.08f * rate));
+            // frames share their rotations with the pose / clip caches and with each other: copy before changing one
+            var own = new bool[n];
+            Action<int> mine = k => { if (!own[k]) { want[k] = (Quaternion[])want[k].Clone(); own[k] = true; } };
+            // the legs: thigh, knee, ankle on each side
+            var legs = new List<int[]>();
+            foreach (var side in new[] { "L", "R" })
+            {
+                int th = tr.FindIndex(t => t.name == "cf_j_thigh00_" + side), kn = tr.FindIndex(t => t.name == "cf_j_leg01_" + side), an = tr.FindIndex(t => t.name == "cf_j_leg03_" + side);
+                if (th >= 0 && kn >= 0 && an >= 0 && anc[kn] == th && anc[an] == kn && rel[kn].magnitude + rel[an].magnitude > 1e-4f) legs.Add(new[] { th, kn, an });
+            }
+            if (legs.Count == 0) return;
+
+            // 1. travel: a walk on the spot (Studio's clips are) moves its feet back along the floor while they're down.
+            // The body goes forward instead, so the foot that's down stays where it is: the lower foot, while it's near
+            // the floor, carries the body (only across the floor; nothing changes where the feet already hold still)
+            {
+                var at = legs.Select(l => Enumerable.Range(0, n).Select(k => pos(k, l[2])).ToArray()).ToList();
+                var lowest = at.Select(a => Enumerable.Range(0, n).Where(k => f[k] > 0f).Select(k => a[k].y).DefaultIfEmpty(0f).Min()).ToList();
+                float legLen = rel[legs[0][1]].magnitude + rel[legs[0][2]].magnitude;
+                // each frame's travel: the down foot's slide undone; through the air, the last frame's kept (a run)
+                var steps = new Vector3[n];
+                var step = Vector3.zero;
+                for (int k = 1; k < n; k++)
+                {
+                    if (f[k] <= 0f) { step = Vector3.zero; continue; }
+                    int best = -1;
+                    float bestUp = float.MaxValue;
+                    for (int j = 0; j < at.Count; j++)
+                    {
+                        float up = at[j][k].y - lowest[j];
+                        if (up < 0.08f * legLen && up < bestUp) { bestUp = up; best = j; }
+                    }
+                    if (best >= 0)
+                    {
+                        var v = at[best][k] - at[best][k - 1];
+                        step = -new Vector3(v.x, 0f, v.z) * Mathf.Clamp01(f[k]);
+                    }
+                    steps[k] = step;
+                }
+                // smoothed over a fifth of a second, so the body doesn't lurch as one foot hands over to the other (the
+                // feet are held exactly where they land below, whatever small difference this makes)
+                int half = Mathf.Max(1, Mathf.RoundToInt(0.1f * rate));
+                var moved = Vector3.zero;
+                for (int k = 1; k < n; k++)
+                {
+                    if (f[k] > 0f)
+                    {
+                        var sum = Vector3.zero;
+                        int cnt = 0;
+                        for (int j = Mathf.Max(1, k - half); j <= Mathf.Min(n - 1, k + half); j++) { if (f[j] > 0f) { sum += steps[j]; cnt++; } }
+                        moved += cnt > 0 ? sum / cnt : Vector3.zero;
+                    }
+                    hips[k] += moved;
+                }
+            }
+
+            foreach (var l in legs)
+            {
+                int th = l[0], kn = l[1], an = l[2];
+                float la = rel[kn].magnitude, lb = rel[an].magnitude, leg = la + lb;
+                var ankle = new Vector3[n];
+                for (int k = 0; k < n; k++) ankle[k] = pos(k, an);
+                // on the ground: near the lowest the foot gets, and slow across the floor
+                float low = float.MaxValue;
+                for (int k = 0; k < n; k++) if (f[k] > 0f) low = Mathf.Min(low, ankle[k].y);
+                if (low == float.MaxValue) continue;
+                var down = new bool[n];
+                for (int k = 0; k < n; k++)
+                {
+                    if (f[k] <= 0f) continue;
+                    var a = ankle[Mathf.Max(0, k - 1)];
+                    var b = ankle[Mathf.Min(n - 1, k + 1)];
+                    float span = (Mathf.Min(n - 1, k + 1) - Mathf.Max(0, k - 1)) / rate;
+                    float speed = span > 0 ? new Vector2(b.x - a.x, b.z - a.z).magnitude / span : 0f;
+                    down[k] = ankle[k].y < low + 0.06f * leg && speed < 0.8f * leg;
+                }
+                // each stretch on the ground: held where it lands, eased in and out around it
+                var target = new Vector3?[n];
+                var weight = new float[n];
+                for (int s0 = 0; s0 < n; s0++)
+                {
+                    if (!down[s0]) continue;
+                    int e0 = s0;
+                    while (e0 + 1 < n && down[e0 + 1]) e0++;
+                    if (e0 - s0 + 1 >= 3)
+                    {
+                        // where it touches down: from there it doesn't move until it lifts
+                        var spot = ankle[s0];
+                        for (int k = Mathf.Max(0, s0 - ramp); k <= Mathf.Min(n - 1, e0 + ramp); k++)
+                        {
+                            float w = k < s0 ? 1f - (s0 - k) / (float)(ramp + 1) : k > e0 ? 1f - (k - e0) / (float)(ramp + 1) : 1f;
+                            w = Mathf.SmoothStep(0f, 1f, w) * Mathf.Clamp01(f[k]);
+                            if (w <= weight[k]) continue;
+                            weight[k] = w;
+                            target[k] = new Vector3(spot.x, ankle[k].y, spot.z); // held across the floor; up and down as it was
+                        }
+                    }
+                    s0 = e0;
+                }
+                // the leg reaches for it: thigh and knee turned, the foot's own angle kept
+                for (int k = 0; k < n; k++)
+                {
+                    if (target[k] == null || weight[k] <= 0f) continue;
+                    var hip = pos(k, th);
+                    var knee = pos(k, kn);
+                    var want0 = ankle[k];
+                    var goal = Vector3.Lerp(want0, target[k].Value, weight[k]);
+                    if ((goal - want0).sqrMagnitude < 1e-10f) continue;
+                    var to = goal - hip;
+                    float d = Mathf.Clamp(to.magnitude, Mathf.Abs(la - lb) + 1e-4f, leg - 1e-4f);
+                    var u = to.normalized;
+                    // the knee stays on the side it bends to now
+                    var side0 = Vector3.ProjectOnPlane(knee - hip, u);
+                    if (side0.sqrMagnitude < 1e-10f) side0 = Vector3.ProjectOnPlane(want[k][th] * Vector3.forward, u);
+                    var perp = side0.normalized;
+                    float ca = Mathf.Clamp((la * la + d * d - lb * lb) / (2f * la * d), -1f, 1f);
+                    var newKnee = hip + u * (la * ca) + perp * (la * Mathf.Sqrt(Mathf.Max(0f, 1f - ca * ca)));
+                    var newAnkle = hip + u * d;
+                    mine(k);
+                    var footRot = want[k][an];
+                    var t1 = Quaternion.FromToRotation(knee - hip, newKnee - hip);
+                    want[k][th] = t1 * want[k][th];
+                    want[k][kn] = t1 * want[k][kn];
+                    var kneeToAnkle = t1 * (want0 - knee);
+                    var t2 = Quaternion.FromToRotation(kneeToAnkle, newAnkle - newKnee);
+                    want[k][kn] = t2 * want[k][kn];
+                    want[k][an] = footRot;
+                }
+            }
         }
 
         /// <summary>
@@ -899,7 +1061,10 @@ namespace StudioEX.Bridge.Api
             {
                 var g = bones[i].guideObject;
                 var q = local[i];
-                var ks = Simplify(edges, 0, n - 1, (k, x, y, f) => Quaternion.Angle(Quaternion.SlerpUnclamped(q[x], q[y], f), q[k]), 0.4f, times);
+                // the chain down to the feet closer (a long lever: 0.4° at the hips moves a foot half a centimetre)
+                string bn = g.transformTarget.name;
+                float tol = bn == "cf_j_hips" || bn.StartsWith("cf_j_waist0") || bn.StartsWith("cf_j_thigh00") || bn.StartsWith("cf_j_leg01") ? 0.1f : 0.4f;
+                var ks = Simplify(edges, 0, n - 1, (k, x, y, f) => Quaternion.Angle(Quaternion.SlerpUnclamped(q[x], q[y], f), q[k]), tol, times);
                 var keep = g.changeAmount.rot;
                 write(g, rotModel, ks, k => g.changeAmount.rot = q[k].eulerAngles);
                 g.changeAmount.rot = keep;

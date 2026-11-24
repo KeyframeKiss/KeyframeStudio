@@ -7,9 +7,9 @@ export default async function (t) {
   const id = chara.id;
   const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
   const BONES = ['cf_j_hand_L', 'cf_j_hand_R', 'cf_j_head', 'cf_j_foot_L', 'cf_j_foot_R', 'cf_j_hips'];
-  async function sample(t0, t1, rate = 15) {
+  async function sample(t0, t1, rate = 15, bones = BONES) {
     const done = studio.waitFor('motion.sample', () => true, 60000);
-    await ok('motion.sample', { id, bones: BONES, t0, t1, rate });
+    await ok('motion.sample', { id, bones, t0, t1, rate });
     const r = await done;
     if (r.error) throw new Error(r.error);
     return r;
@@ -295,6 +295,69 @@ export default async function (t) {
     const ahead = rel({ times: got.times.slice(0, got.times.length - off), bones: Object.fromEntries(Object.entries(got.bones).map(([k, v]) => [k, v.slice(off)])) });
     const w = worstIn(ahead, rel(s), (x) => x < 1.39);
     check('the block plays the clip as saved again', w < 0.02 * h(), `${w.toFixed(4)} at ${where}`);
+  });
+
+  await t.step('feet planted: a foot on the ground stays put, the rest of the body as it was', async () => {
+    const walkOnly = (feet) => ({ blocks: [{ id: 'w', kind: 'clip', start: 0, len: 2, blend: 0, ease: 'smooth', speed: 1, offset: 0, clip: walk, feet }] });
+    const footSlide = (sm) => {
+      // the most an ankle slides across the floor while it's down (low: near its lowest). (The foot itself turns
+      // about the ankle as it lands flat and as the heel lifts, as in a real step.)
+      let worst = 0, at = '';
+      for (const f of ['cf_j_leg03_L', 'cf_j_leg03_R']) {
+        const ps = sm.bones[f];
+        const low = Math.min(...ps.map((p) => p[1]));
+        let s0 = -1;
+        for (let i = 0; i <= ps.length; i++) {
+          const down = i < ps.length && ps[i][1] < low + 0.012;
+          if (down && s0 < 0) s0 = i;
+          if (!down && s0 >= 0) {
+            for (let j = s0; j < i; j++) {
+              const d = Math.hypot(ps[j][0] - ps[s0][0], ps[j][2] - ps[s0][2]);
+              if (d > worst) (worst = d), (at = `${f} ${sm.times[s0]}–${sm.times[i - 1]}s`);
+            }
+            s0 = -1;
+          }
+        }
+      }
+      return { worst, at };
+    };
+    await build(walkOnly(false), 'Walk');
+    await ok('timeline.seek', { t: 0.5 });
+    await sleep(300);
+    const FEET = [...BONES, 'cf_j_leg03_L', 'cf_j_leg03_R'];
+    const off = await sample(0, 2, 30, FEET);
+    const r = await build(walkOnly(true), 'Plant feet');
+    check('built with feet planted', !r.error && (await ok('motion.seq.get', { id })).blocks[0].feet === true);
+    await ok('timeline.seek', { t: 0.5 });
+    await sleep(300);
+    const on = await sample(0, 2, 30, FEET);
+    const a = footSlide(off), b = footSlide(on);
+    t.metric('foot slide while down: off / planted', `${a.worst.toFixed(4)} / ${b.worst.toFixed(4)}`, 'units');
+    check('planted feet slide less', b.worst < a.worst * 0.5 || b.worst < 0.004, `off ${a.worst.toFixed(4)} (${a.at}), planted ${b.worst.toFixed(4)} (${b.at})`);
+    check('…and hardly at all (under 4 mm)', b.worst < 0.004, `${b.worst.toFixed(4)} at ${b.at}`);
+    // Studio's walk is on the spot: with the feet held, the body walks forward instead
+    const travel = (sm) => Math.hypot(sm.bones.cf_j_hips.at(-1)[0] - sm.bones.cf_j_hips[0][0], sm.bones.cf_j_hips.at(-1)[2] - sm.bones.cf_j_hips[0][2]);
+    t.metric('distance walked in 2 s: off / planted', `${travel(off).toFixed(3)} / ${travel(on).toFixed(3)}`, 'units');
+    check('the walk on the spot now travels', travel(on) > 0.5 && travel(off) < 0.1, `${travel(off).toFixed(3)} → ${travel(on).toFixed(3)}`);
+    // above the hips the pose is as it was (only the legs bend, and the whole body moves)
+    let upper = 0;
+    for (const k of ['cf_j_head', 'cf_j_hand_L', 'cf_j_hand_R'])
+      for (let i = 0; i < on.times.length; i++) {
+        const ro = on.bones[k][i].map((v, j) => v - on.bones.cf_j_hips[i][j]), rf = off.bones[k][i].map((v, j) => v - off.bones.cf_j_hips[i][j]);
+        upper = Math.max(upper, dist(ro, rf));
+      }
+    check('the upper body moves with the hips, pose unchanged', upper < 0.002, upper.toFixed(4));
+
+    // a run (both feet off the ground at times): it keeps going through the air instead of stalling there
+    await build({ blocks: [{ id: 'r', kind: 'clip', start: 0, len: 2, blend: 0, ease: 'smooth', speed: 1, offset: 0, clip: run, feet: true }] }, 'Run, feet planted');
+    await ok('timeline.seek', { t: 0.5 });
+    await sleep(300);
+    const rs = await sample(0.3, 1.9, 30, FEET);
+    const hp = rs.bones.cf_j_hips;
+    const speeds = hp.slice(1).map((p, i) => Math.hypot(p[0] - hp[i][0], p[2] - hp[i][2]) * 30);
+    const mean = speeds.reduce((a, b) => a + b, 0) / speeds.length;
+    t.metric('run, feet planted: speed slowest / mean / fastest', `${Math.min(...speeds).toFixed(2)} / ${mean.toFixed(2)} / ${Math.max(...speeds).toFixed(2)}`, 'units/s');
+    check('the run travels steadily (no stall in the air, no surge)', mean > 0.5 && Math.min(...speeds) > 0.4 * mean && Math.max(...speeds) < 2 * mean, speeds.map((v) => v.toFixed(2)).join(' '));
   });
 
   await t.step('Clear while a build is still reading poses: nothing comes back', async () => {

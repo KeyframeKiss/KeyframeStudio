@@ -390,6 +390,7 @@ export function MotionPage() {
                       <Icon name={iconOf(b.kind)} size={11} />
                       <span className="mo-name">{blockName(b)}</span>
                       {b.mirror && <span className="mo-mirror" title="Mirrored: left and right swapped">⇋</span>}
+                      {b.feet && <span className="mo-mirror" title="Feet planted: no sliding while a foot is down">⊥</span>}
                       {b.tweaks && Object.keys(b.tweaks).length > 0 && (
                         <span className="mo-mirror" title={`Your key edits on ${Object.keys(b.tweaks).length} bone${Object.keys(b.tweaks).length > 1 ? 's' : ''} are kept through rebuilds`}>
                           ✎
@@ -477,6 +478,10 @@ export function MotionPage() {
                 </button>
               </div>
             )}
+            <label className="mo-check" title="A foot on the ground stays on its spot while it's down: no sliding, and a walk or run on the spot moves across the floor">
+              <input type="checkbox" checked={!!selBlock.feet} onChange={(e) => update({ feet: e.target.checked }, e.target.checked ? 'Plant feet' : 'Unplant feet')} />
+              Feet planted
+            </label>
             <label className="mo-check" title="Play it as in a mirror: left and right swapped (a right-foot step becomes a left-foot one)">
               <input type="checkbox" checked={!!selBlock.mirror} onChange={(e) => update({ mirror: e.target.checked }, e.target.checked ? 'Mirror block' : 'Unmirror block')} />
               Mirror
