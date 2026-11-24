@@ -17,7 +17,7 @@ namespace StudioEX.Bridge
     {
         public const string GUID = "studioex.bridge";
         public const string Name = "Keyframe Studio Bridge";
-        public const string Version = "0.1.2";
+        public const string Version = "0.1.3";
         public const int ProtocolVersion = 1;
         internal const string TimelineGuid = "com.joan6694.illusionplugins.timeline";
 
