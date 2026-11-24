@@ -15,7 +15,7 @@ export interface PoseRef {
   path: string;
   name: string;
 }
-/** a saved Motion clip (Animate › Motion clips) */
+/** a saved Motion clip (the Motion builder's clip shelf) */
 export interface MClipRef {
   file: string;
   name: string;

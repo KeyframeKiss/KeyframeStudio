@@ -2,7 +2,7 @@ import { useEffect, useState, useSyncExternalStore } from 'react';
 import { bridge } from '../bridge/client';
 import { openLibrary, showTab, workingShot, renderShots, displayName, selectedCharacters, setOutputMode, useStore, type LibraryPage } from '../state/store';
 import { EmptyState } from './EditorBits';
-import { AbmxSection } from './AbmxSection';
+import { BodySliders } from './AbmxSection';
 import { FaceAnimation } from './FaceAnimation';
 import { Group, SelectionHeader, Stack } from './InspectorStack';
 import { AudioPage } from './AudioPage';
@@ -333,8 +333,8 @@ function BodyPage() {
       </div>
     );
   return (
-    <SubPage max={900}>
-      <AbmxSection key={id} id={id} />
+    <SubPage max={1400}>
+      <BodySliders key={id} id={id} />
     </SubPage>
   );
 }

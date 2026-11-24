@@ -74,7 +74,7 @@ const speedPrefs = (): { warm?: Warm; encode?: Encode; draft?: boolean; frames?:
 
 const FORMAT_HINT: Record<string, string> = { MP4: 'Best for sharing', WEBM: 'Web, smaller files', GIF: 'Short loops, no sound', AVI: 'For editing software' };
 
-/** Shoot › Render: make a video of the timeline (or of each shot) through the installed VideoExport plugin. */
+/** Shoot › Output › Video: make a video of the timeline (or of each shot) through the installed VideoExport plugin. */
 export function RenderPanel() {
   const status = useStore((s) => s.status);
   const hello = useStore((s) => s.hello);

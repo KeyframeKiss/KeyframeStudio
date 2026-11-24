@@ -12,7 +12,7 @@ export interface MClipItem {
   tracks?: number;
 }
 
-/** Pick a saved Motion clip (Animate › Motion clips) for the Motion builder. */
+/** Pick a saved Motion clip (the Motion builder's clip shelf) for the Motion builder. */
 export function MClipPicker({ title, onPick, onClose }: { title: string; onPick: (c: MClipItem) => void; onClose: () => void }) {
   const [clips, setClips] = useState<MClipItem[] | null>(null);
   const [q, setQ] = useState('');
@@ -42,7 +42,7 @@ export function MClipPicker({ title, onPick, onClose }: { title: string; onPick:
         <div className="mo-pose-grid">
           {!clips && <div className="empty">Loading motion clips…</div>}
           {clips && !list.length && (
-            <div className="empty">{clips.length ? `No character clips match “${q}”.` : 'No motion clips saved yet — save some in Animate › Motion clips (select keys, Save as clip).'}</div>
+            <div className="empty">{clips.length ? `No character clips match “${q}”.` : 'No motion clips saved yet — open Clips beside the lanes, select keys in the timeline and save them as a clip.'}</div>
           )}
           {list.map((c) => (
             <div {...pressable} key={c.file} className="mo-pose" onClick={() => onPick(c)} title={`${c.name}\n${c.length.toFixed(2)} s · from ${c.source ?? '?'}\nClick to add`}>

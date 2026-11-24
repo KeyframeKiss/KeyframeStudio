@@ -104,7 +104,7 @@ namespace StudioEX.Bridge.Api
 
         private static Target GetTarget(Dictionary<string, object> a)
         {
-            if (!Resolve()) throw new BridgeException("Face Studio needs KKPE (KK Pose Editor), which isn't installed or isn't a supported version");
+            if (!Resolve()) throw new BridgeException("Face shape needs KKPE (KK Pose Editor), which isn't installed or isn't a supported version");
             var c = CharaApi.Chara(a.GetInt("id"));
             if (c.charInfo == null) throw new BridgeException("That character isn't loaded");
             var pc = c.guideObject.transformTarget.GetComponent(_pcType);

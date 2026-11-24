@@ -10,7 +10,7 @@ import { lastVersions, sameSize, toWire, useRenderVersions, type RenderVersion }
 const STILL_NOTE = 'stills.versions',
   STILL_LAST = 'kf.stills.versions';
 
-// Shoot › Stills: pictures of Studio's camera — supersampled, PNG / JPG, transparent background (Screencap),
+// Shoot › Output › Pictures: pictures of Studio's camera — supersampled, PNG / JPG, transparent background (Screencap),
 // one at a time or one per saved view / shot. Screencap (BepisPlugins) takes them when installed.
 
 interface Status {

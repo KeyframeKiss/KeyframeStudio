@@ -104,7 +104,7 @@ const SECTIONS: Section[] = [
           edit before you render, while Studio's own view stays your work camera. Turn on <b>In Studio's view too</b> to watch the edit in Studio's window. Click the marker at a cut on the track to glide, dip or dissolve into the next shot.
         </li>
         <li>
-          <b>Test a render small first.</b> Tick <b>Draft</b> in Shoot › Render for a quick check of the timing, then render the
+          <b>Test a render small first.</b> Tick <b>Draft</b> in Shoot › Output for a quick check of the timing, then render the
           full-quality one.
         </li>
       </ul>
@@ -164,7 +164,7 @@ const SECTIONS: Section[] = [
     body: (
       <>
         <p>
-          Shoot › <b>Render</b> plays the timeline and records it through the VideoExport plugin, with the scene's audio mixed in.
+          Shoot › <b>Output</b> (Video) plays the timeline and records it through the VideoExport plugin, with the scene's audio mixed in.
           Pick the whole timeline or your shots, the sizes, and press <b>Render</b>. Leave Studio alone until it finishes.
         </p>
         <ul>

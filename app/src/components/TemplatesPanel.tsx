@@ -16,7 +16,7 @@ interface Template {
 
 const req = <T,>(cmd: string, args?: Record<string, unknown>) => bridge.request<T>(cmd, args);
 
-/** Shoot › Templates: save this scene's staging, apply it to another scene. */
+/** Library › Templates: save this scene's staging, apply it to another scene. */
 export function TemplatesPanel() {
   const status = useStore((s) => s.status);
   const [list, setList] = useState<Template[]>([]);

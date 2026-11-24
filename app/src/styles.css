@@ -9887,3 +9887,132 @@ a.btn {
   font-size: var(--fs-xs);
   line-height: 16px;
 }
+
+/* Character › Body: body sliders by region */
+.body-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+.body-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.body-bar .input {
+  flex: 1;
+  max-width: 460px;
+}
+.body-count,
+.body-add-label {
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+}
+.body-add {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.body-groups {
+  columns: 3 320px;
+  column-gap: 10px;
+}
+.body-group {
+  break-inside: avoid;
+  margin-bottom: 10px;
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-3);
+  overflow: hidden;
+}
+.body-group > header {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 10px 12px 6px;
+}
+.body-group > header b {
+  font-size: var(--fs-md);
+}
+.body-group > header small {
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+}
+.body-row + .body-row {
+  border-top: 1px solid var(--line-soft);
+}
+.body-row-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 12px;
+  border: 0;
+  background: none;
+  color: var(--text-2);
+  text-align: left;
+  cursor: pointer;
+}
+.body-row-head:hover,
+.body-row.open .body-row-head {
+  background: var(--bg-2);
+}
+.body-name {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.body-name b {
+  color: var(--text-0);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+.body-name small {
+  color: var(--text-3);
+  font-family: var(--mono);
+  font-size: var(--fs-xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.body-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  flex: none;
+}
+.body-edit {
+  display: grid;
+  gap: 6px;
+  padding: 6px 12px 12px 32px;
+  background: var(--bg-2);
+}
+.body-edit-last {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.body-edit-last .spacer {
+  flex: 1;
+}
+.body-edit-label {
+  width: 54px;
+  color: var(--text-2);
+}
+.body-sides {
+  margin-left: 6px;
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  font-weight: 500;
+}
+.body-edit + .body-edit {
+  border-top: 1px solid var(--line-soft);
+}
+.body-edit-side {
+  color: var(--text-1);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+}

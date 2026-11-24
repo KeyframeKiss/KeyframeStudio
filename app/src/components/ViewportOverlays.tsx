@@ -180,7 +180,7 @@ export function OverlayOptions() {
         {check('Lights', o.lights, (v) => set({ overlays: { lights: v, on: true } }))}
         {check('Cameras', o.cameras, (v) => set({ overlays: { cameras: v, on: true } }))}
         {check('Accessories', o.accessories, (v) => set({ overlays: { accessories: v, on: true } }))}
-        {check('Focus point', o.focus, (v) => set({ overlays: { focus: v, on: true } }), 'Where depth of field is focused (Look › Effects); drag it to refocus')}
+        {check('Focus point', o.focus, (v) => set({ overlays: { focus: v, on: true } }), 'Where depth of field is focused (Look › Picture); drag it to refocus')}
         {check('Names on hover', o.labels, (v) => set({ overlays: { labels: v } }))}
       </div>
       {check('Every character, not just the selected', o.allCharacters, (v) => set({ overlays: { allCharacters: v } }))}

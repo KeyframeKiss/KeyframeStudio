@@ -324,7 +324,7 @@ export function MotionPage() {
         <button className="btn solid" disabled={chara == null} onClick={() => setPicker({ kind: 'pose' })}>
           <Icon name="pose" size={13} /> Add a pose
         </button>
-        <button className="btn solid" disabled={chara == null} onClick={() => setPicker({ kind: 'mclip' })} title="A clip you saved in Animate › Motion clips">
+        <button className="btn solid" disabled={chara == null} onClick={() => setPicker({ kind: 'mclip' })} title="A motion clip you saved (Clips, beside the lanes)">
           <Icon name="scissors" size={13} /> Add a motion clip
         </button>
         <button

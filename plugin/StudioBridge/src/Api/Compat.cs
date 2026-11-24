@@ -54,20 +54,20 @@ namespace StudioEX.Bridge.Api
             },
             new Feature
             {
-                Id = "faceParts", Label = "Face Studio: face parts and saved faces",
+                Id = "faceParts", Label = "Face shape: face parts and saved faces",
                 ModName = "KKPE", Guid = "com.joan6694.kkplugins.kkpe", Tested = new[] { "2.17.0" },
                 Probe = FaceApi.ProbeBones,
                 Commands = new[] { "face.get", "face.set", "face.reset", "face.savePreset", "face.applyPreset" },
             },
             new Feature
             {
-                Id = "faceShapes", Label = "Face Studio: shapes (blendshapes)",
+                Id = "faceShapes", Label = "Face shape: shapes (blendshapes)",
                 ModName = "KKPE", Guid = "com.joan6694.kkplugins.kkpe", Tested = new[] { "2.17.0" },
                 Probe = FaceApi.ProbeShapes, Commands = new[] { "face.shapes", "face.setShape", "face.resetShapes" },
             },
             new Feature
             {
-                Id = "abmx", Label = "Bone sliders (ABMX) in the Character panel",
+                Id = "abmx", Label = "Body sliders (ABMX): Character › Body",
                 ModName = "KKABMX", Guid = "KKABMX.Core", Tested = new[] { "5.2" },
                 Probe = () => JitProbe(typeof(AbmxApi)), Prefixes = new[] { "abmx." },
             },
