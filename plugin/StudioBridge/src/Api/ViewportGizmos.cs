@@ -1584,8 +1584,13 @@ namespace StudioEX.Bridge.Api
             public Quaternion Root0, Mid0, End0, MidParent0, EndParent0;
             public Vector3 R0, M0, E0, PlaneN, Grab;
             public float La, Lb;
-            public bool Swivel;
+            public bool Swivel, Leg;
             public string Name;
+            public Vector3 Fwd; // the character's front (a straight limb bends: knees forward, elbows back)
+            // Shift: toward / away from the camera, from where the pointer was when Shift went down
+            public bool Deep;
+            public Vector2 DeepAt;
+            public Vector3 Last, DeepBase, PlaneAt;
         }
 
         private ReachJob _reach;
@@ -1642,12 +1647,16 @@ namespace StudioEX.Bridge.Api
                 R0 = R.position, M0 = M.position, E0 = E.position,
                 La = (M.position - R.position).magnitude, Lb = (E.position - M.position).magnitude,
                 Swivel = at == 1,
+                Leg = part == 1 || part == 2,
+                Fwd = c.charInfo.transform.forward,
                 Name = Pretty(E.name),
                 PlaneN = cam.transform.forward,
             };
             var anchor = _reach.Swivel ? _reach.M0 : _reach.E0;
             var ray = cam.ScreenPointToRay(m);
             _reach.Grab = new Plane(_reach.PlaneN, anchor).Raycast(ray, out float d) ? ray.GetPoint(d) - anchor : Vector3.zero;
+            _reach.Last = anchor;
+            _reach.PlaneAt = anchor;
             _undo = undo;
             _drag = H.Reach;
             _m0 = m;
@@ -1668,10 +1677,30 @@ namespace StudioEX.Bridge.Api
         {
             var r = _reach;
             if (r == null || r.C?.charInfo == null || r.RootT == null) { EndDrag(false); return; }
-            var anchor = r.Swivel ? r.M0 : r.E0;
-            var ray = cam.ScreenPointToRay(m);
-            if (!new Plane(r.PlaneN, anchor).Raycast(ray, out float d)) return;
-            var goal = ray.GetPoint(d) - r.Grab;
+            // Esc or the right button: let go, as it was
+            if (Input.GetKeyDown(KeyCode.Escape) || Input.GetMouseButtonDown(1)) { EndDrag(false); return; }
+            Vector3 goal;
+            if (Shift && !r.Swivel)
+            {
+                // toward / away from the camera: up the screen = further away
+                if (!r.Deep) { r.Deep = true; r.DeepAt = m; r.DeepBase = r.Last; }
+                goal = r.DeepBase + r.PlaneN * ((m.y - r.DeepAt.y) * WorldPerPixel(cam, r.DeepBase, 1f) * 2f);
+            }
+            else
+            {
+                var ray = cam.ScreenPointToRay(m);
+                if (r.Deep)
+                {
+                    // back to sliding across the screen, at the depth Shift left it
+                    r.Deep = false;
+                    r.PlaneAt = r.Last;
+                    r.Grab = new Plane(r.PlaneN, r.Last).Raycast(ray, out float d0) ? ray.GetPoint(d0) - r.Last : Vector3.zero;
+                }
+                var through = r.Swivel ? r.M0 : r.PlaneAt;
+                if (!new Plane(r.PlaneN, through).Raycast(ray, out float d)) return;
+                goal = ray.GetPoint(d) - r.Grab;
+            }
+            if (!r.Swivel) r.Last = goal;
             Quaternion qRoot, qMid;
             if (r.Swivel)
             {
@@ -1694,6 +1723,8 @@ namespace StudioEX.Bridge.Api
                 var u = to / dist;
                 // bends the way it bends now
                 var side = Vector3.ProjectOnPlane(r.M0 - r.R0, u);
+                // straight now: knees bend forward, elbows back
+                if (side.sqrMagnitude < r.La * r.La * 4e-4f) side = Vector3.ProjectOnPlane(r.Leg ? r.Fwd : -r.Fwd, u);
                 if (side.sqrMagnitude < 1e-10f) side = Vector3.ProjectOnPlane(r.Root0 * Vector3.forward, u);
                 var perp = side.normalized;
                 float ca = Mathf.Clamp((r.La * r.La + reach * reach - r.Lb * r.Lb) / (2f * r.La * reach), -1f, 1f);

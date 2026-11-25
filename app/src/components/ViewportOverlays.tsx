@@ -174,7 +174,7 @@ export function OverlayOptions() {
           'Drag a hand or foot to pose the limb',
           g.reachFk,
           (v) => set({ gizmo: { reachFk: v } }),
-          'Drag the target on a hand or foot: the arm or leg bends to reach it and stays posed by its joints (FK) — nothing switches to IK. Drag the elbow or knee target to swing the limb with the hand or foot kept in place. Off: dragging a target switches that limb to IK, as Studio does. Limbs already on IK move their targets as usual.',
+          'Drag the target on a hand or foot: the arm or leg bends to reach it and stays posed by its joints (FK) — nothing switches to IK. Hold Shift to move it toward or away from the camera; Esc or the right button lets go as it was. Drag the elbow or knee target to swing the limb with the hand or foot kept in place. Off: dragging a target switches that limb to IK, as Studio does. Limbs already on IK move their targets as usual.',
         )}
 
       <div className="menu-sep" />
