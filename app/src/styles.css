@@ -11125,3 +11125,19 @@ a.btn {
   color: var(--text-3);
   margin-left: 4px;
 }
+/* Settings › Translations: groups by where names were seen; row buttons on hover / focus */
+.tr-group + .tr-group {
+  border-top: 1px solid var(--line-soft);
+}
+.tr-group-head {
+  padding: 8px 6px;
+}
+.tr-item .tr-actions {
+  opacity: 0;
+  transition: opacity var(--t-fast, 0.12s) ease;
+}
+.tr-item:hover .tr-actions,
+.tr-item:focus-within .tr-actions,
+.tr-item .tr-actions:has(.btn.primary) {
+  opacity: 1;
+}

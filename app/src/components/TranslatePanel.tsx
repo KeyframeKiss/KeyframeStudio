@@ -15,7 +15,7 @@ import {
   type TranslateSettings,
 } from '../lib/translate';
 
-type Filter = 'all' | 'missing' | 'machine' | 'game' | 'mine';
+type Filter = 'review' | 'all' | 'missing' | 'machine' | 'game' | 'mine';
 
 const ENGINE_HELP: Record<Engine, string> = {
   google: 'Free, no setup. Good for sentences, weak on short names (えびぞり → “Shrimp sledding”).',
@@ -30,13 +30,26 @@ const ENGINE_HELP: Record<Engine, string> = {
  *  - Game: AutoTranslator's own cache / the repack's translation files.
  * All of them are pushed into AutoTranslator, so they fix the in-game UI too.
  */
+/** Rows by where the name was seen (Pose, Shading ramp…), biggest groups last so the small ones aren't buried. */
+function groupsOf(list: Entry[]): [string, Entry[]][] {
+  const m = new Map<string, Entry[]>();
+  for (const e of list) {
+    const k = e.context && e.context !== 'override' ? e.context : 'Other';
+    m.set(k, [...(m.get(k) ?? []), e]);
+  }
+  return [...m.entries()].sort((a, b) => a[1].length - b[1].length || a[0].localeCompare(b[0]));
+}
+
 export function TranslatePanel() {
   const query = useStore((s) => s.translateQuery);
   const revision = useStore((s) => s.revision);
   const status = useStore((s) => s.status);
   const job = useStore((s) => s.translateJob);
   const [entries, setEntries] = useState<Entry[]>([]);
-  const [filter, setFilter] = useState<Filter>('all');
+  // null: decided once the list is in: Needs review when there's something to review, else All
+  const [filterPick, setFilter] = useState<Filter | null>(null);
+  // the groups (where the names were seen: Pose, Shading ramp…), closed until opened
+  const [openGroups, setOpenGroups] = useState<Set<string>>(new Set());
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [settings, setSettingsState] = useState<TranslateSettings>(loadSettings);
   const [models, setModels] = useState<string[] | null>(null);
@@ -82,10 +95,12 @@ export function TranslatePanel() {
 
   const q = query.trim().toLowerCase();
   const sourceOf = (e: Entry): Filter => (!e.translation ? 'missing' : e.source === 'mine' || e.override ? 'mine' : e.source === 'machine' ? 'machine' : 'game');
-  const counts = { all: entries.length, missing: 0, machine: 0, game: 0, mine: 0 } as Record<Filter, number>;
+  const counts = { review: 0, all: entries.length, missing: 0, machine: 0, game: 0, mine: 0 } as Record<Filter, number>;
   for (const e of entries) counts[sourceOf(e)]++;
+  counts.review = counts.missing + counts.machine;
+  const filter: Filter = filterPick ?? (counts.review ? 'review' : 'all');
   const list = entries
-    .filter((e) => filter === 'all' || sourceOf(e) === filter)
+    .filter((e) => filter === 'all' || (filter === 'review' ? sourceOf(e) === 'missing' || sourceOf(e) === 'machine' : sourceOf(e) === filter))
     .filter((e) => !q || e.text.toLowerCase().includes(q) || (e.translation ?? '').toLowerCase().includes(q))
     .sort((a, b) => Number(!!a.translation) - Number(!!b.translation) || a.context.localeCompare(b.context));
 
@@ -250,16 +265,37 @@ export function TranslatePanel() {
       <div className="tr-filters">
         <input className="input search" style={{ flex: 1 }} placeholder="Search Japanese or English…" value={query} onChange={(e) => useStore.setState({ translateQuery: e.target.value })} />
         <div className="seg">
-          {(['all', 'missing', 'machine', 'game', 'mine'] as Filter[]).map((f) => (
-            <button key={f} className={filter === f ? 'on' : ''} onClick={() => setFilter(f)}>
-              {f[0].toUpperCase() + f.slice(1)} {counts[f]}
+          {(['review', 'all', 'missing', 'machine', 'game', 'mine'] as Filter[]).map((f) => (
+            <button key={f} className={filter === f ? 'on' : ''} onClick={() => setFilter(f)} title={f === 'review' ? 'Missing and machine-made: the ones worth a look' : undefined}>
+              {f === 'review' ? 'Needs review' : f[0].toUpperCase() + f.slice(1)} {counts[f]}
             </button>
           ))}
         </div>
       </div>
 
       <div className="panel-body tr-list">
-        {list.map((e) => {
+        {groupsOf(list).map(([ctx, rows]) => {
+          const isOpen = !!q || openGroups.has(ctx) || rows.length <= 8;
+          return (
+            <div key={ctx} className="tr-group">
+              <button
+                className="shape-fold-head tr-group-head"
+                aria-expanded={isOpen}
+                onClick={() =>
+                  setOpenGroups((o) => {
+                    const n = new Set(o);
+                    if (n.has(ctx)) n.delete(ctx);
+                    else n.add(ctx);
+                    return n;
+                  })
+                }
+              >
+                <span className={`chev ${isOpen ? 'open' : ''}`}>▸</span>
+                <b>{ctx}</b>
+                <small>{rows.length}</small>
+                <span className="shape-fold-sum">{rows.filter((e) => !e.translation).length ? `${rows.filter((e) => !e.translation).length} missing` : ''}</span>
+              </button>
+              {isOpen && rows.map((e) => {
           const draft = drafts[e.text];
           const value = draft ?? e.translation ?? '';
           const src = sourceOf(e);
@@ -267,7 +303,6 @@ export function TranslatePanel() {
             <div key={e.text} className="tr-item">
               <div className="tr-ja">
                 <span className="tr-text">{e.text}</span>
-                <span className="tr-ctx">{e.context && e.context !== 'override' ? e.context : ''}</span>
               </div>
               <input
                 className={`input ${draft !== undefined ? 'dirty' : ''}`}
@@ -317,6 +352,9 @@ export function TranslatePanel() {
                   </>
                 )}
               </span>
+            </div>
+          );
+        })}
             </div>
           );
         })}
