@@ -3,6 +3,7 @@ import { bridge } from '../bridge/client';
 import { openLibrary, showTab, workingShot, renderShots, displayName, selectedCharacters, setOutputMode, useStore, type LibraryPage } from '../state/store';
 import { EmptyState } from './EditorBits';
 import { BodySliders } from './AbmxSection';
+import { PosingPage } from './PosingPage';
 import { FaceAnimation } from './FaceAnimation';
 import { Group, SelectionHeader, Stack } from './InspectorStack';
 import { AudioPage } from './AudioPage';
@@ -268,6 +269,7 @@ function AnimateInspector() {
 // ---------------------------------------------------------------------------
 const POSE_TABS: SubTab[] = [
   { id: 'poses', label: 'Poses', icon: 'pose', hint: 'The pose library: apply, save, mirror, copy between characters' },
+  { id: 'posing', label: 'Posing', icon: 'target', hint: 'How each part is posed (joints or a target), target strength, joint correction, copy a side, physics, every bone' },
   { id: 'anims', label: 'Animations', icon: 'animate', hint: "Studio's animations for the selected character" },
   { id: 'face', label: 'Face shape', icon: 'target', hint: 'Face parts, saved faces and expressions, mesh shapes' },
   { id: 'outfit', label: 'Outfit', icon: 'look', hint: 'Clothes, saved outfits, accessories' },
@@ -290,6 +292,7 @@ export function PoseWorkspace() {
             {tab === 'face' && <FaceStudio />}
             {tab === 'outfit' && <OutfitPage />}
             {tab === 'body' && <BodyPage />}
+            {tab === 'posing' && <PosingTab />}
           </ErrorBoundary>
           <Disconnected />
         </div>
@@ -337,6 +340,24 @@ function BodyPage() {
   return (
     <SubPage max={1400}>
       <BodySliders key={id} id={id} />
+    </SubPage>
+  );
+}
+
+/** Character › Posing for the selected character. */
+function PosingTab() {
+  const id = useStore((s) => (s.studioSelection.length > 0 && s.nodes[s.studioSelection[0]]?.type === 'Char' ? s.studioSelection[0] : null));
+  if (id == null)
+    return (
+      <div className="pg">
+        <div className="pg-inner" style={{ maxWidth: 760 }}>
+          <EmptyState title="Select a character">Pick the character to pose, in the Scene list or in Studio.</EmptyState>
+        </div>
+      </div>
+    );
+  return (
+    <SubPage max={1300}>
+      <PosingPage key={id} id={id} />
     </SubPage>
   );
 }

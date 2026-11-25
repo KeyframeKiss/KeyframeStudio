@@ -71,7 +71,7 @@ export const boneKind = (bone: string) => (/^c[fm]_j_/.test(bone) ? 'joint' : /^
 export const boneBase = (bone: string) => boneLabel(bone).replace(/ \((left|right)\)$/, '');
 
 export function boneLabel(bone: string): string {
-  let s = bone.replace(/^(cf_|cm_)/i, '').replace(/^(j_|d_|s_|n_|hit_)/i, '');
+  let s = bone.replace(/^(cf_|cm_)/i, '').replace(/^(j_|d_|s_|n_|t_|hit_)/i, '');
   let side = '';
   const m = /_(L|R)$/.exec(s);
   if (m) {

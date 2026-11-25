@@ -132,7 +132,7 @@ Missed a popup? Everything that popped up is kept in **Messages** in the status 
 | Workspace | What's there |
 | --- | --- |
 | **Animate** (`Ctrl+1`) | Timeline (dope sheet / graph) · Motion builder (with its motion clip shelf) · Face · Cleanup — the transport bar underneath; keyframe or track details on the right |
-| **Character** (`Ctrl+2`) | Poses · Animations · Face shape · Outfit · Body — the selected character's animation, FK/IK, hands, attachments, transform on the right |
+| **Character** (`Ctrl+2`) | Poses · Posing · Animations · Face shape · Outfit · Body — the selected character's animation, FK/IK, hands, attachments, transform on the right |
 | **Look** (`Ctrl+3`) | Presets · Picture (colour, lens, atmosphere, toon — Studio's settings and Keyframe Studio's effects together) · Lighting · Materials — the selected object on the right |
 | **Shoot** (`Ctrl+4`) | Shots & camera · Audio · Output (a video or pictures) — the selected object on the right |
 | **Library** (`Ctrl+5`) | Scenes · Characters · Objects (every item with pictures) · Templates |
@@ -161,6 +161,7 @@ window kept on top of Studio) and saved layouts.
 | **Motion clips** (Animate › Motion builder › Clips) | Save the selected keys of one character as a clip (body, face, any track type); apply it at the playhead on any character — replace or add on top, strength, blend, speed, repeats; one undo step |
 | **Face** (Animate) & **Lip-sync** | Expressions keyed at the playhead; lip-sync from audio (loudness + A/I/U/E/O vowel shapes) with voice per character, part of a clip, style presets, vowel map and all speakers at once; natural blinks |
 | **Character** | Animation browser (33k+ clips incl. mods, searchable; also Ctrl+K › Change animation, or right-click a character in the scene list — picking a clip makes it play: FK / IK that would hold the body still go off and a stopped animation starts, one undo), speed/options, FK/IK + parts, eyebrows/eyes/mouth, eye & neck look, blush/tears, hands, outfit + per-slot clothing state, accessories (MoreAccessories slots). Multi-select applies to all selected characters |
+| **Posing** (Character) | How each part is posed, in plain words: **Joints** (FK) or a **Target** (IK) per arm, leg and the hips, switched without the pose jumping (also IK → FK), plus neck, fingers, hair, bust and skirt. With KKPE: **target strength** per hand, foot, shoulder, thigh and the body, **bend goals** for elbows and knees, **joint correction** (crotch, ankles), **copy an arm, hand or leg to the other side**, **physics** (bust and buttocks; hair, skirt and accessories, each with stiffness, elasticity, weight…), and **every bone** by number. Each change is one undo step |
 | **Poses** (Character) | Studio-compatible pose library (`.dat` and PNG poses, folders, thumbnails), save, apply, **mirror** (`M`), copy pose between characters |
 | **Face shape** (Character) | KKPE face parts and shapes on a close-up, saved faces and expressions with tags, before/after |
 | **Outfit** (Character) | Saved outfits, accessories by body area with Solo, clipping checks |

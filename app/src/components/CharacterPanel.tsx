@@ -181,7 +181,16 @@ export function CharacterPanel({ bare, sections = ['anim', 'pose', 'face', 'outf
       )}
 
       {has('pose') && (
-      <CollapsibleSection open={!!open.pose} onToggle={() => tog('pose')} title="Posing (FK / IK, hands)">
+      <CollapsibleSection
+        open={!!open.pose}
+        onToggle={() => tog('pose')}
+        title="Posing & hands"
+        extra={
+          <button className="btn" style={{ height: 20, fontSize: 10 }} title="How each part is posed, target strength, joint correction, copy a side, physics, every bone: Character › Posing" onClick={() => showTab('pose', 'posing')}>
+            Posing ›
+          </button>
+        }
+      >
         <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
           <Toggle label="FK" on={state.kinematics.fk} onChange={(v) => apply({ fk: v })} />
           <Toggle label="IK" on={state.kinematics.ik} onChange={(v) => apply({ ik: v })} />

@@ -45,6 +45,7 @@ namespace StudioEX.Bridge
             StudioHotkeys.Bind(Config);
             gameObject.AddComponent<StudioHotkeys>();
             StudioHotkeys.Register(_router);
+            PosingApi.Register(_router);
             ViewportTools.Register(_router);
             ViewportGizmos.Register(_router);
             gameObject.AddComponent<FaceBaker>();

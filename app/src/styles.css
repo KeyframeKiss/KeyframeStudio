@@ -10119,3 +10119,302 @@ a.btn {
 .cam-menu .pn > .pn-body {
   padding: 0;
 }
+
+/* Character › Posing */
+:root {
+  --posing-ik: var(--accent);
+  --posing-fk: var(--axis-z);
+  --posing-anim: var(--bg-4);
+}
+.posing {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.posing-modes {
+  display: flex;
+  gap: var(--sp-5);
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+.posing-figure {
+  width: 132px;
+  flex: none;
+}
+.posing-figure rect {
+  transition: fill var(--t-fast, 0.12s) ease;
+}
+.posing-figure-side {
+  font-size: 10px;
+  fill: var(--text-3);
+}
+.posing-limbs {
+  flex: 1;
+  min-width: 300px;
+  max-width: 560px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.posing-limb {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-2);
+}
+.posing-limb b {
+  font-size: var(--fs-sm);
+}
+.posing-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  background: var(--posing-anim);
+  flex: none;
+}
+.posing-dot.ik {
+  background: var(--posing-ik);
+}
+.posing-dot.fk {
+  background: var(--posing-fk);
+}
+.posing-anim {
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+}
+.posing-extras {
+  margin-top: 6px;
+}
+.posing-extras-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+}
+.posing-copy {
+  display: grid;
+  gap: 6px;
+  max-width: 460px;
+}
+.posing-copy-row {
+  display: grid;
+  grid-template-columns: 80px 1fr 1fr;
+  gap: 6px;
+  align-items: center;
+}
+.posing-copy-row b {
+  font-size: var(--fs-sm);
+}
+.posing-groups {
+  columns: 3 280px;
+  column-gap: 10px;
+}
+.posing-card {
+  break-inside: avoid;
+  margin-bottom: 10px;
+  padding: 10px 12px;
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-3);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.posing-card.idle {
+  opacity: 0.6;
+}
+.posing-card > header {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.posing-card > header b {
+  font-size: var(--fs-md);
+}
+.posing-card > header small {
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+}
+.posing-card > header .spacer {
+  flex: 1;
+}
+.posing-row {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+}
+.posing-row.stacked {
+  grid-template-columns: 1fr;
+  gap: 4px;
+}
+.posing-row-label {
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+}
+.posing-row-controls {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.posing-sub {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  align-items: center;
+  gap: 4px;
+}
+.posing-sub small {
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+}
+.posing-xyz {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+}
+.posing-dyn {
+  margin-top: 10px;
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-3);
+  overflow: hidden;
+}
+.posing-dyn > .body-bar {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line-soft);
+}
+.posing-dyn-head {
+  display: flex;
+  align-items: center;
+  padding-right: 12px;
+}
+.posing-bones {
+  display: grid;
+  grid-template-columns: minmax(260px, 380px) minmax(0, 1fr);
+  gap: 10px;
+  margin-top: 8px;
+  align-items: start;
+}
+.posing-bone-list {
+  max-height: 520px;
+  overflow: auto;
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-3);
+  padding: 4px 0;
+}
+.posing-bone {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 4px 10px;
+  border: 0;
+  background: none;
+  color: var(--text-1);
+  text-align: left;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+.posing-bone small {
+  color: var(--text-3);
+  font-family: var(--mono);
+  font-size: var(--fs-xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.posing-bone:hover {
+  background: var(--bg-2);
+}
+.posing-bone.on {
+  background: var(--accent-soft);
+  color: var(--text-0);
+}
+.posing-tag {
+  margin-left: auto;
+  padding: 0 5px;
+  border-radius: 99px;
+  border: 1px solid var(--line);
+  color: var(--text-2);
+  font-size: var(--fs-xs);
+}
+.posing-tag + .body-dot,
+.posing-bone > .body-dot:only-of-type {
+  margin-left: 4px;
+}
+.posing-bone-edit {
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-3);
+  overflow: hidden;
+}
+.posing-bone-title {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 10px 12px 6px;
+}
+.posing-bone-title small {
+  color: var(--text-3);
+  font-family: var(--mono);
+  font-size: var(--fs-xs);
+}
+.posing-bone-edit .body-edit {
+  padding: 8px 12px 12px;
+}
+.body-edit-side + * {
+  margin-top: 0;
+}
+.posing-figure-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+.posing-legend {
+  display: flex;
+  gap: 10px;
+  color: var(--text-2);
+  font-size: var(--fs-xs);
+}
+.posing-legend > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.posing-row.ik {
+  grid-template-columns: minmax(0, 1fr) auto;
+  row-gap: 2px;
+}
+.posing-row.ik > .posing-row-controls {
+  grid-column: 1 / -1;
+}
+.posing-idle {
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.posing-card.idle {
+  opacity: 1;
+}
+.posing-dyn-kind {
+  padding: 8px 12px 4px;
+  color: var(--text-1);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  border-top: 1px solid var(--line-soft);
+}
+.posing-dyn-kind small {
+  color: var(--text-3);
+  font-weight: 400;
+  margin-left: 4px;
+}
