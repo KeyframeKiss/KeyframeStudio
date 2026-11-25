@@ -1,0 +1,113 @@
+// Ray-traced shade for quality stills: from each visible point, a few short rays into the hemisphere above it, tested
+// against the scene's real triangles (a bounding-volume tree built by the bridge). The fraction that hits something
+// within the radius is the shade. One pass per averaged render; the renders average the noise away.
+#pragma kernel Trace
+
+StructuredBuffer<float4> _Nodes; // two per node: (min.xyz, first child or first triangle), (max.xyz, triangle count; 0 = inner)
+StructuredBuffer<float4> _Tris;  // three per triangle: v0, edge 1, edge 2
+Texture2D<float> _Depth;         // metres from the camera, per pixel
+RWTexture2D<float2> _AoOut;      // x: 1 = open, 0 = closed in; y: the depth (for the edge-aware blur)
+
+float4x4 _CamToWorld;            // view space (camera looking down -z) to world
+float4 _Proj;                    // x 1 / P[0,0], y 1 / P[1,1], z width, w height
+float4 _Params;                  // x radius (m), y rays per pixel, z seed, w depth beyond which nothing is shaded
+float4 _Params2;                 // x strength, y which side is a triangle's front (+1 / -1)
+
+float3 ViewPos(int2 p)
+{
+    float d = _Depth[p];
+    float2 uv = (float2(p) + 0.5) / _Proj.zw;
+    return float3((uv * 2 - 1) * _Proj.xy * d, -d);
+}
+
+float Hash(uint x)
+{
+    x ^= x >> 16; x *= 0x7feb352d; x ^= x >> 15; x *= 0x846ca68b; x ^= x >> 16;
+    return x / 4294967296.0;
+}
+
+bool BoxHit(float3 o, float3 inv, float3 mn, float3 mx, float tmax)
+{
+    float3 a = (mn - o) * inv, b = (mx - o) * inv;
+    float3 lo = min(a, b), hi = max(a, b);
+    float t0 = max(max(lo.x, lo.y), max(lo.z, 0));
+    float t1 = min(min(hi.x, hi.y), min(hi.z, tmax));
+    return t0 <= t1;
+}
+
+bool TriHit(float3 o, float3 d, uint t, float tmax)
+{
+    float3 v0 = _Tris[t * 3].xyz, e1 = _Tris[t * 3 + 1].xyz, e2 = _Tris[t * 3 + 2].xyz;
+    float3 p = cross(d, e2);
+    float det = dot(e1, p);
+    // only the front of a surface shades: from inside a closed shape (under a see-through window or an eye's layers,
+    // where the depth behind belongs to something boxed in) the walls are seen from behind and don't count
+    if (det * _Params2.y < 1e-9) return false;
+    float inv = 1 / det;
+    float3 s = o - v0;
+    float u = dot(s, p) * inv;
+    if (u < 0 || u > 1) return false;
+    float3 q = cross(s, e1);
+    float v = dot(d, q) * inv;
+    if (v < 0 || u + v > 1) return false;
+    float t2 = dot(e2, q) * inv;
+    return t2 > 0 && t2 < tmax;
+}
+
+bool AnyHit(float3 o, float3 d, float tmax)
+{
+    float3 inv = 1 / (abs(d) < 1e-8 ? (d < 0 ? -1e-8 : 1e-8) : d);
+    uint stack[48];
+    int sp = 0;
+    stack[sp++] = 0;
+    [loop] while (sp > 0)
+    {
+        uint n = stack[--sp];
+        float4 a = _Nodes[n * 2], b = _Nodes[n * 2 + 1];
+        if (!BoxHit(o, inv, a.xyz, b.xyz, tmax)) continue;
+        uint first = asuint(a.w), count = asuint(b.w);
+        if (count > 0)
+        {
+            for (uint k = 0; k < count; k++) if (TriHit(o, d, first + k, tmax)) return true;
+        }
+        else if (sp < 46)
+        {
+            stack[sp++] = first;
+            stack[sp++] = first + 1;
+        }
+    }
+    return false;
+}
+
+[numthreads(8, 8, 1)]
+void Trace(uint3 id : SV_DispatchThreadID)
+{
+    int2 p = int2(id.xy);
+    if (p.x >= (int)_Proj.z || p.y >= (int)_Proj.w) return;
+    float d = _Depth[p];
+    if (d <= 0 || d > _Params.w) { _AoOut[p] = float2(1, d); return; }
+    // the surface's normal from its neighbours' depth (the closer neighbour on each side: no smearing over edges)
+    float3 c = ViewPos(p);
+    float3 l = ViewPos(p + int2(-1, 0)), r = ViewPos(p + int2(1, 0)), dn = ViewPos(p + int2(0, -1)), up = ViewPos(p + int2(0, 1));
+    float3 dx = abs(l.z - c.z) < abs(r.z - c.z) ? c - l : r - c;
+    float3 dy = abs(dn.z - c.z) < abs(up.z - c.z) ? c - dn : up - c;
+    float3 nv = normalize(cross(dx, dy));
+    if (dot(nv, c) > 0) nv = -nv; // facing the camera
+    float3 pw = mul(_CamToWorld, float4(c, 1)).xyz;
+    float3 nw = normalize(mul((float3x3)_CamToWorld, nv));
+    float3 t1 = normalize(abs(nw.y) < 0.99 ? cross(nw, float3(0, 1, 0)) : cross(nw, float3(1, 0, 0)));
+    float3 t2 = cross(nw, t1);
+    float3 o = pw + nw * max(0.002, d * 0.002); // off the surface a little, more when far
+    int rays = max(1, (int)_Params.y);
+    uint seed = (uint)(p.x * 1973 + p.y * 9277) ^ (uint)_Params.z;
+    int hits = 0;
+    for (int k = 0; k < rays; k++)
+    {
+        // cosine-weighted directions in the hemisphere
+        float u1 = Hash(seed + k * 2654435761u), u2 = Hash(seed * 31 + k * 40503u + 7);
+        float rr = sqrt(u1), phi = 6.2831853 * u2;
+        float3 dir = normalize(t1 * (rr * cos(phi)) + t2 * (rr * sin(phi)) + nw * sqrt(max(0, 1 - u1)));
+        if (AnyHit(o, dir, _Params.x)) hits++;
+    }
+    _AoOut[p] = float2(saturate(1 - _Params2.x * hits / (float)rays), d);
+}

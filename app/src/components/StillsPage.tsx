@@ -49,7 +49,7 @@ const KEY = 'kf.stills';
 
 function prefs() {
   try {
-    return JSON.parse(localStorage.getItem(KEY) ?? '{}') as Partial<{ size: string; supersample: number; transparent: boolean; format: string; quality: number; samples: number; lens: boolean; fstop: number; bits16: boolean }>;
+    return JSON.parse(localStorage.getItem(KEY) ?? '{}') as Partial<{ size: string; supersample: number; transparent: boolean; format: string; quality: number; samples: number; lens: boolean; fstop: number; bits16: boolean; focus2: number; tilt: number; rtshade: boolean }>;
   } catch {
     return {};
   }
@@ -68,6 +68,9 @@ export function StillsPage() {
   const [lens, setLens] = useState(prefs().lens ?? false);
   const [fstop, setFstop] = useState(prefs().fstop ?? 2.8);
   const [bits16, setBits16] = useState(prefs().bits16 ?? false);
+  const [focus2, setFocus2] = useState(prefs().focus2 ?? 0);
+  const [tilt, setTilt] = useState(prefs().tilt ?? 0);
+  const [rtshade, setRtshade] = useState(prefs().rtshade ?? false);
   const [busy, setBusy] = useState(false);
   const [recent, setRecent] = useState<Shot[]>([]);
   // the header glows once when pictures are saved
@@ -76,11 +79,11 @@ export function StillsPage() {
 
   useEffect(() => {
     try {
-      localStorage.setItem(KEY, JSON.stringify({ size, supersample: ss, transparent, format, quality, samples, lens, fstop, bits16 }));
+      localStorage.setItem(KEY, JSON.stringify({ size, supersample: ss, transparent, format, quality, samples, lens, fstop, bits16, focus2, tilt, rtshade }));
     } catch {
       /* private mode */
     }
-  }, [size, ss, transparent, format, quality, samples, lens, fstop, bits16]);
+  }, [size, ss, transparent, format, quality, samples, lens, fstop, bits16, focus2, tilt, rtshade]);
 
   const load = useCallback(() => {
     bridge.request<Status>('still.status').then(setSt).catch(() => setSt(null));
@@ -112,8 +115,8 @@ export function StillsPage() {
 
   const def = SIZES.find((x) => x.label === size) ?? SIZES[0];
   const [w, h] = def.w ? [def.w, def.h!] : st.screen;
-  const fine = samples > 1 || lens || (bits16 && format === 'png');
-  const opts = { width: w, height: h, supersample: ss, transparent: transparent && format === 'png' && !fine, format, quality, samples, lens, fstop, bits16: bits16 && format === 'png' };
+  const fine = samples > 1 || lens || rtshade || (bits16 && format === 'png');
+  const opts = { width: w, height: h, supersample: ss, transparent: transparent && format === 'png' && !fine, format, quality, samples, lens, fstop, bits16: bits16 && format === 'png', focus2: lens ? focus2 : 0, tilt: lens ? tilt : 0, rtshade };
   // versions: one picture each (its size and framing); a scene without its own starts from the ones used last
   const current: RenderVersion = { label: def.label, w: def.w ?? 0, h: def.h ?? 0, framing: { mode: 'timeline' } };
   const versions: RenderVersion[] = savedVersions ?? lastVersions(STILL_LAST) ?? [current];
@@ -277,6 +280,28 @@ export function StillsPage() {
                 <DragNumber value={fstop} step={0.05} digits={1} min={0.7} max={32} width={70} onCommit={(v) => setFstop(Math.max(0.7, Math.min(32, v)))} />
               </div>
             )}
+            {lens && (
+              <div className="cleanup-row">
+                <span>
+                  Also sharp at <Help text="A second distance kept sharp, in metres (0 = none): two renders through the lens, joined where each is sharper — focus stacking, e.g. a face and a hand held out toward the camera" />
+                </span>
+                <DragNumber value={focus2} step={0.01} digits={2} min={0} max={100} width={70} onCommit={(v) => setFocus2(Math.max(0, Math.min(100, v)))} />
+              </div>
+            )}
+            {lens && (
+              <div className="cleanup-row">
+                <span>
+                  Tilt focus <Help text="Tilts the sharp plane, in degrees, like a tilt lens: above 0 the top of the frame is focused further away (a floor running into the distance stays sharp), below 0 nearer. Large tilts with a wide aperture give the miniature look" />
+                </span>
+                <DragNumber value={tilt} step={0.1} digits={1} min={-45} max={45} width={70} onCommit={(v) => setTilt(Math.max(-45, Math.min(45, v)))} />
+              </div>
+            )}
+            <div className="cleanup-row">
+              <span>
+                Ray-traced shade <Help text="Soft shade where things meet, from the scene's real shapes rather than what's on screen: under a chin, inside a hand, where a body sits on a sofa, also from things out of view. Uses Look › Picture › Ambient occlusion's radius, strength and colour (and takes its place for the picture). Needs a few seconds more; best with Smooth on." />
+              </span>
+              <Switch on={rtshade} onChange={setRtshade} />
+            </div>
             <div className="cleanup-row">
               <span>
                 16 bits per colour <Help text="PNG with 65,536 levels per colour instead of 256: smooth gradients that hold up to heavy editing afterwards. Bigger files." />

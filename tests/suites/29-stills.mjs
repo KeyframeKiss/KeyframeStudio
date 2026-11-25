@@ -47,6 +47,26 @@ export default async function (t) {
       check('a real picture (not blank)', buf.length > 100000, String(buf.length));
     }
     check('16 bits is PNG only', !(await req('still.capture', { width: 320, height: 180, format: 'jpg', bits16: true })).ok);
+    const c = await t.studio.req('still.capture', { width: 480, height: 270, supersample: 1, format: 'png', samples: 16, lens: true, fstop: 2, focus2: 1, tilt: 10, bits16: true }, 120000);
+    check('two sharp distances and a tilted focus: saved', c.ok && fs.existsSync(c.result.path), JSON.stringify(c.error));
+    if (c.ok) {
+      made.push(c.result.path);
+      const buf = fs.readFileSync(c.result.path);
+      check('…and it says so', buf.includes(Buffer.from(' and 1.00 m')) && buf.includes(Buffer.from('tilted 10')), buf.slice(0, 400).toString('latin1').replace(/[^ -~]/g, '.'));
+    }
+    const big = await t.studio.req('still.capture', { width: 6000, height: 3375, supersample: 1, format: 'jpg', quality: 80 }, 120000);
+    check('a 6000 px picture (past the old 8192² cap with supersampling, fine at 1×)', big.ok && big.result.width === 6000, JSON.stringify(big.error));
+    if (big.ok) made.push(big.result.path);
+    check('more than the card can hold is refused', !(await req('still.capture', { width: 30000, height: 30000, supersample: 1 })).ok);
+    const rt = await t.studio.req('still.capture', { width: 480, height: 270, supersample: 1, format: 'png', samples: 16, rtshade: true, bits16: true }, 180000);
+    check('ray-traced shade: saved', rt.ok && fs.existsSync(rt.result.path), JSON.stringify(rt.error));
+    if (rt.ok) {
+      made.push(rt.result.path);
+      const note = fs.readFileSync(rt.result.path).toString('latin1');
+      const m = /ray-traced shade \(([\d,]+) triangles, tree in ([\d.]+) s\)/.exec(note);
+      check('…traced against the scene’s triangles', !!m && Number(m[1].replace(/,/g, '')) > 5000, m ? m[0] : 'no note');
+      if (m) t.metric('ray-traced shade', `${m[1]} triangles, tree ${m[2]} s`, '');
+    }
     const sc = await ok('camera.mean', { width: 64 });
     check('Studio’s view is untouched afterwards', sc.every((v) => v > 0 && v < 1));
   });

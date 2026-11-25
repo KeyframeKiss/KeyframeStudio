@@ -57,7 +57,7 @@ namespace StudioEX.Bridge.Api
 
         private static Dictionary<string, Dictionary<string, object>> _fx = Clone(Defaults);
         private static string _bundleError;
-        private static Material _fog, _grade, _sharpen, _lens, _dof, _lut, _bloom, _ao;
+        private static Material _fog, _grade, _sharpen, _lens, _dof, _lut, _bloom, _ao, _accum;
         /// <summary>A quality still with a real lens makes its own blur: our depth of field steps aside while it renders.</summary>
         internal static bool HoldDof;
 
@@ -214,6 +214,11 @@ namespace StudioEX.Bridge.Api
         private static bool Ready() => _fog != null || LoadShaders();
 
         private static readonly Dictionary<string, Shader> Shaders = new Dictionary<string, Shader>();
+        private static readonly Dictionary<string, ComputeShader> Computes = new Dictionary<string, ComputeShader>();
+
+        /// <summary>One of our compute shaders from the bundle (e.g. "KfRtao"), or null when this card can't run them.</summary>
+        internal static ComputeShader GetCompute(string name) =>
+            Ready() && SystemInfo.supportsComputeShaders && Computes.TryGetValue(name, out var cs) ? cs : null;
 
         /// <summary>One of our shaders from the embedded bundle (e.g. "Projector"), or an error saying why not.</summary>
         public static Shader GetShader(string name)
@@ -237,6 +242,7 @@ namespace StudioEX.Bridge.Api
                 }
                 var bundle = AssetBundle.LoadFromMemory(bytes) ?? throw new Exception("couldn't open the shader bundle");
                 var shaders = bundle.LoadAllAssets<Shader>();
+                foreach (var cs in bundle.LoadAllAssets<ComputeShader>()) Computes[cs.name] = cs;
                 bundle.Unload(false);
                 foreach (var sh in shaders) Shaders[sh.name] = sh;
                 Material M(string name)
@@ -253,6 +259,7 @@ namespace StudioEX.Bridge.Api
                 _lut = M("Lut");
                 _bloom = M("Bloom");
                 _ao = M("Ao");
+                _accum = M("Accum");
                 return true;
             }
             catch (Exception e)
@@ -263,7 +270,10 @@ namespace StudioEX.Bridge.Api
             }
         }
 
-        private static bool AnyOn => _fx.Values.Any(v => (bool)v["on"]);
+        private static bool AnyOn => RtShade.Active != null || _fx.Values.Any(v => (bool)v["on"]);
+
+        /// <summary>Re-checks whether the camera needs our effects (a ray-traced still needs them while it renders).</summary>
+        internal static void Refresh() => Ensure();
 
         private static Camera _addedDepth; // the camera we switched the depth texture on for
 
@@ -452,6 +462,35 @@ namespace StudioEX.Bridge.Api
                 foreach (var r in made) RenderTexture.ReleaseTemporary(r);
             }
 
+            /// <summary>Ray-traced shade (quality stills): the view's depth in metres, traced, then the same blend as AO.</summary>
+            private void RtAo(RenderTexture src, RenderTexture dst)
+            {
+                var depth = RenderTexture.GetTemporary(src.width, src.height, 0, RenderTextureFormat.RFloat);
+                var ao = new RenderTexture(src.width, src.height, 0, RenderTextureFormat.RGFloat) { enableRandomWrite = true };
+                ao.Create();
+                var tmp = RenderTexture.GetTemporary(src.width, src.height, 0, RenderTextureFormat.RGFloat);
+                try
+                {
+                    Graphics.Blit(src, depth, _accum, 1);
+                    RtShade.Active.Trace(_cam, depth, ao, F("ao", "radius"), F("ao", "intensity"));
+                    // the same edge-aware blur as the on-screen AO: a few rays per pixel, smoothed without crossing edges
+                    _ao.SetVector("_KfAoDir", new Vector4(1, 0, 0, 0));
+                    Graphics.Blit(ao, tmp, _ao, 1);
+                    _ao.SetVector("_KfAoDir", new Vector4(0, 1, 0, 0));
+                    Graphics.Blit(tmp, ao, _ao, 1);
+                    _ao.SetVector("_KfAoColor", V("ao", "color"));
+                    _ao.SetTexture("_KfAoTex", ao);
+                    Graphics.Blit(src, dst, _ao, 2);
+                }
+                finally
+                {
+                    RenderTexture.ReleaseTemporary(tmp);
+                    RenderTexture.ReleaseTemporary(depth);
+                    ao.Release();
+                    UnityEngine.Object.Destroy(ao);
+                }
+            }
+
             private void Ao(RenderTexture src, RenderTexture dst)
             {
                 var p = _cam.projectionMatrix;
@@ -482,7 +521,8 @@ namespace StudioEX.Bridge.Api
                 var passes = new List<object>(5); // a Material (one pass) or an Action for multi-pass effects
                 try
                 {
-                    if (B("ao", "on") && _ao != null) passes.Add((Action<RenderTexture, RenderTexture>)Ao);
+                    if (RtShade.Active != null && _ao != null && _accum != null) passes.Add((Action<RenderTexture, RenderTexture>)RtAo);
+                    else if (B("ao", "on") && _ao != null) passes.Add((Action<RenderTexture, RenderTexture>)Ao);
                     if (B("fog", "on"))
                     {
                         _fog.SetMatrix("_KfInvProj", _cam.projectionMatrix.inverse);

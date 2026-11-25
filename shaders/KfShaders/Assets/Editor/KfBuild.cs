@@ -10,7 +10,11 @@ public static class KfBuild
         const string outDir = "Build";
         Directory.CreateDirectory(outDir);
         var shaders = Directory.GetFiles("Assets/Shaders", "*.shader");
-        var build = new AssetBundleBuild { assetBundleName = "kfeffects", assetNames = shaders };
+        var computes = Directory.GetFiles("Assets/Shaders", "*.compute");
+        var all = new string[shaders.Length + computes.Length];
+        shaders.CopyTo(all, 0);
+        computes.CopyTo(all, shaders.Length);
+        var build = new AssetBundleBuild { assetBundleName = "kfeffects", assetNames = all };
         var manifest = BuildPipeline.BuildAssetBundles(outDir, new[] { build }, BuildAssetBundleOptions.ChunkBasedCompression | BuildAssetBundleOptions.ForceRebuildAssetBundle, BuildTarget.StandaloneWindows64);
         if (manifest == null) throw new System.Exception("Bundle build failed");
         foreach (var s in shaders)
@@ -18,6 +22,12 @@ public static class KfBuild
             var sh = AssetDatabase.LoadAssetAtPath<Shader>(s);
             if (sh == null || !sh.isSupported) throw new System.Exception("Shader failed to compile: " + s);
             Debug.Log("KF shader ok: " + sh.name);
+        }
+        foreach (var c in computes)
+        {
+            var cs = AssetDatabase.LoadAssetAtPath<ComputeShader>(c);
+            if (cs == null) throw new System.Exception("Compute shader failed to load: " + c);
+            Debug.Log("KF compute ok: " + cs.name);
         }
         Debug.Log("KF bundle built: " + Path.GetFullPath(Path.Combine(outDir, "kfeffects")));
     }
