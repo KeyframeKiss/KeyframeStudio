@@ -10,6 +10,7 @@ import { NumberBox } from './MaterialEditor';
 import { Page } from './Page';
 import { AimRows, ProjectorAdd, ProjectorEditor, modeLabel, shapeLabel, useAim, useProjectors } from './ProjectorsPanel';
 import { RigDiagram, type DiagramLight } from './RigDiagram';
+import { RigMaker } from './RigMaker';
 
 /**
  * Look › Lighting, laid out like Picture: a short list of everything that lights the scene (Studio's two lights,
@@ -88,6 +89,7 @@ export function LightingPage() {
   const nodes = useStore((s) => s.nodes);
   const selection = useStore((s) => s.studioSelection);
   useStore((s) => s.showEnglish);
+  const target = useTarget();
 
   const [pick, setPickState] = useState(readPick);
   const setPick = (p: string) => {
@@ -156,7 +158,7 @@ export function LightingPage() {
     lastSel.current = key;
     if (selection.length !== 1) return;
     const id = selection[0];
-    if (nodes[id]?.type === 'Light') setPick(`light:${id}`);
+    if (nodes[id]?.type === 'Light') setPick(inRig.has(id) ? `rig:${inRig.get(id)}:${id}` : `light:${id}`);
     else if (rigs.some((r) => r.folder === id)) setPick(`rig:${id}`);
     else if (projs.items?.some((p) => p.id === id)) setPick(`proj:${id}`);
   }, [selection]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -170,7 +172,8 @@ export function LightingPage() {
   };
 
   // the picked entry (falls back to Studio's character light when it's gone)
-  const [kind, rawId] = pick.split(':');
+  const [kind, rawId, rawSub] = pick.split(':');
+  const sub = rawSub != null ? Number(rawSub) : null;
   const pid = Number(rawId);
   const exists =
     (kind === 'studio' && (rawId === 'chara' || rawId === 'map')) ||
@@ -260,7 +263,7 @@ export function LightingPage() {
                 {(nodes[r.folder]?.children ?? [])
                   .filter((c) => nodes[c]?.type === 'Light')
                   .map((c) => (
-                    row({ id: `light:${c}`, name: displayName(nodes[c]), sum: lightSum(c), on: nodes[c].visible && r.enabled, child: true, toggle: (v) => setNodeVisible(c, v) })
+                    row({ id: `rig:${r.folder}:${c}`, name: displayName(nodes[c]), sum: lightSum(c), on: nodes[c].visible && r.enabled, child: true, toggle: (v) => setNodeVisible(c, v) })
                   ))}
               </div>
             ))}
@@ -306,14 +309,17 @@ export function LightingPage() {
                 aim={aim}
                 inRig={inRig.get(pid)}
                 onLit={(r) => setLit(r)}
-                onGoRig={(f) => setPick(`rig:${f}`)}
+                onGoRig={(f) => setPick(`rig:${f}:${pid}`)}
                 onRemoved={() => (setPick('studio:chara'), changed())}
               />
             </Editor>
           )}
           {kind === 'rig' && cur === pick && (
-            <Editor title={rigs.find((r) => r.folder === pid)?.name ?? 'Rig'} help="A rig is a folder of lights placed around a character. Switch it off to compare; each light in it has its own settings.">
-              <RigCard rig={rigs.find((r) => r.folder === pid)!} onSet={setRigOn} onPick={(id) => setPick(`light:${id}`)} onRemoved={(x) => (setRigs(x), setPick('rigs'), changed())} />
+            <Editor
+              title={rigs.find((r) => r.folder === pid)?.name ?? 'Rig'}
+              help="Lights placed around the character. Drag them from above or by height, or set the numbers; they move in Studio as you go. Add spot, point or sun lights, and save it all as a rig for other scenes."
+            >
+              <RigMaker key={pid} target={target} folder={pid} light={sub} aim={aim} onPickLight={(id) => setPick(id == null ? `rig:${pid}` : `rig:${pid}:${id}`)} onRemoved={() => (setPick('rigs'), changed())} />
             </Editor>
           )}
           {kind === 'proj' && cur === pick && (
@@ -323,7 +329,7 @@ export function LightingPage() {
           )}
           {cur === 'rigs' && (
             <Editor title="Lighting rigs" help="Ready-made light setups placed around the character in one click. The picture shows each light from above and from the side, in its colour; spot lights show their beam.">
-              <RigGallery onApplied={(folder) => (changed(), folder != null && setPick(`rig:${folder}`))} />
+              <RigGallery onApplied={(folder, light) => (changed(), folder != null && setPick(light != null ? `rig:${folder}:${light}` : `rig:${folder}`))} />
             </Editor>
           )}
           {cur === 'projectors' && (
@@ -562,56 +568,26 @@ function CharaLightsCard({ v, onSet }: { v: Record<string, Value>; onSet: (value
 
 // ---------------------------------------------------------------------------- rigs
 
-function RigCard({ rig, onSet, onPick, onRemoved }: { rig: SceneRig; onSet: (folder: number, on: boolean) => void; onPick: (id: number) => void; onRemoved: (rigs: SceneRig[]) => void }) {
-  const nodes = useStore((s) => s.nodes);
-  if (!rig) return null;
-  const kids = (nodes[rig.folder]?.children ?? []).filter((c) => nodes[c]?.type === 'Light');
-  const remove = async () => {
-    if (!(await ask(`Remove the “${rig.name}” rig and its ${rig.lights} light${rig.lights === 1 ? '' : 's'} from the scene? This can't be undone, like deleting in Studio.`))) return;
-    const x = await call<SceneRig[]>('light.removeRig', { folder: rig.folder });
-    if (x) (onRemoved(x), toast(`Removed the ${rig.name} rig`));
-  };
-  return (
-    <div className={`look-card fx-card ${rig.enabled ? '' : 'off'}`}>
-      <div className="look-card-head">
-        <div>
-          <b>{rig.name}</b>
-          <small>
-            Rig, {rig.lights} light{rig.lights === 1 ? '' : 's'}
-          </small>
-        </div>
-        <button className="btn icon" title="Select its folder in Studio" onClick={() => studioSelect([rig.folder])}>
-          <Icon name="target" size={13} />
-        </button>
-        <Switch on={rig.enabled} onChange={(v) => onSet(rig.folder, v)} />
-        <button className="btn small solid danger" onClick={remove}>
-          <Icon name="trash" size={12} />
-          Remove
-        </button>
-      </div>
-      <div className="look-card-body">
-        <div className="ct-label">Its lights</div>
-        <div className="lt-kids">
-          {kids.map((c) => (
-            <button key={c} className="btn small solid" onClick={() => onPick(c)}>
-              {displayName(nodes[c])}
-            </button>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 let charaOnlyPref = true;
 
 /** Ready-made rigs (each with a diagram) and saved ones, applied around the target character. */
-function RigGallery({ onApplied }: { onApplied: (folder: number | null) => void }) {
+function RigGallery({ onApplied }: { onApplied: (folder: number | null, light?: number) => void }) {
   const status = useStore((s) => s.status);
   const nodes = useStore((s) => s.nodes);
   const target = useTarget();
   const [rigs, setRigs] = useState<Rig[]>([]);
   const [saveName, setSaveName] = useState('');
+  const [newName, setNewName] = useState('');
+  const start = async () => {
+    if (target == null) return toast('Select the character to light');
+    try {
+      const r = await bridge.request<{ folder: number; light: number }>('light.rigAdd', { id: target, name: newName.trim() || 'My rig', charaOnly });
+      setNewName('');
+      onApplied(r.folder, r.light);
+    } catch (e) {
+      toast((e as Error).message, 'error');
+    }
+  };
   const [charaOnly, setCharaOnly] = useState(charaOnlyPref);
   useEffect(() => {
     if (status === 'open') call<Rig[]>('light.rigs').then((r) => r && setRigs(r));
@@ -684,6 +660,20 @@ function RigGallery({ onApplied }: { onApplied: (folder: number | null) => void 
             </div>
           </div>
         ))}
+        <div className="rig-card rig-card-new">
+          <div className="rig-card-body">
+            <div className="rig-card-title">
+              <b>Make your own</b>
+              <Help text="Starts a rig with one key light around the character and opens the lighting maker: drag lights around from above and by height, add more, and save it as a rig." />
+            </div>
+            <div className="ed-pair">
+              <input className="input" style={{ flex: 1, minWidth: 0 }} placeholder="My rig" value={newName} onChange={(e) => setNewName(e.target.value)} />
+              <button className="btn small solid" disabled={target == null} onClick={start}>
+                Start
+              </button>
+            </div>
+          </div>
+        </div>
         <div className="rig-card rig-card-new">
           <div className="rig-card-body">
             <div className="rig-card-title">

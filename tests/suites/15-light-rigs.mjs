@@ -53,6 +53,38 @@ export default async function (t) {
     check('saved rig deleted', !del.some((x) => x.name === 'StudioEX Test Rig'));
   });
 
+  if (t.hello.commands.includes('light.rigGet'))
+    await t.step('lighting maker: drop lights in, place them, retype, save', async () => {
+      const close = (a, b, e = 0.5) => Math.abs(a - b) <= e;
+      const r = await ok('light.rigAdd', { id: chara.id, name: 'StudioEX Test Maker' });
+      t.defer(async () => { await req('light.removeRig', { folder: r.folder }); });
+      let g = await ok('light.rigGet', { id: chara.id, folder: r.folder });
+      const key = g.lights[0];
+      check('a new rig starts with a key light, named', g.name === 'StudioEX Test Maker' && g.lights.length === 1 && key.type === 'spot' && key.name === 'Key', JSON.stringify(key));
+      check('read back where it was put (40°, 30° up, 1.6 heights)', close(key.az, 40) && close(key.el, 30) && close(key.dist, 1.6, 0.02), `${key.az} ${key.el} ${key.dist}`);
+      await ok('light.rigPlace', { id: chara.id, light: key.id, spec: { az: -90, el: 10, dist: 1.2 }, drag: 'test-drag' });
+      const p = await ok('light.rigPlace', { id: chara.id, light: key.id, spec: { az: -100 }, drag: 'test-drag' });
+      check('placed', close(p.az, -100) && close(p.el, 10) && close(p.dist, 1.2, 0.02));
+      await ok('undo');
+      g = await ok('light.rigGet', { id: chara.id, folder: r.folder });
+      check('one undo for the whole drag', close(g.lights[0].az, 40, 1), g.lights[0].az);
+      await ok('light.rigPlace', { id: chara.id, light: key.id, spec: { aim: 'chest', el: -10, dist: 1 } });
+      g = await ok('light.rigGet', { id: chara.id, folder: r.folder });
+      check('aiming at the chest reads back', g.lights[0].aim === 'chest' && close(g.lights[0].el, -10));
+      const fill = await ok('light.rigAdd', { id: chara.id, folder: r.folder, spec: { role: 'Fill', type: 'point', az: -50, el: 10, dist: 1.4, aim: 'head', color: [0.8, 0.9, 1], intensity: 0.7, range: 3, angle: 45, shadow: false } });
+      const re = await ok('light.rigRetype', { id: chara.id, light: fill.light, type: 'spot' });
+      g = await ok('light.rigGet', { id: chara.id, folder: r.folder });
+      const f2 = g.lights.find((l) => l.id === re.light);
+      check('retyped in place, settings kept', g.lights.length === 2 && f2?.type === 'spot' && f2.name === 'Fill' && close(f2.az, -50, 1) && close(f2.intensity, 0.7, 0.01), JSON.stringify(f2));
+      const saved = await ok('light.saveRig', { name: 'StudioEX Test Maker rig', id: chara.id, folder: r.folder });
+      const sr = saved.find((x) => x.name === 'StudioEX Test Maker rig');
+      check('saved with names, kinds and aim', sr?.lights.length === 2 && sr.lights.some((l) => l.role === 'Fill') && sr.lights.some((l) => l.aim === 'chest'), JSON.stringify(sr?.lights.map((l) => [l.role, l.type, l.aim])));
+      const third = await ok('light.rigAdd', { id: chara.id, folder: r.folder, spec: { role: 'Rim', type: 'spot', az: 160, el: 35, dist: 1.5 } });
+      await ok('undo');
+      g = await ok('light.rigGet', { id: chara.id, folder: r.folder });
+      check('undo takes a dropped light away', g.lights.length === 2 && !g.lights.some((l) => l.id === third.light));
+    });
+
   const bad = await req('light.applyRig', { id: chara.id, rig: 'No such rig' });
   check('unknown rig refused', !bad.ok);
   void near;

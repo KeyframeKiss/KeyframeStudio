@@ -56,6 +56,8 @@ namespace StudioEX.Bridge.Api
         }
 
         private static Studio.Studio S => Singleton<Studio.Studio>.Instance;
+        /// <summary>The scene's objects; none while Studio is still starting (so the lists come back empty, not failing).</summary>
+        private static Dictionary<int, ObjectCtrlInfo> Objs => S?.dicObjectCtrl ?? new Dictionary<int, ObjectCtrlInfo>();
 
         // ================================================================== projectors
 
@@ -204,7 +206,7 @@ namespace StudioEX.Bridge.Api
         }
 
         private static IEnumerable<KeyValuePair<int, OCIFolder>> ProjectorFolders() =>
-            S.dicObjectCtrl.Where(kv => kv.Value is OCIFolder f && ProjectorOf(f) != null).Select(kv => new KeyValuePair<int, OCIFolder>(kv.Key, (OCIFolder)kv.Value));
+            Objs.Where(kv => kv.Value is OCIFolder f && ProjectorOf(f) != null).Select(kv => new KeyValuePair<int, OCIFolder>(kv.Key, (OCIFolder)kv.Value));
 
         private static object List() => new Dictionary<string, object>
         {
@@ -470,7 +472,7 @@ namespace StudioEX.Bridge.Api
         private static object AimList()
         {
             var lights = new List<object>();
-            foreach (var kv in S.dicObjectCtrl)
+            foreach (var kv in Objs)
                 if (kv.Value is OCILight l && l.light != null && l.lightType != LightType.Point)
                 {
                     var ours = l.light.GetComponent<KfAim>();
@@ -640,7 +642,7 @@ namespace StudioEX.Bridge.Api
         private static object CharaLightList()
         {
             var list = new List<object>();
-            foreach (var kv in S.dicObjectCtrl)
+            foreach (var kv in Objs)
                 if (kv.Value is OCILight l && l.light != null)
                     list.Add(new Dictionary<string, object>
                     {
@@ -679,11 +681,11 @@ namespace StudioEX.Bridge.Api
             {
                 var projs = ProjectorFolders().Select(kv => (object)new Dictionary<string, object> { { "id", kv.Key }, { "values", ProjectorOf(kv.Value).Data.Wire() } }).ToList();
                 var aims = new List<object>();
-                foreach (var kv in S.dicObjectCtrl)
+                foreach (var kv in Objs)
                     if (kv.Value is OCILight l && l.light != null && l.light.GetComponent<KfAim>() is KfAim aim)
                         aims.Add(new Dictionary<string, object> { { "id", kv.Key }, { "target", aim.TargetId }, { "bone", aim.Bone }, { "speed", (double)aim.Speed } });
                 var chara = new List<object>();
-                foreach (var kv in S.dicObjectCtrl)
+                foreach (var kv in Objs)
                     if (kv.Value is OCILight l && l.light != null && l.light.GetComponent<KfLightsChara>() != null) chara.Add(kv.Key);
                 if (projs.Count == 0 && aims.Count == 0 && chara.Count == 0) { SetExtendedData(null); return; }
                 SetExtendedData(new PluginData { version = 1, data = new Dictionary<string, object> { { "json", Json.Serialize(new Dictionary<string, object> { { "projectors", projs }, { "aims", aims }, { "lightsChara", chara } }) } } });

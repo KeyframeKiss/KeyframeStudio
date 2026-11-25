@@ -38,6 +38,11 @@ namespace StudioEX.Bridge.Api
                 return SceneRigs();
             });
             r.Add("light.saveRig", Save);
+            // the lighting maker: a rig's lights placed around the character by hand, live
+            r.Add("light.rigGet", RigGet);
+            r.Add("light.rigPlace", RigPlace);
+            r.Add("light.rigAdd", RigAdd);
+            r.Add("light.rigRetype", RigRetype);
             r.Add("light.deleteRig", Delete);
         }
 
@@ -168,6 +173,7 @@ namespace StudioEX.Bridge.Api
                 if (light == null) continue;
                 studio.treeNodeCtrl.SetParent(light.treeNodeObject, folder.treeNodeObject);
                 Place(light, spec, anchor);
+                if (!string.IsNullOrEmpty(spec.GetString("role"))) SceneApi.SetName(light, spec.GetString("role"));
             }
             Singleton<UndoRedoManager>.Instance.Clear(); // like Studio's own Add Light: its undo can't remove these
             return folder.objectInfo.dicKey;
@@ -182,8 +188,9 @@ namespace StudioEX.Bridge.Api
             dir = Quaternion.AngleAxis(-el, side) * dir;
             var pos = aim + dir.normalized * spec.GetFloat("dist", 1.5f) * an.Height;
             var rot = Quaternion.LookRotation((aim - pos).normalized, Vector3.up);
-            light.guideObject.changeAmount.pos = pos;
-            light.guideObject.changeAmount.rot = rot.eulerAngles;
+            var parent = light.guideObject.transformTarget != null ? light.guideObject.transformTarget.parent : null;
+            light.guideObject.changeAmount.pos = parent != null ? parent.InverseTransformPoint(pos) : pos;
+            light.guideObject.changeAmount.rot = (parent != null ? Quaternion.Inverse(parent.rotation) * rot : rot).eulerAngles;
             var col = spec.GetList("color");
             if (col.Count >= 3) light.SetColor(new Color(Convert.ToSingle(col[0]), Convert.ToSingle(col[1]), Convert.ToSingle(col[2])));
             light.SetIntensity(spec.GetFloat("intensity", 1f), true);
@@ -228,7 +235,7 @@ namespace StudioEX.Bridge.Api
         // ---------------- rigs in the scene ----------------
 
         private static IEnumerable<OCIFolder> RigFolders() =>
-            Singleton<Studio.Studio>.Instance.dicObjectCtrl.Values.OfType<OCIFolder>().Where(f => (f.name ?? "").StartsWith(Prefix));
+            (Singleton<Studio.Studio>.Instance?.dicObjectCtrl?.Values ?? Enumerable.Empty<ObjectCtrlInfo>()).OfType<OCIFolder>().Where(f => (f.name ?? "").StartsWith(Prefix));
 
         private static List<OCILight> LightsIn(OCIFolder f) =>
             f.treeNodeObject.child.Select(n => Singleton<Studio.Studio>.Instance.dicInfo.TryGetValue(n, out var oci) ? oci as OCILight : null).Where(l => l != null).ToList();
@@ -268,6 +275,175 @@ namespace StudioEX.Bridge.Api
             return SceneRigs();
         }
 
+        // ---------------- the lighting maker ----------------
+
+        /// <summary>Where a light is around the character and how it's set, in a rig's own terms.</summary>
+        private static Dictionary<string, object> SpecOf(OCILight l, Anchor an)
+        {
+            var t = l.objectLight.transform;
+            var p = t.position;
+            // what it points at: the head or the chest, whichever its beam passes closer to (a point light: the head)
+            string aim = "head";
+            if (l.lightType != LightType.Point)
+            {
+                var f = t.forward;
+                float dh = Vector3.Cross(f, an.Head - p).magnitude, dc = Vector3.Cross(f, an.Chest - p).magnitude;
+                if (dc < dh * 0.8f) aim = "chest";
+            }
+            var target = aim == "chest" ? an.Chest : an.Head;
+            var off = p - target;
+            var flat = Vector3.ProjectOnPlane(off, Vector3.up);
+            float az = flat.sqrMagnitude < 1e-8f ? 0f : SignedAngle(an.Forward, flat.normalized);
+            float el = off.sqrMagnitude < 1e-8f ? 0f : Mathf.Asin(Mathf.Clamp(off.normalized.y, -1f, 1f)) * Mathf.Rad2Deg;
+            string type = l.lightType == LightType.Spot ? "spot" : l.lightType == LightType.Point ? "point" : "directional";
+            var info = l.lightInfo;
+            var d = L(l.treeNodeObject != null ? l.treeNodeObject.textName : "Light", type, az, el, off.magnitude / an.Height,
+                new[] { info.color.r, info.color.g, info.color.b }, info.intensity, info.range / an.Height, info.spotAngle, info.shadow, aim);
+            d["id"] = l.objectInfo.dicKey;
+            d["name"] = d["role"];
+            d["enabled"] = info.enable;
+            return d;
+        }
+
+        private static OCILight LightOf(Dictionary<string, object> a) =>
+            SceneApi.FindOci(a.GetInt("light")) as OCILight ?? throw new BridgeException("That light is gone");
+
+        private static OCIChar CharaOf(Dictionary<string, object> a)
+        {
+            var c = CharaApi.Chara(a.GetInt("id"));
+            if (c.charInfo == null) throw new BridgeException("Select the character to light");
+            return c;
+        }
+
+        /// <summary>args: {id: character, folder} → the rig's lights around that character, with the measures to show them in metres.</summary>
+        private static object RigGet(Dictionary<string, object> a)
+        {
+            var an = AnchorOf(CharaOf(a));
+            var f = FindFolder(a.GetInt("folder"));
+            return new Dictionary<string, object>
+            {
+                { "folder", f.objectInfo.dicKey }, { "name", f.name.Substring(Prefix.Length) },
+                { "height", (double)an.Height }, { "head", (double)(an.Head.y - an.Ground.y) }, { "chest", (double)(an.Chest.y - an.Ground.y) },
+                { "lights", LightsIn(f).Select(l => (object)SpecOf(l, an)).ToList() },
+            };
+        }
+
+        /// <summary>args: {id: character, light, spec: {az, el, dist, aim, color, intensity, range, angle, shadow, enabled, name}, drag?}
+        /// → the light's spec. Only what's given changes; one drag (same drag key) is one undo step.</summary>
+        private static object RigPlace(Dictionary<string, object> a)
+        {
+            var c = CharaOf(a);
+            var l = LightOf(a);
+            var an = AnchorOf(c);
+            var before = SpecOf(l, an);
+            var spec = new Dictionary<string, object>(before);
+            var patch = a.GetObject("spec") ?? new Dictionary<string, object>();
+            foreach (var kv in patch) spec[kv.Key] = kv.Value;
+            Apply1(l, spec, an);
+            UndoStack.Push(new PlaceUndo(c, l.objectInfo.dicKey, before, a.GetString("drag") ?? Guid.NewGuid().ToString()));
+            return SpecOf(l, an);
+        }
+
+        /// <summary>Place and set a light from a spec, its name and on/off too.</summary>
+        private static void Apply1(OCILight l, Dictionary<string, object> spec, Anchor an)
+        {
+            Place(l, spec, an);
+            l.SetEnable(spec.GetBool("enabled", true), true);
+            string name = spec.GetString("name") ?? spec.GetString("role");
+            if (!string.IsNullOrEmpty(name) && l.treeNodeObject != null && l.treeNodeObject.textName != name) SceneApi.SetName(l, name);
+        }
+
+        private sealed class PlaceUndo : IUndoEntry
+        {
+            private readonly OCIChar _c;
+            private readonly int _light;
+            private readonly Dictionary<string, object> _spec;
+            private readonly string _drag;
+            public PlaceUndo(OCIChar c, int light, Dictionary<string, object> spec, string drag) { _c = c; _light = light; _spec = spec; _drag = drag; }
+            public string Label => "Light";
+            public bool Absorbs(IUndoEntry newer) => newer is PlaceUndo n && n._light == _light && n._drag == _drag;
+            public IUndoEntry Restore()
+            {
+                var l = SceneApi.FindOci(_light) as OCILight ?? throw new InvalidOperationException("light deleted");
+                if (_c.charInfo == null) throw new InvalidOperationException("character deleted");
+                var an = AnchorOf(_c);
+                var now = SpecOf(l, an);
+                Apply1(l, _spec, an);
+                return new PlaceUndo(_c, _light, now, Guid.NewGuid().ToString());
+            }
+        }
+
+        private static void CheckRoom(int more)
+        {
+            bool unlimited = BepInEx.Bootstrap.Chainloader.PluginInfos.Keys.Any(k => k.IndexOf("UnlimitedMapLights", StringComparison.OrdinalIgnoreCase) >= 0);
+            int existing = Singleton<Studio.Studio>.Instance.dicObjectCtrl.Values.OfType<OCILight>().Count();
+            if (!unlimited && existing + more > 2)
+                throw new BridgeException("Studio allows 2 lights per scene (" + existing + " used). Remove one, or install IllusionFixes' Unlimited Map Lights.");
+        }
+
+        private static OCILight AddLight(Dictionary<string, object> spec, OCIFolder folder, Anchor an, bool charaOnly)
+        {
+            var light = AddObjectLight.Add(LightNo(spec.GetString("type") ?? "spot", charaOnly)) ?? throw new BridgeException("Studio couldn't add the light");
+            Singleton<Studio.Studio>.Instance.treeNodeCtrl.SetParent(light.treeNodeObject, folder.treeNodeObject);
+            Apply1(light, spec, an);
+            Singleton<UndoRedoManager>.Instance.Clear(); // like Studio's own Add Light: its undo can't remove these
+            return light;
+        }
+
+        /// <summary>args: {id: character, folder?, name? (a new rig's), spec, charaOnly?} → {folder, light}: a light dropped into a rig
+        /// (a new rig "Lighting rig: name" when no folder). Undo removes it.</summary>
+        private static object RigAdd(Dictionary<string, object> a)
+        {
+            var c = CharaOf(a);
+            CheckRoom(1);
+            var an = AnchorOf(c);
+            OCIFolder folder;
+            bool made = !a.Has("folder");
+            if (made)
+            {
+                folder = AddObjectFolder.Add();
+                folder.name = Prefix + ((a.GetString("name") ?? "").Trim().Length > 0 ? a.GetString("name").Trim() : "My rig");
+                folder.objectInfo.changeAmount.pos = Vector3.zero;
+                folder.objectInfo.changeAmount.rot = Vector3.zero;
+            }
+            else folder = FindFolder(a.GetInt("folder"));
+            var spec = a.GetObject("spec") ?? L("Key", "spot", 40, 30, 1.6f, Warm, 1.5f, 3f, 45f);
+            var light = AddLight(spec, folder, an, a.GetBool("charaOnly", true));
+            UndoStack.Push(new AddUndo(light.objectInfo.dicKey, made ? folder.objectInfo.dicKey : -1));
+            return new Dictionary<string, object> { { "folder", folder.objectInfo.dicKey }, { "light", light.objectInfo.dicKey } };
+        }
+
+        /// <summary>Undo of a dropped light: it goes (with the rig it started); not redone (Studio can't bring a deleted light back).</summary>
+        private sealed class AddUndo : IUndoEntry
+        {
+            private readonly int _light, _folder;
+            public AddUndo(int light, int folder) { _light = light; _folder = folder; }
+            public string Label => "Add light";
+            public bool Absorbs(IUndoEntry newer) => false;
+            public IUndoEntry Restore()
+            {
+                if (_folder >= 0) RemoveFolder(_folder);
+                else if (SceneApi.FindOci(_light) is OCILight l) Singleton<Studio.Studio>.Instance.treeNodeCtrl.DeleteNode(l.treeNodeObject);
+                return null;
+            }
+        }
+
+        /// <summary>args: {id: character, light, type: spot|point|directional, charaOnly?} → {light}: the same light as another kind
+        /// (Studio's lights can't change kind: a new one takes its place, name and settings).</summary>
+        private static object RigRetype(Dictionary<string, object> a)
+        {
+            var c = CharaOf(a);
+            var l = LightOf(a);
+            var an = AnchorOf(c);
+            var spec = SpecOf(l, an);
+            spec["type"] = a.GetString("type") ?? "spot";
+            var folder = Singleton<Studio.Studio>.Instance.dicObjectCtrl.Values.OfType<OCIFolder>()
+                .FirstOrDefault(f => f.treeNodeObject.child.Contains(l.treeNodeObject)) ?? throw new BridgeException("That light isn't in a rig");
+            Singleton<Studio.Studio>.Instance.treeNodeCtrl.DeleteNode(l.treeNodeObject);
+            var light = AddLight(spec, folder, an, a.GetBool("charaOnly", true));
+            return new Dictionary<string, object> { { "light", light.objectInfo.dicKey } };
+        }
+
         // ---------------- saved rigs ----------------
 
         /// <summary>args: {name, id: character, folder?: a rig folder (else every light in the scene)}</summary>
@@ -283,15 +459,9 @@ namespace StudioEX.Bridge.Api
             var specs = new List<object>();
             foreach (var l in lights)
             {
-                var p = l.objectLight.transform.position;
-                var off = p - an.Head;
-                float dist = off.magnitude / an.Height;
-                var flat = Vector3.ProjectOnPlane(off, Vector3.up);
-                float az = flat.sqrMagnitude < 1e-8f ? 0f : SignedAngle(an.Forward, flat.normalized);
-                float el = Mathf.Asin(Mathf.Clamp(off.normalized.y, -1f, 1f)) * Mathf.Rad2Deg;
-                string type = l.lightType == LightType.Spot ? "spot" : l.lightType == LightType.Point ? "point" : "directional";
-                var info = l.lightInfo;
-                specs.Add(L("Light", type, az, el, dist, new[] { info.color.r, info.color.g, info.color.b }, info.intensity, info.range / an.Height, info.spotAngle, info.shadow));
+                var d = SpecOf(l, an);
+                foreach (var k in new[] { "id", "name", "enabled" }) d.Remove(k);
+                specs.Add(d);
             }
             Directory.CreateDirectory(Folder);
             var bad = Path.GetInvalidFileNameChars();
