@@ -131,7 +131,7 @@ type Interaction =
   | { mode: 'none' }
   | { mode: 'scrub' }
   | { mode: 'pan'; startX: number; startT0: number }
-  | { mode: 'box'; x0: number; y0: number; x1: number; y1: number; additive: boolean; toggle: boolean }
+  | { mode: 'box'; ta: number; ca: number; x1: number; y1: number; additive: boolean; toggle: boolean }
   | { mode: 'drag'; startX: number; grabT: number; dt: number; active: boolean; clickedId: KeyId; collapseOnClick: boolean }
   | { mode: 'audio'; id: number; startX: number; startOffset: number; offset: number; active: boolean }
   | { mode: 'shot'; id: string; kind: 'move' | 'start' | 'end'; startX: number; orig: Shot[]; moved: boolean; label: string };
@@ -842,12 +842,13 @@ export function DopeSheet({ compact = false }: { compact?: boolean } = {}) {
       // box selection
       const it = inter.current;
       if (it.mode === 'box') {
-        const x = Math.min(it.x0, it.x1);
-        const y = Math.min(it.y0, it.y1);
+        const b = boxRect(it);
+        const x = Math.min(b.x0, b.x1);
+        const y = Math.min(b.y0, b.y1);
         ctx.fillStyle = tokenRgba('--accent-2', 0.12);
         ctx.strokeStyle = colors.accent2;
-        ctx.fillRect(x, y, Math.abs(it.x1 - it.x0), Math.abs(it.y1 - it.y0));
-        ctx.strokeRect(x + 0.5, y + 0.5, Math.abs(it.x1 - it.x0), Math.abs(it.y1 - it.y0));
+        ctx.fillRect(x, y, Math.abs(b.x1 - b.x0), Math.abs(b.y1 - b.y0));
+        ctx.strokeRect(x + 0.5, y + 0.5, Math.abs(b.x1 - b.x0), Math.abs(b.y1 - b.y0));
       }
       if (it.mode === 'drag' && it.active) {
         ctx.fillStyle = colors.accent;
@@ -887,6 +888,49 @@ export function DopeSheet({ compact = false }: { compact?: boolean } = {}) {
     for (const tr of list) for (const k of tr.keys) if (Math.abs(k[0] - bestT) < 1e-4) ids.push(keyId(tr.id, k[0]));
     return ids;
   };
+
+  /** The box on screen now: its start where it was clicked (time and row, wherever they've scrolled to), its end at the pointer. */
+  const boxRect = (it: { ta: number; ca: number; x1: number; y1: number }) => ({ x0: xOf(it.ta), y0: it.ca - scrollRef.current, x1: it.x1, y1: it.y1 });
+
+  /**
+   * While a box is dragged past the top or bottom of the tracks (or past the left or right edge), the sheet scrolls
+   * that way, faster the further out, and the box keeps growing — rows and keys off screen get picked up too.
+   */
+  const edgeFrame = useRef(0);
+  const edgeScroll = () => {
+    if (edgeFrame.current) return;
+    const step = () => {
+      edgeFrame.current = 0;
+      const it = inter.current;
+      if (it.mode !== 'box') return;
+      const top = headH();
+      const bottom = size.current.h - HSCROLL_H;
+      const right = size.current.w;
+      const ramp = (d: number) => Math.min(28, 4 + d * 0.5);
+      let dy = 0;
+      if (it.y1 < top + 12) dy = -ramp(top + 12 - it.y1);
+      else if (it.y1 > bottom - 12) dy = ramp(it.y1 - (bottom - 12));
+      let dx = 0;
+      if (it.x1 < PAD + 8) dx = -ramp(PAD + 8 - it.x1);
+      else if (it.x1 > right - 12) dx = ramp(it.x1 - (right - 12));
+      if (!dy && !dx) return;
+      if (dy) {
+        const next = clampScroll(scrollRef.current + dy);
+        if (next !== scrollRef.current) {
+          scrollRef.current = next; // the box reads it this frame; React catches up on render
+          setScrollY(next);
+        }
+      }
+      if (dx) {
+        autoView.current = false;
+        view.current.t0 = Math.max(-1, view.current.t0 + dx / view.current.pps);
+      }
+      dirty.current = true;
+      edgeFrame.current = requestAnimationFrame(step);
+    };
+    edgeFrame.current = requestAnimationFrame(step);
+  };
+  useEffect(() => () => cancelAnimationFrame(edgeFrame.current), []);
 
   const keysInBox = (x0: number, y0: number, x1: number, y1: number): KeyId[] => {
     const [xa, xb] = [Math.min(x0, x1), Math.max(x0, x1)];
@@ -1023,7 +1067,7 @@ export function DopeSheet({ compact = false }: { compact?: boolean } = {}) {
       const row = rowsRef.current[rowIndexAt(y)];
       if (row?.kind === 'track' && !e.ctrlKey && !e.shiftKey) selectTracks([row.track.id]);
     } else {
-      inter.current = { mode: 'box', x0: x, y0: y, x1: x, y1: y, additive: e.shiftKey, toggle: e.ctrlKey };
+      inter.current = { mode: 'box', ta: tOf(x), ca: y + scrollRef.current, x1: x, y1: y, additive: e.shiftKey, toggle: e.ctrlKey };
     }
     dirty.current = true;
   };
@@ -1084,6 +1128,7 @@ export function DopeSheet({ compact = false }: { compact?: boolean } = {}) {
     else if (it.mode === 'box') {
       it.x1 = x;
       it.y1 = y;
+      edgeScroll();
     } else if (it.mode === 'drag') {
       if (!it.active && Math.abs(x - it.startX) > 3) it.active = true;
       if (it.active) {
@@ -1124,13 +1169,14 @@ export function DopeSheet({ compact = false }: { compact?: boolean } = {}) {
         selectKeys(keysAt(e.clientX - r.left, e.clientY - r.top));
       }
     } else if (it.mode === 'box') {
-      const small = Math.abs(it.x1 - it.x0) < 3 && Math.abs(it.y1 - it.y0) < 3;
+      const b = boxRect(it);
+      const small = Math.abs(b.x1 - b.x0) < 3 && Math.abs(b.y1 - b.y0) < 3;
       if (small) {
         if (!it.additive && !it.toggle) selectKeys([]);
-        const row = rowsRef.current[rowIndexAt(it.y0)];
+        const row = rowsRef.current[rowIndexAt(b.y0)];
         if (row?.kind === 'track') selectTracks([row.track.id], it.toggle ? 'toggle' : it.additive ? 'add' : 'replace');
       } else {
-        selectKeys(keysInBox(it.x0, it.y0, it.x1, it.y1), it.toggle ? 'toggle' : it.additive ? 'add' : 'replace');
+        selectKeys(keysInBox(b.x0, b.y0, b.x1, b.y1), it.toggle ? 'toggle' : it.additive ? 'add' : 'replace');
       }
     }
     dirty.current = true;
