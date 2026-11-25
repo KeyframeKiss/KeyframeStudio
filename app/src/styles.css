@@ -9865,17 +9865,6 @@ a.btn {
 }
 
 /* Look › Picture: Studio's settings and Keyframe Studio's effects, flowing in columns */
-.pic-cards {
-  columns: 3 340px;
-  column-gap: 10px;
-}
-.pic-cards > * {
-  break-inside: avoid;
-  margin-bottom: 10px;
-}
-.pic-cards > .fx-warn {
-  column-span: all;
-}
 /* where a card comes from: Studio or Keyframe Studio */
 .look-card-head .src-tag {
   align-self: flex-start;
@@ -10855,4 +10844,109 @@ a.btn {
 .me-group-box .me-cards .me-row > select {
   width: 100%;
   min-width: 0;
+}
+/* Look › Picture: the effects as a short list, the picked one's settings beside it */
+.pic2 {
+  display: grid;
+  grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+  container-type: inline-size;
+}
+.pic-list {
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.pic-list-group {
+  margin: 0 0 4px 8px;
+  color: var(--text-2);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+}
+.pic-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-right: 8px;
+  border-radius: var(--r-2);
+}
+.pic-item:hover {
+  background: var(--bg-2);
+}
+.pic-item.on {
+  background: color-mix(in srgb, var(--accent) 14%, var(--bg-2));
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+.pic-item-btn {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr);
+  column-gap: 10px;
+  align-items: center;
+  padding: 6px 0 6px 10px;
+  border: 0;
+  background: none;
+  color: var(--text-1);
+  text-align: left;
+  cursor: pointer;
+}
+.pic-item.on .pic-item-btn,
+.pic-item.active .pic-item-btn {
+  color: var(--text-0);
+}
+.pic-dot {
+  grid-row: 1 / span 2;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 1.5px solid var(--line);
+}
+.pic-dot.on {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.pic-item-name {
+  font-size: var(--fs-sm);
+  font-weight: 500;
+}
+.pic-item-sum {
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pic-editor {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.pic-editor-head h2 {
+  margin: 0 0 4px;
+  font-size: var(--fs-lg, 16px);
+}
+.pic-editor-head p {
+  margin: 0;
+  max-width: 70ch;
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+}
+.pic-editor-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 720px;
+}
+@container (max-width: 640px) {
+  .pic2 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .pic-list {
+    position: static;
+  }
 }

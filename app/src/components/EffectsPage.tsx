@@ -204,10 +204,12 @@ export function EffectsPage({ only }: { only?: string[] } = {}) {
   useEffect(() => {
     const h = () => load();
     window.addEventListener('kf:history', h);
+    window.addEventListener('kf:picture-changed', h);
     window.addEventListener('focus', h);
     const off = bridge.on('fx.changed', (d) => setFx(d as FxState));
     return () => {
       window.removeEventListener('kf:history', h);
+      window.removeEventListener('kf:picture-changed', h);
       window.removeEventListener('focus', h);
       off?.();
     };
@@ -224,7 +226,11 @@ export function EffectsPage({ only }: { only?: string[] } = {}) {
       frame.current = 0;
       const batch = [...pending.current.entries()];
       pending.current.clear();
-      for (const [effect, vals] of batch) bridge.request('fx.set', { effect, values: vals }).catch((e) => toast((e as Error).message, 'error'));
+      for (const [effect, vals] of batch)
+        bridge
+          .request('fx.set', { effect, values: vals })
+          .then(() => window.dispatchEvent(new Event('kf:picture-edited')))
+          .catch((e) => toast((e as Error).message, 'error'));
     });
   };
   useEffect(() => () => cancelAnimationFrame(frame.current), []);

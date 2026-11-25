@@ -77,6 +77,7 @@ export function LookPanel({ cards: only }: { cards?: string[] } = {}) {
       pending.current = {};
       try {
         await bridge.request('look.set', p);
+        window.dispatchEvent(new Event('kf:picture-edited'));
       } catch (e) {
         toast((e as Error).message, 'error');
       }
