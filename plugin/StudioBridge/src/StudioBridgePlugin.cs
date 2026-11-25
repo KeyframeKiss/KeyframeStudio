@@ -55,6 +55,8 @@ namespace StudioEX.Bridge
             LightRigs.Register(_router);
             PresetStore.Register(_router);
             ScenePackage.Register(_router);
+            LightsApi.NewLightsChara = Config.Bind("Lights", "New lights light characters", true,
+                "Lights added with Studio's Add › Light also light characters (Studio makes them light the map only). Lights in scenes you open keep what they were saved with; each light can be switched on Look › Lighting.");
             AudioTrack.OutputDelay = Config.Bind("Audio", "Output delay (ms)", 0,
                 "Play the audio this much early while the timeline plays, to make up for headphones or speakers that are heard late (Bluetooth adds 150–500 ms). Renders don't use it.");
             gameObject.AddComponent<AudioTrack>();

@@ -53,11 +53,17 @@ export function LightingScene({ refreshKey }: { refreshKey: number }) {
   const [rigs, setRigs] = useState<SceneRig[]>([]);
   const [projs, setProjs] = useState<SceneProj[]>([]);
   const [comparing, setComparing] = useState(false);
+  // which lights reach characters (Studio's Add › Light ones light only the map unless switched)
+  const [charaLit, setCharaLit] = useState<Record<number, boolean>>({});
+  const takeChara = (l: { id: number; lightsChara: boolean }[] | undefined) => l && setCharaLit(Object.fromEntries(l.map((x) => [x.id, x.lightsChara])));
 
   const load = useCallback(() => {
     call<SceneRig[]>('light.sceneRigs').then((r) => r && setRigs(r));
     call<{ items: SceneProj[] }>('proj.list').then((r) => r && setProjs(r.items));
+    call<{ id: number; lightsChara: boolean }[]>('light.charaList').then(takeChara);
   }, []);
+  const setLitChara = (ids: number[], on: boolean) => call<{ id: number; lightsChara: boolean }[]>('light.lightsChara', { ids, on }).then(takeChara);
+  const mapOnly = Object.values(nodes).filter((n) => n.type === 'Light' && charaLit[n.id] === false).map((n) => n.id);
   useEffect(() => {
     if (status === 'open') load();
   }, [status, load, nodes, refreshKey]);
@@ -161,6 +167,16 @@ export function LightingScene({ refreshKey }: { refreshKey: number }) {
                   <span className="sub">Light</span>
                 </div>
                 <span className="spacer" />
+                {n.id in charaLit && (
+                  <button
+                    className={`btn chip ${charaLit[n.id] ? 'on' : ''}`}
+                    aria-pressed={charaLit[n.id]}
+                    title={charaLit[n.id] ? 'It lights the characters too. Click: the map only' : 'It lights the map only (how Studio adds lights). Click: light the characters too'}
+                    onClick={() => setLitChara([n.id], !charaLit[n.id])}
+                  >
+                    Characters
+                  </button>
+                )}
                 <button className="btn icon" title="Select it in Studio to move or turn it with the handles" onClick={() => call('scene.select', { ids: [n.id] })}>
                   <Icon name="target" size={13} />
                 </button>
@@ -173,6 +189,14 @@ export function LightingScene({ refreshKey }: { refreshKey: number }) {
                 </button>
               </div>
             ))}
+          </div>
+        )}
+        {mapOnly.length > 0 && (
+          <div className="tool-actions" style={{ marginTop: 10 }}>
+            <button className="btn solid" title="Studio adds lights that light the map only. These will light the characters too (one undo step)" onClick={() => setLitChara(mapOnly, true)}>
+              Let {mapOnly.length === 1 ? 'this light' : `all ${mapOnly.length} lights`} light the characters
+            </button>
+            <Help text="Studio makes the lights you add light the map, never a character: only its built-in character light reaches them. Switch a light's Characters on to light them too, like any 3D program. New lights from Studio's Add › Light do this already (Mod settings › Keyframe Studio Bridge › Lights). Characters show it best with shaders made for extra lights (xukmi Vanilla Plus)." />
           </div>
         )}
         {rigs.some((r) => r.enabled) && (

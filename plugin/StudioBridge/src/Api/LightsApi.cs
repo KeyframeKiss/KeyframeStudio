@@ -44,6 +44,8 @@ namespace StudioEX.Bridge.Api
             r.Add("proj.debug", a => { foreach (var kv in ProjectorFolders()) ProjectorOf(kv.Value).Debug(a.GetFloat("mode")); return true; });
             r.Add("aim.list", a => AimList());
             r.Add("aim.set", SetAim);
+            r.Add("light.charaList", a => CharaLightList());
+            r.Add("light.lightsChara", SetLightsChara);
             if (TimelineApi.Available)
             {
                 try { RegisterTracks(); }
@@ -577,6 +579,67 @@ namespace StudioEX.Bridge.Api
             }
         }
 
+        // ================================================================== lights that reach characters
+        // Studio's Add › Light lights are made for the map: their layer mask leaves out the characters' layer (10), so
+        // only the built-in character light ever lights a character. "Lights characters" adds that layer (and keeps the
+        // light's own mask to go back to); saved with the scene.
+
+        internal sealed class KfLightsChara : MonoBehaviour
+        {
+            public int OriginalMask;
+        }
+
+        private const int CharaLayer = 10;
+        internal static BepInEx.Configuration.ConfigEntry<bool> NewLightsChara;
+
+        private static bool LightsChara(OCILight l) => l?.light != null && (l.light.cullingMask & (1 << CharaLayer)) != 0;
+
+        internal static void ApplyLightsChara(OCILight l, bool on)
+        {
+            if (l?.light == null) return;
+            var mark = l.light.GetComponent<KfLightsChara>();
+            if (on)
+            {
+                if (mark == null) { mark = l.light.gameObject.AddComponent<KfLightsChara>(); mark.OriginalMask = l.light.cullingMask; }
+                l.light.cullingMask |= 1 << CharaLayer;
+            }
+            else
+            {
+                if (mark != null) { l.light.cullingMask = mark.OriginalMask & ~(1 << CharaLayer); UnityEngine.Object.Destroy(mark); }
+                else l.light.cullingMask &= ~(1 << CharaLayer);
+            }
+        }
+
+        private static object CharaLightList()
+        {
+            var list = new List<object>();
+            foreach (var kv in S.dicObjectCtrl)
+                if (kv.Value is OCILight l && l.light != null)
+                    list.Add(new Dictionary<string, object>
+                    {
+                        { "id", kv.Key }, { "name", SceneApi.DisplayName(l) }, { "type", l.lightType.ToString() },
+                        { "lightsChara", LightsChara(l) }, { "byUs", l.light.GetComponent<KfLightsChara>() != null },
+                    });
+            return list;
+        }
+
+        private static object SetLightsChara(Dictionary<string, object> a)
+        {
+            var ids = a.GetList("ids");
+            if (ids.Count == 0 && a.Has("id")) ids.Add(a["id"]);
+            bool on = a.GetBool("on", true);
+            var lights = ids.Select(i => SceneApi.FindOci(Convert.ToInt32(i)) as OCILight).Where(l => l?.light != null).ToList();
+            if (lights.Count == 0) throw new BridgeException("No light");
+            var before = lights.ToDictionary(l => l, l => LightsChara(l));
+            UndoStack.Push(new SnapUndo(on ? "Light the characters" : "Map only", null, () =>
+            {
+                var was = lights.ToDictionary(l => l, l => LightsChara(l));
+                return () => { foreach (var kv in was) if (kv.Key?.light != null && LightsChara(kv.Key) != kv.Value) ApplyLightsChara(kv.Key, kv.Value); };
+            }));
+            foreach (var l in lights) ApplyLightsChara(l, on);
+            return CharaLightList();
+        }
+
         // ================================================================== saved with the scene
 
         [MethodImpl(MethodImplOptions.NoInlining)]
@@ -591,8 +654,11 @@ namespace StudioEX.Bridge.Api
                 foreach (var kv in S.dicObjectCtrl)
                     if (kv.Value is OCILight l && l.light != null && l.light.GetComponent<KfAim>() is KfAim aim)
                         aims.Add(new Dictionary<string, object> { { "id", kv.Key }, { "target", aim.TargetId }, { "bone", aim.Bone }, { "speed", (double)aim.Speed } });
-                if (projs.Count == 0 && aims.Count == 0) { SetExtendedData(null); return; }
-                SetExtendedData(new PluginData { version = 1, data = new Dictionary<string, object> { { "json", Json.Serialize(new Dictionary<string, object> { { "projectors", projs }, { "aims", aims } }) } } });
+                var chara = new List<object>();
+                foreach (var kv in S.dicObjectCtrl)
+                    if (kv.Value is OCILight l && l.light != null && l.light.GetComponent<KfLightsChara>() != null) chara.Add(kv.Key);
+                if (projs.Count == 0 && aims.Count == 0 && chara.Count == 0) { SetExtendedData(null); return; }
+                SetExtendedData(new PluginData { version = 1, data = new Dictionary<string, object> { { "json", Json.Serialize(new Dictionary<string, object> { { "projectors", projs }, { "aims", aims }, { "lightsChara", chara } }) } } });
             }
 
             protected override void OnSceneLoad(SceneOperationKind operation, ReadOnlyDictionary<int, ObjectCtrlInfo> loadedItems)
@@ -614,6 +680,10 @@ namespace StudioEX.Bridge.Api
                                 }
                                 catch (Exception e) { StudioBridgePlugin.Logger.LogWarning("Couldn't restore a projector: " + e.Message); }
                             }
+                    if (all.TryGetValue("lightsChara", out var lc) && lc is List<object> ll)
+                        foreach (var o in ll)
+                            if (loadedItems.TryGetValue(Convert.ToInt32(o), out var oci) && oci is OCILight l)
+                                ApplyLightsChara(l, true);
                     if (all.TryGetValue("aims", out var ai) && ai is List<object> al)
                         foreach (var o in al.OfType<Dictionary<string, object>>())
                             if (loadedItems.TryGetValue(Convert.ToInt32(o["id"]), out var oci) && oci is OCILight l

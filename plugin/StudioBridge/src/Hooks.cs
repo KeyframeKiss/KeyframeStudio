@@ -32,6 +32,11 @@ namespace StudioEX.Bridge
             if (__result) Try(() => SetSceneFile(__instance, __0, false));
         }
 
+        /// <summary>A light just added with Studio's Add › Light: it lights characters too (unless switched off in settings).</summary>
+        [HarmonyPostfix, HarmonyPatch(typeof(Studio.AddObjectLight), nameof(Studio.AddObjectLight.Add), new[] { typeof(int) })]
+        private static void LightAdded(Studio.OCILight __result) =>
+            Try(() => { if (__result != null && (LightsApi.NewLightsChara?.Value ?? true)) LightsApi.ApplyLightsChara(__result, true); });
+
         [HarmonyPrefix, HarmonyPatch(typeof(Studio.SceneInfo), nameof(Studio.SceneInfo.Save), new[] { typeof(string) })]
         private static void Saving() => Try(() => Api.CameraTools.Instance?.BeforeSave());
 

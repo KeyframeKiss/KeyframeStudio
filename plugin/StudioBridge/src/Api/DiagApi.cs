@@ -18,6 +18,7 @@ namespace StudioEX.Bridge.Api
         {
             r.Add("diag.info", a => Info());
             r.Add("diag.log", a => RecentLog(a.GetInt("max", 300)));
+            r.Add("diag.lighting", a => Lighting(a));
         }
 
         public static void Install()
@@ -31,6 +32,59 @@ namespace StudioEX.Bridge.Api
             { "userData", System.IO.Path.Combine(BepInEx.Paths.GameRootPath, "UserData") },
             { "bepinexLog", System.IO.Path.Combine(BepInEx.Paths.BepInExRootPath, "LogOutput.log") },
         };
+
+        /// <summary>
+        /// Why a light does or doesn't reach a character: the quality's per-pixel light budget, each light's settings
+        /// (type, range, layers it lights, render mode), and which character shaders have a pass for extra lights.
+        /// </summary>
+        private static object Lighting(Dictionary<string, object> a)
+        {
+            var lights = new List<object>();
+            foreach (var l in UnityEngine.Object.FindObjectsOfType<UnityEngine.Light>())
+                lights.Add(new Dictionary<string, object>
+                {
+                    { "name", l.name }, { "type", l.type.ToString() }, { "enabled", l.enabled && l.gameObject.activeInHierarchy },
+                    { "intensity", (double)l.intensity }, { "range", (double)l.range }, { "spot", (double)l.spotAngle },
+                    { "color", new List<object> { (double)l.color.r, (double)l.color.g, (double)l.color.b } },
+                    { "mask", l.cullingMask }, { "litChara", (l.cullingMask & (1 << 10)) != 0 }, { "renderMode", l.renderMode.ToString() },
+                    { "shadows", l.shadows.ToString() }, { "layer", l.gameObject.layer },
+                    { "pos", new List<object> { (double)l.transform.position.x, (double)l.transform.position.y, (double)l.transform.position.z } },
+                });
+            var shaders = new Dictionary<string, object>();
+            var getPass = typeof(UnityEngine.Material).GetMethod("GetPassName", new[] { typeof(int) });
+            foreach (var r in UnityEngine.Object.FindObjectsOfType<UnityEngine.Renderer>())
+            {
+                if (r.gameObject.layer != 10) continue; // characters
+                foreach (var m in r.sharedMaterials)
+                {
+                    if (m == null || m.shader == null || shaders.ContainsKey(m.shader.name)) continue;
+                    var passes = new List<object>();
+                    try { for (int i = 0; i < m.passCount; i++) passes.Add(getPass != null ? getPass.Invoke(m, new object[] { i }) : i.ToString()); } catch { }
+                    shaders[m.shader.name] = new Dictionary<string, object> { { "passes", passes }, { "queue", m.renderQueue } };
+                }
+            }
+            // named shaders' passes (e.g. xukmi/SkinPlus), whether used here or not
+            var named = new Dictionary<string, object>();
+            var want = new HashSet<string>((a.GetList("shaders") ?? new List<object>()).Select(x => Convert.ToString(x)));
+            if (want.Count > 0)
+                foreach (var sh in UnityEngine.Resources.FindObjectsOfTypeAll<UnityEngine.Shader>())
+                {
+                    if (sh == null || !want.Contains(sh.name) || named.ContainsKey(sh.name)) continue;
+                    var m = new UnityEngine.Material(sh);
+                    var passes = new List<object>();
+                    try { for (int i = 0; i < m.passCount; i++) passes.Add(getPass != null ? getPass.Invoke(m, new object[] { i }) : i.ToString()); } catch { }
+                    UnityEngine.Object.Destroy(m);
+                    named[sh.name] = passes;
+                }
+            var cam = UnityEngine.Camera.main;
+            return new Dictionary<string, object>
+            {
+                { "named", named },
+                { "pixelLightCount", UnityEngine.QualitySettings.pixelLightCount }, { "quality", UnityEngine.QualitySettings.GetQualityLevel() },
+                { "renderingPath", cam != null ? cam.actualRenderingPath.ToString() : null }, { "camMask", cam != null ? cam.cullingMask : 0 },
+                { "lights", lights }, { "charaShaders", shaders },
+            };
+        }
 
         private static Dictionary<string, object> Info()
         {
