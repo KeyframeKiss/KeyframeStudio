@@ -80,7 +80,23 @@ export function FaceStudio() {
 
   const [flash, setFlash] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [uniform, setUniform] = useState<Set<string>>(new Set());
+  // which parts show their Move / Rotate / Shape rows: open when changed, or when opened by hand
+  const [openMore, setOpenMore] = useState<Set<string>>(new Set());
+  const [closedMore, setClosedMore] = useState<Set<string>>(new Set());
+  const toggleMore = (name: string, open: boolean) => {
+    setOpenMore((cur) => {
+      const n = new Set(cur);
+      if (open) n.add(name);
+      else n.delete(name);
+      return n;
+    });
+    setClosedMore((cur) => {
+      const n = new Set(cur);
+      if (open) n.delete(name);
+      else n.add(name);
+      return n;
+    });
+  };
   const lastEdit = useRef(-1e9); // "long ago" (performance.now() starts at 0 when the page loads)
   const want = useRef(id);
   want.current = id;
@@ -488,7 +504,16 @@ export function FaceStudio() {
             const st = bones[name];
             if (!st) return null; // this character doesn't have the bone
             const channels = b.channels ?? (['pos', 'rot', 'scale'] as Channel[]);
-            const locked = uniform.has(name) || channels.length === 1;
+            const hasScale = channels.includes('scale');
+            const sc = st.scale;
+            const size = (sc[0] + sc[1] + sc[2]) / 3;
+            const setSize = (n: number) => send(name, 'scale', (Math.abs(size) < 1e-6 ? [n, n, n] : sc.map((v) => Math.round(((v * n) / size) * 10000) / 10000)) as Vec3);
+            const uniformScale = Math.max(...sc) - Math.min(...sc) < RANGES.scale.step;
+            // folded: moving, turning, and per-axis shape (only when there's more than one axis to give)
+            const rest = channels.filter((ch) => ch !== 'scale' || channels.length > 1);
+            const off = (ch: Channel) => (ch === 'scale' ? !uniformScale : st[ch].some((v) => Math.abs(v - RANGES[ch].neutral) > RANGES[ch].step / 2));
+            const restChanged = rest.filter(off).map((ch) => (ch === 'scale' ? 'shape' : ch === 'pos' ? 'moved' : 'turned'));
+            const moreOpen = openMore.has(name) || (restChanged.length > 0 && !closedMore.has(name)) || !hasScale;
             return (
               <div
                 key={b.name}
@@ -506,52 +531,47 @@ export function FaceStudio() {
                   </button>
                 </div>
                 {b.hint && <div className="face-hint">{b.hint}</div>}
-                {channels.map((ch) => {
-                  const r = RANGES[ch];
-                  const vec = st[ch];
-                  return (
-                    <div key={ch} className="face-row">
-                      <div className="face-row-label">
-                        {r.label}
-                        {ch === 'scale' && channels.length > 1 && (
-                          <button
-                            className={`face-lock ${uniform.has(name) ? 'on' : ''}`}
-                            title="Scale all axes together"
-                            onClick={() =>
-                              setUniform((u) => {
-                                const n = new Set(u);
-                                if (n.has(name)) n.delete(name);
-                                else n.add(name);
-                                return n;
-                              })
-                            }
-                          >
-                            ⛓
-                          </button>
-                        )}
-                      </div>
-                      <div className="face-axes">
-                      {ch === 'scale' && locked ? (
-                        <Axis axis="" range={r} value={vec[0]} onChange={(v) => send(name, ch, [v, v, v])} />
-                      ) : (
-                        ([0, 1, 2] as const).map((i) => (
-                          <Axis
-                            key={i}
-                            axis={'XYZ'[i]}
-                            range={r}
-                            value={vec[i]}
-                            onChange={(v) => {
-                              const n = [...vec] as Vec3;
-                              n[i] = v;
-                              send(name, ch, n);
-                            }}
-                          />
-                        ))
-                      )}
-                      </div>
+                {/* the common change up front: Size scales all three axes, keeping their proportions */}
+                {hasScale && (
+                  <div className="face-row">
+                    <div className="face-row-label">Size</div>
+                    <div className="face-axes one">
+                      <Axis axis="" range={RANGES.scale} value={size} onChange={setSize} />
                     </div>
-                  );
-                })}
+                  </div>
+                )}
+                {rest.length > 0 && (
+                  <details className="face-more" open={moreOpen || undefined} onToggle={(e) => toggleMore(name, (e.target as HTMLDetailsElement).open)}>
+                    <summary>
+                      {rest.map((ch) => (ch === 'scale' ? 'Shape' : RANGES[ch].label)).join(', ')}
+                      {restChanged.length > 0 && <span className="face-more-changed">{restChanged.join(', ')} changed</span>}
+                    </summary>
+                    {rest.map((ch) => {
+                      const r = RANGES[ch];
+                      const vec = st[ch];
+                      return (
+                        <div key={ch} className="face-row">
+                          <div className="face-row-label">{ch === 'scale' ? 'Shape' : r.label}</div>
+                          <div className="face-axes">
+                            {([0, 1, 2] as const).map((i) => (
+                              <Axis
+                                key={i}
+                                axis={'XYZ'[i]}
+                                range={r}
+                                value={vec[i]}
+                                onChange={(v) => {
+                                  const n = [...vec] as Vec3;
+                                  n[i] = v;
+                                  send(name, ch, n);
+                                }}
+                              />
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </details>
+                )}
               </div>
             );
           })}

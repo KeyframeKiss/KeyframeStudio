@@ -2171,17 +2171,6 @@ html.compact .btn {
   align-items: center;
   gap: 4px;
 }
-.face-lock {
-  border: 0;
-  background: none;
-  color: var(--text-3);
-  cursor: pointer;
-  padding: 0 2px;
-  font-size: 11px;
-}
-.face-lock.on {
-  color: var(--accent);
-}
 .face-axis {
   display: flex;
   align-items: center;
@@ -10949,4 +10938,43 @@ a.btn {
   .pic-list {
     position: static;
   }
+}
+/* Face shape › Face parts: Size up front, the per-axis rows folded (open by themselves when changed) */
+.face-axes.one {
+  grid-template-columns: minmax(0, 1fr);
+}
+.face-more {
+  margin-top: 6px;
+}
+.face-more > summary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  color: var(--text-2);
+  font-size: 11.5px;
+  cursor: pointer;
+}
+.face-more > summary::-webkit-details-marker {
+  display: none;
+}
+.face-more > summary::before {
+  content: '';
+  width: 5px;
+  height: 5px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform var(--t-fast, 0.12s) ease;
+}
+.face-more[open] > summary::before {
+  transform: rotate(45deg);
+}
+.face-more > summary:hover {
+  color: var(--text-0);
+}
+.face-more-changed {
+  color: var(--accent);
+  font-size: 11px;
 }
