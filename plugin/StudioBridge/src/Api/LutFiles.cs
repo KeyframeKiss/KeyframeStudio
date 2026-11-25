@@ -34,6 +34,7 @@ namespace StudioEX.Bridge.Api
             var list = new List<object>();
             var dir = Folder;
             Directory.CreateDirectory(dir);
+            StarterLuts.EnsureMade(dir); // our starter set, the first time
             foreach (var f in Directory.GetFiles(dir, "*.*", SearchOption.AllDirectories).Where(Known).OrderBy(x => x, StringComparer.OrdinalIgnoreCase))
             {
                 string name = f.Substring(dir.Length).TrimStart('\\', '/').Replace('\\', '/');

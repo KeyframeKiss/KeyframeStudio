@@ -88,6 +88,12 @@ export default async function (t) {
       const L = (c) => 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
       check('colour only: the picture keeps its brightness', near(L(colourOnly), L(before), 0.05), `${L(before).toFixed(3)} → ${L(colourOnly).toFixed(3)}`);
       check('a missing LUT file is no harm', (await req('fx.set', { effect: 'lut', values: { a: 'nope.cube' } })).ok);
+      const starters = (await ok('fx.luts')).files.filter((f) => f.name.startsWith('Keyframe Studio/'));
+      check('the starter LUTs are there (made by Keyframe Studio)', starters.length >= 8 && starters.every((f) => f.size === 33 && !f.error), starters.map((f) => f.name).join(', '));
+      await ok('fx.set', { effect: 'lut', values: { a: 'Keyframe Studio/Black and white.cube', aAmount: 1, aMode: 0 } });
+      await sleep(250);
+      const bw = await mean();
+      check('…and work: Black and white takes the colour out', Math.max(...bw) - Math.min(...bw) < 0.02, JSON.stringify(bw));
       await ok('fx.reset');
 
       await sleep(250);
