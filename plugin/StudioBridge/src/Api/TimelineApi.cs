@@ -826,6 +826,32 @@ namespace StudioEX.Bridge.Api
                     AccessTools.Method(Tree.GetType(), "AddLeaf").Invoke(Tree, new object[] { ip, null });
                 }
             }
+            else if (a.Has("param") && oci != null && model.readParameterFromXml != null)
+            {
+                // a track for one particular thing (KKPE: a physics bone by its root path), the way a saved scene names
+                // it, instead of whatever the mod's own window has selected
+                bool fits;
+                try { fits = model.IsCompatibleWithTarget(oci); } catch { fits = false; }
+                if (!fits) throw new BridgeException("This track type can't be added to that object");
+                var node = new XmlDocument().CreateElement("interpolable");
+                node.SetAttribute("parameter", a.GetString("param"));
+                object param;
+                try { param = model.readParameterFromXml(oci, node); }
+                catch { param = null; }
+                if (param == null) throw new BridgeException("Not found on that object");
+                ip = new Interpolable(oci, param, model);
+                // a mod may take any name and only fail when the track plays (KKPE with a bone path that isn't
+                // there): read the value once, before the track exists
+                bool readable;
+                try { readable = ip.GetValue() != null; } catch { readable = false; }
+                if (!readable) throw new BridgeException("Not found on that object");
+                if (Interpolables.TryGetValue(ip.GetHashCode(), out var same)) ip = same;
+                else
+                {
+                    Interpolables[ip.GetHashCode()] = ip;
+                    AccessTools.Method(Tree.GetType(), "AddLeaf").Invoke(Tree, new object[] { ip, null });
+                }
+            }
             else
             {
                 // AddInterpolable targets Timeline's "selected OCI"; swap it in temporarily.

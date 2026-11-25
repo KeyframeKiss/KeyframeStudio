@@ -39,6 +39,7 @@ namespace StudioEX.Bridge.Api
             r.Add("posing.bones", a => Bones(CharaApi.Chara(a.GetInt("id"))));
             r.Add("posing.bust", a => SetBust(a));
             r.Add("posing.dyn", a => SetDyn(a));
+            r.Add("posing.collider", a => SetCollider(a));
             r.Add("posing.kkpeOn", a =>
             {
                 var pc = Pc(CharaApi.Chara(a.GetInt("id")), true);
@@ -577,6 +578,93 @@ namespace StudioEX.Bridge.Api
             };
         }
 
+        // ------------------------------------------------------------------ colliders (KKPE CollidersEditor)
+        // What hair, skirt and bust bump into: capsules or spheres on the body. Identified by their path under the
+        // character, the way KKPE's Timeline tracks and saved scenes name them.
+
+        private static object ColliderEditor(Component pc) => AccessTools.Field(pc.GetType(), "_collidersEditor")?.GetValue(pc);
+
+        private static IEnumerable<DynamicBoneCollider> Colliders(object ed)
+        {
+            var dict = AccessTools.Field(ed.GetType(), "_colliders")?.GetValue(ed) as IDictionary;
+            if (dict == null) yield break;
+            foreach (var v in dict.Values) if (v is DynamicBoneCollider col && col != null) yield return col;
+        }
+
+        private static string ColliderPath(Component pc, DynamicBoneCollider col)
+        {
+            var root = pc.transform;
+            var parts = new List<string>();
+            for (var t = col.transform; t != null && t != root; t = t.parent) parts.Insert(0, t.name);
+            return string.Join("/", parts.ToArray());
+        }
+
+        private static DynamicBoneCollider FindCollider(Component pc, string path)
+        {
+            var t = string.IsNullOrEmpty(path) ? null : pc.transform.Find(path);
+            return t != null ? t.GetComponent<DynamicBoneCollider>() : null;
+        }
+
+        private static List<object> ColliderList(Component pc)
+        {
+            var list = new List<object>();
+            var ed = ColliderEditor(pc);
+            if (ed == null) return list;
+            var dirty = AccessTools.Field(ed.GetType(), "_dirtyColliders")?.GetValue(ed) as IDictionary;
+            foreach (var col in Colliders(ed).OrderBy(x => x.name))
+                list.Add(new Dictionary<string, object>
+                {
+                    { "path", ColliderPath(pc, col) }, { "name", col.name },
+                    { "center", V(col.m_Center) }, { "radius", (double)col.m_Radius }, { "height", (double)col.m_Height },
+                    { "direction", (int)col.m_Direction }, { "bound", (int)col.m_Bound },
+                    { "edited", dirty != null && dirty.Contains(col) },
+                });
+            return list;
+        }
+
+        private static object SetCollider(Dictionary<string, object> a)
+        {
+            var c = CharaApi.Chara(a.GetInt("id"));
+            var pc = Ready(c);
+            var ed = ColliderEditor(pc) ?? throw new BridgeException("KKPE's colliders editor isn't ready for this character");
+            string path = a.GetString("path");
+            if (FindCollider(pc, path) == null) throw new BridgeException("That collider is gone (the outfit changed?)");
+            UndoStack.Push(new SnapUndo("Collider", a.GetBool("reset") ? null : "col|" + c.GetHashCode() + "|" + path + "|" + string.Join(",", a.Keys.ToArray()), () => ColliderRestorer(pc, ed, path)));
+            WriteCollider(ed, FindCollider(pc, path), a);
+            return ColliderList(pc);
+        }
+
+        private static void WriteCollider(object ed, DynamicBoneCollider col, Dictionary<string, object> a)
+        {
+            var t = Traverse.Create(ed);
+            var ct = typeof(DynamicBoneCollider);
+            if (a.GetBool("reset")) { t.Method("SetColliderNotDirty", new[] { ct }, new object[] { col }).GetValue(); return; }
+            if (a.Has("center")) t.Method("SetColliderCenter", new[] { ct, typeof(Vector3) }, new object[] { col, Vec(a.GetList("center")) }).GetValue();
+            if (a.Has("radius")) t.Method("SetColliderRadius", new[] { ct, typeof(float) }, new object[] { col, Mathf.Max(0f, a.GetFloat("radius")) }).GetValue();
+            if (a.Has("height")) t.Method("SetColliderHeight", new[] { ct, typeof(float) }, new object[] { col, Mathf.Max(0f, a.GetFloat("height")) }).GetValue();
+            if (a.Has("direction")) t.Method("SetColliderDirection", new[] { ct, typeof(DynamicBoneCollider.Direction) }, new object[] { col, (DynamicBoneCollider.Direction)Mathf.Clamp(a.GetInt("direction"), 0, 2) }).GetValue();
+            if (a.Has("bound")) t.Method("SetColliderBound", new[] { ct, typeof(DynamicBoneCollider.Bound) }, new object[] { col, (DynamicBoneCollider.Bound)Mathf.Clamp(a.GetInt("bound"), 0, 1) }).GetValue();
+        }
+
+        private static Action ColliderRestorer(Component pc, object ed, string path)
+        {
+            var col = FindCollider(pc, path);
+            if (col == null) return () => { };
+            var dirty = AccessTools.Field(ed.GetType(), "_dirtyColliders")?.GetValue(ed) as IDictionary;
+            bool was = dirty != null && dirty.Contains(col);
+            var snap = new Dictionary<string, object>
+            {
+                { "center", V(col.m_Center) }, { "radius", col.m_Radius }, { "height", col.m_Height }, { "direction", (int)col.m_Direction }, { "bound", (int)col.m_Bound },
+            };
+            return () =>
+            {
+                var now = FindCollider(pc, path);
+                if (now == null) return;
+                WriteCollider(ed, now, new Dictionary<string, object> { { "reset", true } });
+                if (was) WriteCollider(ed, now, snap);
+            };
+        }
+
         // ------------------------------------------------------------------ everything for the Posing page
 
         private static object Get(OCIChar c)
@@ -596,6 +684,7 @@ namespace StudioEX.Bridge.Api
                 { "joints", kkpe == "ok" ? Joints(pc) : null },
                 { "bust", kkpe == "ok" ? BustList(pc) : new List<object>() },
                 { "dyn", kkpe == "ok" ? DynList(pc) : new List<object>() },
+                { "colliders", kkpe == "ok" ? ColliderList(pc) : new List<object>() },
             };
         }
 

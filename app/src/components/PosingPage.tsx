@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { call, useStore } from '../state/store';
+import { call, liveTime, refreshTimeline, toast, useStore } from '../state/store';
+import { bridge } from '../bridge/client';
+import { bustTrack, colliderTrack, dynTrack, ikTrack, type PosingTrack } from '../lib/posingTracks';
 import { Section } from './Page';
 import { Help } from './Help';
 import { Icon } from './Icon';
@@ -51,6 +53,18 @@ interface DynRow {
   force: number[];
   edited: boolean;
 }
+interface ColliderRow {
+  path: string;
+  name: string;
+  center: number[];
+  radius: number;
+  height: number;
+  /** the capsule's long axis: 0 X, 1 Y, 2 Z */
+  direction: number;
+  /** 0 pushes things out, 1 keeps them inside */
+  bound: number;
+  edited: boolean;
+}
 interface Posing {
   limbs: { limb: Limb; mode: Mode }[];
   fkExtras: { part: string; on: boolean }[];
@@ -61,6 +75,7 @@ interface Posing {
   joints: { crotch: boolean; ankleL: boolean; ankleR: boolean; optimizeIK: boolean } | null;
   bust: BustRow[];
   dyn: DynRow[];
+  colliders?: ColliderRow[];
 }
 
 const LIMB_LABEL: Record<Limb, string> = { body: 'Body (hips)', armL: 'Left arm', armR: 'Right arm', legL: 'Left leg', legR: 'Right leg' };
@@ -273,14 +288,21 @@ export function PosingPage({ id }: { id: number }) {
                         </button>
                         <div className="posing-row-controls">
                           {r.kind === 'bend' ? (
-                            <Slider value={r.bend ?? 0} min={0} max={1} step={0.01} onChange={(v) => setIk(r.key, { bend: v })} />
+                            <div className="posing-keyed">
+                              <Slider value={r.bend ?? 0} min={0} max={1} step={0.01} onChange={(v) => setIk(r.key, { bend: v })} />
+                              <KeyBtn id={id} track={ikTrack(r.key, 'bend')} label={`${r.label} bend`} />
+                            </div>
                           ) : (
                             <>
-                              <Slider value={r.pos ?? 0} min={0} max={1} step={0.01} onChange={(v) => setIk(r.key, { pos: v })} />
+                              <div className="posing-keyed">
+                                <Slider value={r.pos ?? 0} min={0} max={1} step={0.01} onChange={(v) => setIk(r.key, { pos: v })} />
+                                <KeyBtn id={id} track={ikTrack(r.key, 'pos')} label={`${r.label} strength`} />
+                              </div>
                               {r.rot != null && (
                                 <div className="posing-sub">
                                   <small>Turn</small>
                                   <Slider value={r.rot} min={0} max={1} step={0.01} onChange={(v) => setIk(r.key, { rot: v })} />
+                                  <KeyBtn id={id} track={ikTrack(r.key, 'rot')} label={`${r.label} turn strength`} />
                                 </div>
                               )}
                             </>
@@ -312,6 +334,7 @@ export function PosingPage({ id }: { id: number }) {
           )}
 
           {view === 'physics' && <PhysicsSection id={id} p={p} setP={setP} send={send} reload={load} />}
+          {view === 'physics' && !!p.colliders?.length && <CollidersSection id={id} p={p} setP={setP} send={send} />}
         </>
       )}
 
@@ -408,13 +431,20 @@ function PhysicsSection({ id, p, setP, send, reload }: { id: number; p: Posing; 
                   <Icon name="undo" size={12} />
                 </button>
               </header>
-              <SwitchCard on={b.enabled} label="Moves (physics on)" onChange={(v) => bust(b.id, { enabled: v })} />
+              <div className="posing-keyed">
+                <SwitchCard on={b.enabled} label="Moves (physics on)" onChange={(v) => bust(b.id, { enabled: v })} />
+                <KeyBtn id={id} track={bustTrack(b.id, 'enabled')} label={`${b.label} physics on/off`} />
+              </div>
               <div className="posing-row stacked">
-                <span className="posing-row-label">Gravity</span>
+                <span className="posing-row-label">
+                  Gravity <KeyBtn id={id} track={bustTrack(b.id, 'gravity')} label={`${b.label} gravity`} />
+                </span>
                 <Xyz v={b.gravity} step={0.0005} onChange={(v) => bust(b.id, { gravity: v })} />
               </div>
               <div className="posing-row stacked">
-                <span className="posing-row-label">Force</span>
+                <span className="posing-row-label">
+                  Force <KeyBtn id={id} track={bustTrack(b.id, 'force')} label={`${b.label} force`} />
+                </span>
                 <Xyz v={b.force} step={0.0005} onChange={(v) => bust(b.id, { force: v })} />
               </div>
             </section>
@@ -458,12 +488,16 @@ function PhysicsSection({ id, p, setP, send, reload }: { id: number; p: Posing; 
                 </button>
               </header>
               <small className="posing-dyn-raw">{cur.name}</small>
-              <SwitchCard on={cur.enabled} label="Sways (physics on)" onChange={(v) => dyn(cur.path, { enabled: v })} />
+              <div className="posing-keyed">
+                <SwitchCard on={cur.enabled} label="Sways (physics on)" onChange={(v) => dyn(cur.path, { enabled: v })} />
+                <KeyBtn id={id} track={dynTrack(cur.path, 'enabled')} label={`${nice(cur)} physics on/off`} />
+              </div>
               {(['weight', 'stiffness'] as const).map((k) => (
                 <div key={k} className="posing-row">
                   <span className="posing-row-label">{k === 'weight' ? 'Weight' : 'Stiffness'}</span>
                   <div className="posing-row-controls">
                     <Slider value={cur[k]} min={0} max={1} step={0.01} onChange={(v) => dyn(cur.path, { [k]: v })} />
+                    <KeyBtn id={id} track={dynTrack(cur.path, k)} label={`${nice(cur)} ${k}`} />
                   </div>
                 </div>
               ))}
@@ -474,15 +508,20 @@ function PhysicsSection({ id, p, setP, send, reload }: { id: number; p: Posing; 
                     <span className="posing-row-label">{{ elasticity: 'Bounce', damping: 'Drag', inertia: 'Inertia', radius: 'Size' }[k]}</span>
                     <div className="posing-row-controls">
                       <Slider value={cur[k]} min={0} max={1} step={0.01} onChange={(v) => dyn(cur.path, { [k]: v })} />
+                      <KeyBtn id={id} track={dynTrack(cur.path, k)} label={`${nice(cur)} ${k}`} />
                     </div>
                   </div>
                 ))}
                 <div className="posing-row stacked">
-                  <span className="posing-row-label">Gravity</span>
+                  <span className="posing-row-label">
+                    Gravity <KeyBtn id={id} track={dynTrack(cur.path, 'gravity')} label={`${nice(cur)} gravity`} />
+                  </span>
                   <Xyz v={cur.gravity} step={0.001} onChange={(v) => dyn(cur.path, { gravity: v })} />
                 </div>
                 <div className="posing-row stacked">
-                  <span className="posing-row-label">Force</span>
+                  <span className="posing-row-label">
+                    Force <KeyBtn id={id} track={dynTrack(cur.path, 'force')} label={`${nice(cur)} force`} />
+                  </span>
                   <Xyz v={cur.force} step={0.001} onChange={(v) => dyn(cur.path, { force: v })} />
                 </div>
               </details>
@@ -625,6 +664,166 @@ function BonesSection({ id }: { id: number }) {
             </>
           )}
         </div>
+      </div>
+    </Section>
+  );
+}
+
+/** ◆ beside a value: adds its KKPE Timeline track the first time, and keys the value at the playhead. */
+function KeyBtn({ id, track, label }: { id: number; track: PosingTrack | null; label: string }) {
+  const hasTimeline = useStore((s) => !!s.tl);
+  if (!track || !hasTimeline) return null;
+  const key = async () => {
+    try {
+      await bridge.request('timeline.addTrack', { ...track, oci: id, keyAt: liveTime() });
+      await refreshTimeline();
+      toast(`Keyed at the playhead: ${label}`, 'done');
+    } catch (e) {
+      toast((e as Error).message, 'error');
+    }
+  };
+  return (
+    <button className="btn icon posing-key" title={`Key ${label} at the playhead (adds its Timeline track the first time)`} onClick={key}>
+      <Icon name="key" size={12} />
+    </button>
+  );
+}
+
+/** "cf_hit_thigh01_L" → "Thigh 1 (left)": colliders are named after the bone they sit on. */
+/** The bone a collider sits on: "cf_hit_arm_L" and the KK_Colliders mod's "KK_Colliders_cf_s_arm02_L__2". */
+function colliderBone(name: string): string {
+  return name.replace(/^KK_Colliders_/i, '').replace(/__\d+$/, '').replace(/^c([fm])_hit_/i, 'c$1_j_');
+}
+function colliderName(name: string): string {
+  const bone = colliderBone(name);
+  const label = boneLabel(bone);
+  const base = label && label !== bone ? label : bone.replace(/^c[fm]_[a-z]_/i, '').replace(/_/g, ' ');
+  const nth = /__(\d+)$/.exec(name);
+  return base + (nth ? ` #${nth[1]}` : '') + (/^KK_Colliders_/i.test(name) ? ' (KK_Colliders)' : '');
+}
+
+/**
+ * What hair, skirt and the bust bump into: KKPE's colliders on the body, each a sphere or capsule. A list (size and
+ * length at a glance) and one editor. Every change is one undo step and is saved with the scene.
+ */
+function CollidersSection({ id, p, setP, send }: { id: number; p: Posing; setP: React.Dispatch<React.SetStateAction<Posing | null>>; send: (k: string, f: () => void) => void }) {
+  const [open, setOpen] = useState<string | null>(null);
+  const [q, setQ] = useState('');
+  const all = p.colliders ?? [];
+  const words = q.trim().toLowerCase();
+  // by region, like Every bone: a short list for the part of the body you're looking at
+  const regionOf = (c: ColliderRow) => boneRegion(colliderBone(c.name));
+  const counts = new Map<Region, number>();
+  for (const c of all) counts.set(regionOf(c), (counts.get(regionOf(c)) ?? 0) + 1);
+  const regions = REGIONS.filter((r) => counts.get(r));
+  const [regionPick, setRegion] = useState<Region | null>(null);
+  const region = regionPick && counts.get(regionPick) ? regionPick : (all.some((c) => c.edited) ? regionOf(all.find((c) => c.edited)!) : regions[0]) ?? null;
+  const list = all.filter((c) => (words ? `${colliderName(c.name)} ${c.name}`.toLowerCase().includes(words) : regionOf(c) === region));
+  const cur = all.find((c) => c.path === open) ?? list[0] ?? null;
+  const local = (path: string, v: Partial<ColliderRow>) =>
+    setP((s) => (s ? { ...s, colliders: (s.colliders ?? []).map((c) => (c.path === path ? { ...c, ...v, edited: true } : c)) } : s));
+  const set = (path: string, v: Partial<ColliderRow>) => {
+    local(path, v);
+    send(`col|${path}|${Object.keys(v).join()}`, () => call('posing.collider', { id, path, ...v }));
+  };
+  const reset = (path: string) =>
+    call<ColliderRow[]>('posing.collider', { id, path, reset: true }).then((r) => r && setP((s) => (s ? { ...s, colliders: r } : s)));
+  const short = (c: ColliderRow) => (c.height > c.radius * 2 ? `size ${c.radius.toFixed(3)} · length ${c.height.toFixed(3)}` : `size ${c.radius.toFixed(3)} · round`);
+  const nm = cur ? colliderName(cur.name) : '';
+  return (
+    <Section
+      title="Colliders"
+      help="What hair, skirt and the bust bump into: spheres and capsules on the body. Make one bigger so hair rests on the shoulder instead of sinking in, or move it so a skirt clears the thigh. Through KKPE; saved with the scene."
+    >
+      <div className="posing-dyn2">
+        <div className="posing-dyn-list">
+          <div className="body-bar">
+            <input className="input search" placeholder={`Find a collider (${all.length}: thigh, arm…)`} value={q} onChange={(e) => setQ(e.target.value)} />
+          </div>
+          {!words && regions.length > 1 && (
+            <div className="ct-chips posing-bone-regions" role="group" aria-label="Region">
+              {regions.map((r) => (
+                <button key={r} className={`btn chip ${region === r ? 'on' : ''}`} aria-pressed={region === r} onClick={() => setRegion(r)}>
+                  {r} <small>{counts.get(r)}</small>
+                  {all.some((c) => c.edited && regionOf(c) === r) && <span className="posing-changed-dot" title="Changed here" />}
+                </button>
+              ))}
+            </div>
+          )}
+          {list.map((c) => (
+            <div key={c.path} className={`posing-dyn-item ${cur?.path === c.path ? 'on' : ''}`}>
+              <button className="posing-dyn-pick" aria-pressed={cur?.path === c.path} title={`${c.name}\n${c.path}`} onClick={() => setOpen(c.path)}>
+                <span className="posing-dyn-name">{colliderName(c.name)}</span>
+                <small className={c.edited ? 'changed' : ''}>{short(c)}</small>
+              </button>
+            </div>
+          ))}
+        </div>
+        {cur && (
+          <div className="posing-card posing-dyn-editor">
+            <header>
+              <b>{nm}</b>
+              <span className="spacer" />
+              <button className="btn small solid" disabled={!cur.edited} onClick={() => reset(cur.path)}>
+                Reset
+              </button>
+            </header>
+            <small className="posing-dyn-raw">{cur.name}</small>
+            <div className="posing-row">
+              <span className="posing-row-label">Size</span>
+              <div className="posing-row-controls">
+                <Slider value={cur.radius} min={0} max={Math.max(0.3, cur.radius * 2)} step={0.001} onChange={(v) => set(cur.path, { radius: v })} />
+                <KeyBtn id={id} track={colliderTrack(cur.path, 'radius')} label={`${nm} collider size`} />
+              </div>
+            </div>
+            <div className="posing-row">
+              <span className="posing-row-label">Length</span>
+              <div className="posing-row-controls">
+                <Slider value={cur.height} min={0} max={Math.max(0.6, cur.height * 2)} step={0.001} onChange={(v) => set(cur.path, { height: v })} />
+                <KeyBtn id={id} track={colliderTrack(cur.path, 'height')} label={`${nm} collider length`} />
+              </div>
+            </div>
+            <div className="posing-row">
+              <span className="posing-row-label">
+                Holds things <Help text="Outside: hair and cloth are pushed out of it (the usual). Inside: they are kept within it." />
+              </span>
+              <div className="posing-row-controls">
+                <div className="seg">
+                  {['Outside', 'Inside'].map((w, i) => (
+                    <button key={w} className={cur.bound === i ? 'on' : ''} onClick={() => set(cur.path, { bound: i })}>
+                      {w}
+                    </button>
+                  ))}
+                </div>
+                <KeyBtn id={id} track={colliderTrack(cur.path, 'bound')} label={`${nm} collider outside/inside`} />
+              </div>
+            </div>
+            <details className="face-more">
+              <summary>Place and direction</summary>
+              <div className="posing-row stacked">
+                <span className="posing-row-label">
+                  Centre <KeyBtn id={id} track={colliderTrack(cur.path, 'center')} label={`${nm} collider centre`} />
+                </span>
+                <Xyz v={cur.center} step={0.001} onChange={(v) => set(cur.path, { center: v })} />
+              </div>
+              <div className="posing-row">
+                <span className="posing-row-label">
+                  Runs along <Help text="The bone axis a capsule's length follows." />
+                </span>
+                <div className="posing-row-controls">
+                  <div className="seg">
+                    {['X', 'Y', 'Z'].map((w, i) => (
+                      <button key={w} className={cur.direction === i ? 'on' : ''} onClick={() => set(cur.path, { direction: i })}>
+                        {w}
+                      </button>
+                    ))}
+                  </div>
+                  <KeyBtn id={id} track={colliderTrack(cur.path, 'direction')} label={`${nm} collider direction`} />
+                </div>
+              </div>
+            </details>
+          </div>
+        )}
       </div>
     </Section>
   );

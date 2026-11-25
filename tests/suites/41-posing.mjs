@@ -141,6 +141,74 @@ export default async function (t) {
     } else t.say('no swaying parts on this character');
   });
 
+  // ◆ beside a value: its KKPE Timeline track, added and keyed at the playhead (the app's lib/posingTracks.ts names)
+  await t.step('◆ keys: target strength, a physics bone, a collider', async () => {
+    const all = async () => (await ok('timeline.get')).tracks;
+    const n0 = (await all()).length;
+    const tl0 = await ok('timeline.get');
+    const at = Math.min(1, tl0.duration / 2);
+    const tid = await ok('timeline.addTrack', { owner: 'KKPE', model: 'fbbikEffectorPositionWeightL. Hand', oci: id, keyAt: at });
+    let tr = (await all()).find((x) => x.id === tid);
+    check('left hand strength: a track on this character, keyed', tr && tr.oci === id && tr.keys?.length === 1, JSON.stringify(tr && { oci: tr.oci, name: tr.name, keys: tr.keys }));
+    // again at the same time: the same track, still one key
+    const again = await ok('timeline.addTrack', { owner: 'KKPE', model: 'fbbikEffectorPositionWeightL. Hand', oci: id, keyAt: at });
+    check('a second ◆ keys the same track', again === tid && (await all()).find((x) => x.id === tid).keys.length === 1);
+    if (p.dyn.length) {
+      const d = p.dyn[0];
+      const did = await ok('timeline.addTrack', { owner: 'KKPE', model: 'dynamicBoneStiffness', oci: id, param: d.path, keyAt: at });
+      tr = (await all()).find((x) => x.id === did);
+      check(`${d.name}: stiffness track for that bone, keyed`, tr && tr.keys?.length === 1 && did !== tid, JSON.stringify(tr && { name: tr.name, keys: tr.keys }));
+      const other = p.dyn[1];
+      if (other) {
+        const oid = await ok('timeline.addTrack', { owner: 'KKPE', model: 'dynamicBoneStiffness', oci: id, param: other.path, keyAt: at });
+        check('another bone: another track', oid !== did);
+      }
+      const bad = await req('timeline.addTrack', { owner: 'KKPE', model: 'dynamicBoneStiffness', oci: id, param: 'no/such/bone', keyAt: at });
+      check('a bone that isn’t there is refused, nothing added', !bad.ok || bad.result == null, JSON.stringify(bad).slice(0, 160));
+    }
+    const cols = p.colliders ?? [];
+    if (cols.length) {
+      const cid = await ok('timeline.addTrack', { owner: 'KKPE', model: 'colliderRadius', oci: id, param: cols[0].path, keyAt: at });
+      tr = (await all()).find((x) => x.id === cid);
+      check(`collider ${cols[0].name}: size track, keyed`, tr && tr.keys?.length === 1, JSON.stringify(tr && { name: tr.name }));
+    }
+    // undo everything this step made
+    for (let i = 0; i < 8 && (await all()).length > n0; i++) await ok('undo');
+    check('undo removes the new tracks', (await all()).length === n0, `${(await all()).length} vs ${n0}`);
+  });
+
+  await t.step('colliders', async () => {
+    const cols = (await ok('posing.get', { id })).colliders ?? [];
+    if (!cols.length) return t.say('no colliders on this character (KKPE)');
+    t.metric('colliders', cols.length, '');
+    check('each with a path, size, length, direction and side', cols.every((c) => c.path && typeof c.radius === 'number' && typeof c.height === 'number' && c.center?.length === 3 && [0, 1, 2].includes(c.direction) && [0, 1].includes(c.bound)), JSON.stringify(cols[0]));
+    const c = cols[0];
+    let list = await ok('posing.collider', { id, path: c.path, radius: c.radius + 0.02 });
+    let e = list.find((x) => x.path === c.path);
+    check(`${c.name}: bigger, marked changed`, Math.abs(e.radius - (c.radius + 0.02)) < 1e-4 && e.edited, JSON.stringify(e));
+    // a drag: several steps, one undo
+    await ok('posing.collider', { id, path: c.path, height: c.height + 0.01 });
+    await ok('posing.collider', { id, path: c.path, height: c.height + 0.02 });
+    await ok('posing.collider', { id, path: c.path, height: c.height + 0.03 });
+    list = await ok('posing.collider', { id, path: c.path, bound: c.bound ? 0 : 1, center: [c.center[0], c.center[1] + 0.01, c.center[2]] });
+    e = list.find((x) => x.path === c.path);
+    check('length, side and centre changed', Math.abs(e.height - (c.height + 0.03)) < 1e-4 && e.bound !== c.bound && Math.abs(e.center[1] - c.center[1] - 0.01) < 1e-4, JSON.stringify(e));
+    await ok('undo'); // side + centre
+    await ok('undo'); // the length drag
+    list = (await ok('posing.get', { id })).colliders;
+    e = list.find((x) => x.path === c.path);
+    check('undo: the length drag goes back in one step', Math.abs(e.height - c.height) < 1e-4 && Math.abs(e.radius - (c.radius + 0.02)) < 1e-4, JSON.stringify(e));
+    list = await ok('posing.collider', { id, path: c.path, reset: true });
+    e = list.find((x) => x.path === c.path);
+    check('reset: as the game made it, not marked changed', !e.edited && Math.abs(e.radius - c.radius) < 1e-4, JSON.stringify(e));
+    await ok('undo'); // the reset
+    await ok('undo'); // the size
+    e = (await ok('posing.get', { id })).colliders.find((x) => x.path === c.path);
+    check('undo back to the start', !e.edited && Math.abs(e.radius - c.radius) < 1e-4, JSON.stringify(e));
+    const bad = await req('posing.collider', { id, path: 'nope/none', radius: 1 });
+    check('an unknown collider is refused', !bad.ok);
+  });
+
   await t.step('every bone', async () => {
     const bones = await ok('posing.bones', { id });
     t.metric('bones listed', bones.length, '');

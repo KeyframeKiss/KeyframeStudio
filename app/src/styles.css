@@ -10523,9 +10523,42 @@ a.btn {
 }
 .posing-sub {
   display: grid;
-  grid-template-columns: 34px minmax(0, 1fr);
+  grid-template-columns: 34px minmax(0, 1fr) auto;
   align-items: center;
   gap: 4px;
+}
+/* a slider row with its ◆ key button beside it */
+.posing-row-controls:has(> .posing-key) {
+  flex-direction: row;
+  align-items: center;
+}
+.posing-row-controls:has(> .posing-key) > :first-child {
+  flex: 1;
+  min-width: 0;
+}
+/* a value with its ◆ key button at the end of the line */
+.posing-keyed {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.posing-keyed > :first-child {
+  flex: 1;
+  min-width: 0;
+}
+.btn.icon.posing-key {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  color: var(--text-3);
+}
+.btn.icon.posing-key:hover {
+  color: var(--accent);
+}
+.posing-row-label .posing-key {
+  vertical-align: middle;
+  margin-left: 2px;
 }
 .posing-sub small {
   color: var(--text-3);
@@ -11243,4 +11276,15 @@ a.btn {
   border-radius: 4px;
   border: 1px solid var(--line);
   flex: none;
+}
+
+/* a dot on a region chip: something in that region is changed */
+.posing-changed-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  margin-left: 4px;
+  vertical-align: middle;
 }
