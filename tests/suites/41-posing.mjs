@@ -51,6 +51,32 @@ export default async function (t) {
     check('let the animation play: everything back on the animation', p.limbs.every((x) => x.mode === 'anim') && !p.fk && !p.ik, JSON.stringify(p));
   });
 
+  await t.step('key the whole pose: a character’s first key, nothing moves, one undo', async () => {
+    await ok('chara.set', { ids: [id], fk: false, ik: false });
+    await sleep(400);
+    const tracksOf = async () => (await ok('timeline.get')).tracks.filter((x) => x.oci === id);
+    const before = await tracksOf();
+    const pose0 = await hand();
+    const n = await ok('timeline.keyPose', { ids: [id], t: 0, extra: ['characterEyes', 'characterMouth'] });
+    await sleep(400);
+    const after = await tracksOf();
+    t.metric('tracks keyed', n, '');
+    check('many tracks keyed (place, joints, face)', n > 40, String(n));
+    check('tracks made for it', after.length >= before.length + 40, `${before.length} → ${after.length}`);
+    check('the face came too', after.some((x) => x.model === 'characterEyes') && after.some((x) => x.model === 'characterMouth'));
+    check('every new track has a key at the playhead', after.filter((x) => !before.some((b) => b.id === x.id)).every((x) => x.keys?.some((k) => Math.abs(k[0]) < 1e-3) ?? false));
+    const pz = await ok('posing.get', { id });
+    check('the animation’s pose is now held by joints', pz.fk && pz.limbs.every((x) => x.mode === 'fk'), JSON.stringify(pz.limbs));
+    const pose1 = await hand();
+    t.metric('left hand moved by keying the pose', dist(pose0[0], pose1[0]), 'm');
+    check('nothing moved', dist(pose0[0], pose1[0]) < 0.02 && dist(pose0[1], pose1[1]) < 0.02, `${dist(pose0[0], pose1[0]).toFixed(4)} / ${dist(pose0[1], pose1[1]).toFixed(4)}`);
+    await ok('undo');
+    await sleep(300);
+    const back = await tracksOf();
+    const pu = await ok('posing.get', { id });
+    check('one undo: the tracks are gone and the animation plays the pose again', back.length === before.length && pu.limbs.every((x) => x.mode === 'anim'), `${back.length} tracks, ${JSON.stringify(pu.limbs)}`);
+  });
+
   if (p.kkpe !== 'ok') {
     t.say(`KKPE: ${p.kkpe} — its parts skipped`);
     return;

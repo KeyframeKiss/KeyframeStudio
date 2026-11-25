@@ -8,6 +8,7 @@ import { DragNumber } from './DragNumber';
 import { Slider } from './CharacterPanel';
 import { Vec } from './AbmxSection';
 import { boneLabel } from '../lib/boneNames';
+import { keyPoseWithFace, keyWholePose, setKeyPoseWithFace } from '../lib/keyPose';
 
 /**
  * Character › Posing: how each part of the selected character is posed, in plain words, and KKPE's advanced posing
@@ -69,6 +70,7 @@ const MODE_WORD: Record<Mode, string> = { ik: 'Target', fk: 'Joints', anim: 'Ani
 
 export function PosingPage({ id }: { id: number }) {
   const [p, setP] = useState<Posing | null>(null);
+  const [withFace, setWithFace] = useState(keyPoseWithFace);
   const status = useStore((s) => s.status);
   const load = useCallback(() => call<Posing>('posing.get', { id }).then((r) => r && setP(r)), [id]);
   useEffect(() => {
@@ -111,6 +113,10 @@ export function PosingPage({ id }: { id: number }) {
   const setMode = (limb: Limb | null, mode: Mode) => call<Posing>('posing.mode', limb ? { id, limb, mode } : { id, mode }).then((r) => r && setP(r));
   const setExtra = (part: string, on: boolean) => call<Posing>('posing.mode', { id, part, mode: on ? 'fk' : 'off' }).then((r) => r && setP(r));
   const kkpe = p.kkpe === 'ok';
+  const toggleFace = () => {
+    setKeyPoseWithFace(!withFace);
+    setWithFace(!withFace);
+  };
 
   const patchIk = (key: string, v: Partial<IkRow>) => setP((s) => (s ? { ...s, ikWeights: s.ikWeights.map((r) => (r.key === key ? { ...r, ...v, edited: true } : r)) } : s));
   const setIk = (key: string, v: { pos?: number; rot?: number; bend?: number }) => {
@@ -125,9 +131,14 @@ export function PosingPage({ id }: { id: number }) {
         title="How each part is posed"
         help="Joints (FK): you turn each joint yourself — exact bends. Target (IK): you place the hand, foot or hips and the joints follow — quick for touching things. Animation: the character's animation moves it. Switching keeps the pose on screen (nothing jumps). In Studio's view you can also just grab a joint's rings (that part goes to Joints) or a yellow target (that limb goes to Target)."
         actions={
-          <button className="btn solid" onClick={() => setMode(null, 'anim')} title="FK and IK off: the character's animation moves everything again">
-            Let the animation play
-          </button>
+          <>
+            <button className="btn solid" onClick={() => setMode(null, 'anim')} title="FK and IK off: the character's animation moves everything again">
+              Let the animation play
+            </button>
+            <button className="btn primary" onClick={() => keyWholePose([id], withFace).then(load)} title="Key the whole pose exactly as it is, at the playhead: place, every joint and target (tracks made where missing). A pose only the animation holds is taken over by joints first. One undo step.">
+              <Icon name="key" size={12} /> Key the whole pose
+            </button>
+          </>
         }
       >
         <div className="posing-modes">
@@ -158,6 +169,9 @@ export function PosingPage({ id }: { id: number }) {
                 </div>
               </div>
             ))}
+            <div className="posing-keyface">
+              <SwitchCard on={withFace} label="Key the face with the pose" help="Key the whole pose also keys eyes, brows, mouth, blush, tears and where the neck looks." onChange={toggleFace} />
+            </div>
             <div className="posing-extras">
               <span className="posing-extras-label">
                 Also by joints

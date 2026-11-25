@@ -266,6 +266,7 @@ namespace StudioEX.Bridge.Api
             // a character's bones and IK targets, to animate one directly: {oci} → [{kind, index, label, group, animated}]
             r.Add("timeline.bones", ListBones);
             r.Add("timeline.addTrack", AddTrack);
+            r.Add("timeline.keyPose", TimelineImpl.KeyPose);
             r.Add("timeline.removeTracks", RemoveTracks);
             r.Add("timeline.setTrack", SetTrack);
             // mute / unmute several tracks at once (a folder, an object): one undo step

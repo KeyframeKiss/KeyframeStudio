@@ -44,6 +44,7 @@ import {
   type TrackKind,
 } from '../state/store';
 import { Icon, TypeIcon } from './Icon';
+import { keyWholePose } from '../lib/keyPose';
 import { ContextMenu, type MenuItem } from './ContextMenu';
 import { PromptDialog, type PromptState } from './PromptDialog';
 import { GraphEditor } from './GraphEditor';
@@ -1879,12 +1880,21 @@ function SelectionBar() {
       )}
       <span style={{ flex: 1 }} />
       <span className="sel-bar-sub">{keyHint}</span>
+      {node?.type === 'Char' && (
+        <button
+          className={`btn small ${own ? '' : 'primary'}`}
+          onClick={() => keyWholePose()}
+          title="Key the whole pose exactly as it is, at the playhead: place, every joint and target (tracks made where missing), and the face if set on Character › Posing. The way to set a character's first key. One undo step."
+        >
+          <Icon name="key" size={11} /> Key the whole pose
+        </button>
+      )}
       {node && own > 0 && (
         <button className="btn small" onClick={keyAllOfSelectedObjects} title="Key every track of the selected object at the playhead (Shift+K)">
           <Icon name="key" size={11} /> Key {sel.length > 1 ? 'objects' : 'object'}
         </button>
       )}
-      {node && !own && (
+      {node && !own && node.type !== 'Char' && (
         <button className="btn small" onClick={() => window.dispatchEvent(new CustomEvent('kf:add-track'))} title="Pick a property of this object to animate">
           <Icon name="plus" size={11} /> Add a track
         </button>

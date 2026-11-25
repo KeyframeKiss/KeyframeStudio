@@ -602,7 +602,7 @@ namespace StudioEX.Bridge.Api
         // ------------------------------------------------------------------ undo helpers
 
         /// <summary>FK / IK modes and every FK bone and IK target as they are now, to put back.</summary>
-        private static Action PoseRestorer(OCIChar c)
+        internal static Action PoseRestorer(OCIChar c)
         {
             var kin = ViewportGizmos.KinematicsRestorer(c);
             var fk = c.listBones.Where(b => b.guideObject != null).Select(b => new KeyValuePair<ChangeAmount, Vector3>(b.guideObject.changeAmount, b.guideObject.changeAmount.rot)).ToList();
