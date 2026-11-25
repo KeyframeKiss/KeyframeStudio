@@ -16,6 +16,7 @@ Shader "Hidden/KeyframeStudio/Projector"
         _KfMul ("Multiply mode", Float) = 0
         _SrcBlend ("", Float) = 1
         _DstBlend ("", Float) = 1
+        _KfStencil ("", Float) = 128
     }
     SubShader
     {
@@ -26,6 +27,16 @@ Shader "Hidden/KeyframeStudio/Projector"
             ColorMask RGB
             Blend [_SrcBlend] [_DstBlend]
             Offset -1, -1
+            // once per pixel: a character's parts are layered (face, its decals, eyelines, brows, see-through tears),
+            // and each layer would take the shadow or light again; this projector's own stencil bit stops that
+            Stencil
+            {
+                Ref [_KfStencil]
+                ReadMask [_KfStencil]
+                WriteMask [_KfStencil]
+                Comp NotEqual
+                Pass Replace
+            }
 
             CGPROGRAM
             #pragma vertex vert

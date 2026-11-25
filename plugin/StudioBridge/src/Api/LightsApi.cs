@@ -102,6 +102,9 @@ namespace StudioEX.Bridge.Api
             public string Id = Guid.NewGuid().ToString("N");
             private Projector _p;
             private Material _m;
+            // each projector its own stencil bit (the top four), so overlapping projectors each still apply once
+            private static int _bits;
+            private readonly int _stencil = 128 >> (_bits++ % 4);
 
             private void Awake()
             {
@@ -162,6 +165,7 @@ namespace StudioEX.Bridge.Api
                 // characters are on layer 10
                 _p.ignoreLayers = Data.Target == "chars" ? ~(1 << 10) : Data.Target == "set" ? 1 << 10 : 0;
                 _m.SetColor("_KfColor", new Color(Data.Color[0], Data.Color[1], Data.Color[2], Data.Color[3]));
+                _m.SetFloat("_KfStencil", _stencil);
                 _m.SetFloat("_KfShape", Array.IndexOf(Shapes, Data.Shape));
                 _m.SetFloat("_KfSoft", Data.Soft);
                 _m.SetFloat("_KfFalloff", Data.Falloff);
