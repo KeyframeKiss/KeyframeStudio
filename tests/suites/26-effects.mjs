@@ -46,7 +46,7 @@ export default async function (t) {
     check('reset all', Object.values(r.effects).every((e) => e.on === false));
   });
 
-  // white balance in kelvin, LUT files, lens distortion and natural falloff (YuppiEffects-style, our own)
+  // white balance in kelvin, LUT files, lens distortion and natural falloff
   if (t.hello.commands.includes('fx.luts') && t.hello.commands.includes('camera.mean'))
     await t.step('white balance (K), LUT files, distortion, lens falloff', async () => {
       const mean = () => ok('camera.mean', { width: 96 });

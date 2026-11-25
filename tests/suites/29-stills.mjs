@@ -30,7 +30,7 @@ export default async function (t) {
     check('absurd sizes refused', !(await req('still.capture', { width: 8000, height: 8000, supersample: 4 })).ok);
   });
 
-  // quality stills: many renders averaged, a real lens, 16-bit PNG (YuppiEffects-style, our own)
+  // quality stills: many renders averaged, a real lens, 16-bit PNG
   await t.step('quality stills: smooth, real lens, 16-bit PNG', async () => {
     const t0 = Date.now();
     const a = await t.studio.req('still.capture', { width: 480, height: 270, supersample: 1, format: 'png', samples: 16 }, 120000);

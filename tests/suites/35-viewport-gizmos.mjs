@@ -122,7 +122,7 @@ export default async function (t) {
     check('and undone', Math.abs(((back[2] - before[2] + 540) % 360) - 180) < 0.5, JSON.stringify(back));
   });
 
-  // DragDoll-style posing, our own: the hand / foot target of a limb that isn't on IK bends the limb on its joints
+  // drag-to-pose: the hand / foot target of a limb that isn't on IK bends the limb on its joints
   await t.step('reach: drag a hand, the arm bends on its joints (no IK); drag the elbow, the arm swings, hand planted', async () => {
     const g = await ok('gizmo.get');
     if (g.gizmo.reachFk === undefined) return t.say('(bridge without reach)');
