@@ -512,7 +512,7 @@ export function FaceStudio() {
             // folded: moving, turning, and per-axis shape (only when there's more than one axis to give)
             const rest = channels.filter((ch) => ch !== 'scale' || channels.length > 1);
             const off = (ch: Channel) => (ch === 'scale' ? !uniformScale : st[ch].some((v) => Math.abs(v - RANGES[ch].neutral) > RANGES[ch].step / 2));
-            const restChanged = rest.filter(off).map((ch) => (ch === 'scale' ? 'shape' : ch === 'pos' ? 'moved' : 'turned'));
+            const restChanged = rest.filter(off).map((ch) => (ch === 'scale' ? 'reshaped' : ch === 'pos' ? 'moved' : 'turned'));
             const moreOpen = openMore.has(name) || (restChanged.length > 0 && !closedMore.has(name)) || !hasScale;
             return (
               <div
@@ -544,7 +544,7 @@ export function FaceStudio() {
                   <details className="face-more" open={moreOpen || undefined} onToggle={(e) => toggleMore(name, (e.target as HTMLDetailsElement).open)}>
                     <summary>
                       {rest.map((ch) => (ch === 'scale' ? 'Shape' : RANGES[ch].label)).join(', ')}
-                      {restChanged.length > 0 && <span className="face-more-changed">{restChanged.join(', ')} changed</span>}
+                      {restChanged.length > 0 && <span className="face-more-changed">{restChanged.join(', ')}</span>}
                     </summary>
                     {rest.map((ch) => {
                       const r = RANGES[ch];
