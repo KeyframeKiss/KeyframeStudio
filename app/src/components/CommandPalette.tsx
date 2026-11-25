@@ -71,7 +71,7 @@ function PaletteInner() {
       { id: 'chara.anim', group: 'Character', title: 'Change animation…', keywords: 'animation clip motion idle dance walk pose loop studio anime', run: () => openAnimations() },
       { id: 'anim.lock', group: 'Keys', title: 'Lock a foot or hand in place', keywords: 'lock pin plant foot hand sliding contact ik stick', run: () => showTab('animate', 'cleanup') },
       { id: 'lib.scenes', group: 'Scenes', title: 'Open scene browser', kbd: 'Ctrl O', keywords: 'load import', run: () => openLibrary('scenes') },
-      { id: 'scene.save', group: 'Scenes', title: 'Save scene (new file)', run: () => { void saveSceneFile(); } },
+      { id: 'scene.save', group: 'Scenes', title: 'Save scene (new file)', kbd: 'Ctrl S', keywords: 'save scene charastudio', run: () => { void saveSceneFile(); } },
       { id: 'lib.translate', group: 'Settings', title: 'Fix translations', keywords: 'english japanese names', run: () => openLibrary('translate') },
       { id: 'lib.settings', group: 'Settings', title: 'Mod settings', kbd: 'Ctrl ,', keywords: 'config plugins options', run: () => openLibrary('settings') },
       { id: 'studio.clean', group: 'Studio', title: "Clean Studio window (hide / show Studio's menus)", keywords: 'hide ui hideallui menus viewport', run: toggleCleanStudio },

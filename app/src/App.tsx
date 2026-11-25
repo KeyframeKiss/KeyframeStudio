@@ -43,6 +43,7 @@ import {
   useTlInfo,
   type Workspace,
   setMiniMode,
+  saveSceneFile,
 } from './state/store';
 import { bridge } from './bridge/client';
 
@@ -90,6 +91,12 @@ export function App() {
       if (ctrl && e.shiftKey && k === 'm') {
         e.preventDefault();
         setMiniMode(!st.miniMode);
+        return;
+      }
+      // Ctrl+S anywhere (even in a text box): save the scene in CharaStudio, like its own Save button (a new file)
+      if (ctrl && !e.shiftKey && !e.altKey && k === 's') {
+        e.preventDefault();
+        if (!e.repeat) void saveSceneFile();
         return;
       }
       if (st.paletteOpen) return;

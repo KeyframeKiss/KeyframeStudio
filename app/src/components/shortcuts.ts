@@ -14,6 +14,7 @@ export const SHORTCUTS: [string, string][] = [
   ['Ctrl C / Ctrl V', 'Copy / paste keys at playhead'],
   ['Ctrl D', 'Duplicate keys to playhead'],
   ['Ctrl A', 'Select all visible keys'],
+  ['Ctrl S', 'Save the scene in CharaStudio (a new file, like Studio’s Save)'],
   ['Ctrl G', 'New folder from selected tracks'],
   ['G', 'Frame guides on / off (which ones: Shoot, on the right)'],
   ['Ctrl K in Studio', 'Key while CharaStudio is the active window (Ctrl Shift K: the whole object). Change them in Mod settings › Keyframe Studio Bridge'],
