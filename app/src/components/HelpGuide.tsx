@@ -101,7 +101,7 @@ const SECTIONS: Section[] = [
         <li>
           <b>Plan with shots.</b> In Shoot › Shots &amp; camera, keep each camera position as an <b>angle</b>, then drag angles onto the
           track to lay out the shots. With <b>Play the edit</b> on, the <b>monitor</b> and renders switch cameras at every cut (shots with camera keys play their keys), so you see the
-          edit before you render, while Studio's own view stays your work camera. Turn on <b>In Studio's view too</b> to watch the edit in Studio's window. Click the marker at a cut on the track to glide, dip or dissolve into the next shot.
+          edit before you render, while Studio's own view stays your work camera: fly around while it plays, and the edit's camera (camera keys included) shows as a small camera in Studio's view, moving with the edit. Turn on <b>In Studio's view too</b> to watch the edit in Studio's window. Click the marker at a cut on the track to glide, dip or dissolve into the next shot.
         </li>
         <li>
           <b>Test a render small first.</b> Tick <b>Draft</b> in Shoot › Output for a quick check of the timing, then render the

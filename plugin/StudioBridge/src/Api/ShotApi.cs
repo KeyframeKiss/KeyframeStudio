@@ -44,6 +44,8 @@ namespace StudioEX.Bridge.Api
         // asks Studio to show the edit too. Otherwise Play the edit is the monitor and renders.
         private static bool _studioEdit;
         private static bool ShotsActive => _liveCuts && (_rendering || _studioEdit);
+        /// <summary>Play the edit without "In Studio's view too": Studio's view is the user's — camera keys don't move it either (FreeView).</summary>
+        internal static bool FreeViewWanted => _liveCuts && !_studioEdit && !_rendering;
 
         /// <summary>A shot left first person / follow switched on for Studio's camera: let go (the work view is free).</summary>
         private static void ReleaseShotModes()
@@ -143,6 +145,7 @@ namespace StudioEX.Bridge.Api
             r.Add("shots.setLiveCuts", a =>
             {
                 _liveCuts = a.GetBool("on");
+                FreeView.EnsurePatched();
                 _liveId = null; // the next frame switches to the shot under the playhead
                 if (!ShotsActive) ReleaseShotModes();
                 Broadcast();
@@ -152,6 +155,7 @@ namespace StudioEX.Bridge.Api
             r.Add("shots.setStudioEdit", a =>
             {
                 _studioEdit = a.GetBool("on");
+                FreeView.EnsurePatched();
                 _liveId = null;
                 if (!ShotsActive) ReleaseShotModes();
                 Broadcast();
@@ -174,6 +178,7 @@ namespace StudioEX.Bridge.Api
             _angles = new List<Dictionary<string, object>>();
             _liveCuts = false;
             _liveId = null;
+            FreeView.Clear();
             TransitionFx.Reset();
         }
 
@@ -600,6 +605,14 @@ namespace StudioEX.Bridge.Api
             if (tr?.Cam == null && shot != null && (Mode(shot) == "pov" || Mode(shot) == "follow"))
                 return CameraTools.ShotView(Mode(shot), shot, out pos, out rot, out fov, out near);
             var cam = tr?.Cam != null ? tr.Cam.GetObject("cam") : shot != null && Mode(shot) == "still" ? shot.GetObject("cam") : null;
+            if (cam == null && FreeView.On && FreeView.HasKeyed && (shot == null || Mode(shot) == "keys"))
+            {
+                // a shot playing camera keys while Studio's view is the user's: the camera the keys put there
+                pos = FreeView.KeyedEye;
+                rot = FreeView.KeyedRot;
+                fov = FreeView.KeyedFov;
+                return true;
+            }
             if (cam == null) return false;
             rot = Quaternion.Euler(V(cam.GetList("rot")));
             pos = V(cam.GetList("pos")) + rot * V(cam.GetList("dist"));

@@ -32,7 +32,7 @@ namespace StudioEX.Bridge.Api
         private bool _pickChars = true, _pickAcc = true, _pickItems = true, _pickLights = true, _pickCameras = true;
         private bool _world; // object handles along the world's axes (else the object's own)
         private float _snapMove = 0.05f, _snapRot = 15f, _snapScale = 0.1f;
-        private bool Any => _gizmo || _show && (_skeleton || _ik || _acc || _highlight || _lights || _cameras || _focus || _camRoute);
+        private bool Any => _gizmo || _show && (_skeleton || _ik || _acc || _highlight || _lights || _cameras || _focus || _camRoute) || _camRoute && ShotApi.FreeViewWanted;
 
         // ---------------- what the handles act on ----------------
         private enum Kind { None, Bone, IK, Object, Accessory }
@@ -1661,6 +1661,43 @@ namespace StudioEX.Bridge.Api
             Broadcast();
         }
 
+        /// <summary>
+        /// While Studio's view is the user's own (Play the edit without "In Studio's view too"), the edit's camera at the
+        /// playhead — a still shot's, a transition's, or where the camera keys put it — drawn as a small camera that
+        /// moves as it plays: its lens as a pyramid toward what it sees, the top edge marked.
+        /// </summary>
+        private void DrawShotCamera(Camera cam)
+        {
+            if (!ShotApi.FreeViewWanted || !ShotApi.ProgramCamera(out var eye, out var rot, out float fov, out _)) return;
+            if ((cam.transform.position - eye).sqrMagnitude < 0.04f) return; // looking through it
+            float len = Mathf.Clamp((cam.transform.position - eye).magnitude * 0.08f, 0.08f, 0.6f);
+            float h = Mathf.Tan(Mathf.Clamp(fov, 1f, 170f) * 0.5f * Mathf.Deg2Rad) * len;
+            float w = h * Mathf.Max(0.2f, (float)Screen.width / Mathf.Max(1, Screen.height));
+            var c = new Vector3[4];
+            c[0] = eye + rot * new Vector3(-w, -h, len);
+            c[1] = eye + rot * new Vector3(w, -h, len);
+            c[2] = eye + rot * new Vector3(w, h, len);
+            c[3] = eye + rot * new Vector3(-w, h, len);
+            var col = new Color(1f, 0.85f, 0.35f, 0.95f);
+            var shadow = new Color(0, 0, 0, 0.4f);
+            if (!OnScreen(cam, eye, out var se)) return;
+            var sc = new Vector2[4];
+            for (int i = 0; i < 4; i++) if (!OnScreen(cam, c[i], out sc[i])) return;
+            for (int pass = 0; pass < 2; pass++)
+            {
+                float lw = pass == 0 ? 3.5f : 1.6f;
+                var lc = pass == 0 ? shadow : col;
+                for (int i = 0; i < 4; i++)
+                {
+                    Line(se, sc[i], lw, lc);
+                    Line(sc[i], sc[(i + 1) % 4], lw, lc);
+                }
+            }
+            // which way is up: a small triangle on the top edge
+            if (OnScreen(cam, eye + rot * new Vector3(0f, h * 1.6f, len), out var tip)) { Line(sc[3], tip, 1.6f, col); Line(tip, sc[2], 1.6f, col); }
+            Disc(se, 3.5f, col);
+        }
+
         private void DrawCamRoute(Camera cam)
         {
             var line = new Color(1f, 0.62f, 0.18f, 0.85f);
@@ -1849,6 +1886,7 @@ namespace StudioEX.Bridge.Api
                 if (_show && (_skeleton || _ik || _acc)) foreach (var c in Shown()) DrawRig(cam, c);
                 if (_gizmo) DrawGizmo(cam);
                 if (CamRouteShown) DrawCamRoute(cam);
+                if (_camRoute) DrawShotCamera(cam); // (also with overlays off: a free work camera wants to see the edit's)
                 if (FocusShown) DrawFocus(cam);
                 if (_spread != null) DrawSpread();
                 if (_modeRing) DrawModeRing();
@@ -2380,6 +2418,9 @@ namespace StudioEX.Bridge.Api
                     { "shown", CamRouteShown },
                     { "route", _route.Count },
                     { "keys", _ck.Select(k => (object)new Dictionary<string, object> { { "t", (double)k.T }, { "eye", V(k.Eye) }, { "pivot", V(k.Pivot) }, { "screen", V(cam.WorldToScreenPoint(k.Eye)) } }).ToList() },
+                    { "view", V(cam.transform.position) },
+                    { "free", FreeView.On },
+                    { "edit", ShotApi.ProgramCamera(out var ep, out _, out float efov, out _) ? new Dictionary<string, object> { { "eye", V(ep) }, { "fov", (double)efov }, { "screen", V(cam.WorldToScreenPoint(ep)) } } : null },
                 };
             }
             if (a.Has("focus") && cam != null)

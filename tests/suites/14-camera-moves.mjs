@@ -97,6 +97,48 @@ export default async function (t) {
       await ok('undo'); // the dolly
     });
 
+  // Play the edit without "In Studio's view too": camera keys don't move Studio's view either (a free work camera),
+  // the edit's camera is still worked out — for the monitor and the camera drawn in Studio's view
+  if (t.hello.commands.includes('scene.backups'))
+    await t.step('free work camera: camera keys play without moving Studio’s view', async () => {
+      const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+      const look = () => ok('gizmo.simulate', { cameraKeys: true });
+      const st0 = await ok('shots.state');
+      t.defer(async () => {
+        await ok('shots.setStudioEdit', { on: !!st0.studioEdit });
+        await ok('shots.setLiveCuts', { on: !!st0.liveCuts });
+        await ok('shots.set', { shots: st0.shots ?? [] });
+      });
+      const tl = await ok('timeline.get');
+      await ok('shots.set', { shots: [{ id: 'fv', name: 'Keys', start: 0, end: tl.duration, camMode: 'still' }] });
+      await ok('camera.move', { preset: 'dolly', amount: 0.5, duration: 1, t0: 0.5 });
+      await ok('shots.setLiveCuts', { on: true });
+      await ok('shots.setStudioEdit', { on: false });
+      await ok('timeline.seek', { t: 0.5 });
+      await sleep(300);
+      const a = await look();
+      await ok('timeline.seek', { t: 1.5 });
+      await sleep(300);
+      const b = await look();
+      const d = (p, q) => Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]);
+      check('free while Play the edit is on and Studio’s view is yours', a.free === true && b.free === true, JSON.stringify([a.free, b.free]));
+      check('Studio’s view stays put across the camera keys', d(a.view, b.view) < 1e-4, `${d(a.view, b.view).toFixed(5)} m`);
+      check('the edit’s camera still follows the keys (dollies in)', a.edit && b.edit && d(a.edit.eye, b.edit.eye) > 0.05, JSON.stringify([a.edit?.eye, b.edit?.eye]));
+      check('…ending where the keys say', d(b.edit.eye, b.keys[1].eye) < 1e-3, JSON.stringify([b.edit.eye, b.keys[1].eye]));
+      await ok('timeline.play');
+      await sleep(600);
+      const c = await look();
+      await ok('timeline.pause').catch(() => ok('timeline.stop'));
+      check('playing: still Studio’s view untouched', d(c.view, b.view) < 1e-4, `${d(c.view, b.view).toFixed(5)} m`);
+      // with "In Studio's view too", the keys drive Studio's view as before
+      await ok('shots.setStudioEdit', { on: true });
+      await ok('timeline.seek', { t: 0.5 });
+      await sleep(300);
+      const e = await look();
+      check('In Studio’s view too: Studio’s view is the keyed camera again', !e.free && d(e.view, a.edit.eye) < 1e-3, JSON.stringify([e.view, a.edit.eye]));
+      await ok('undo'); // the dolly
+    });
+
   await t.step('dolly and zoom', async () => {
     await ok('camera.move', { preset: 'dolly', amount: 0.5, duration: 1, t0: 0.5 });
     let c = await camTracks();

@@ -159,7 +159,7 @@ export function ShotsPage() {
               title={
                 studioEdit
                   ? 'Studio’s view follows the edit too: it switches cameras at the cuts while playing and scrubbing. Click to keep Studio’s view as your own work camera'
-                  : 'Studio’s view is your work camera: the shots never move it. Click to make Studio’s view follow the edit too'
+                  : 'Studio’s view is your work camera: neither the shots nor camera keys move it, so you can fly around while it plays. The edit’s camera shows on the monitor and as a small camera in Studio’s view. Click to make Studio’s view follow the edit too'
               }
             >
               <span className="sq-live-dot" />

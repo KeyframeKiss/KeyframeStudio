@@ -33,6 +33,21 @@ namespace StudioEX.Bridge.Api
         /// </summary>
         private static object CameraMove(Dictionary<string, object> a)
         {
+            // with a free work camera, the move starts from the keyed camera and the user's view comes back after
+            bool free = ShotApi.FreeViewWanted;
+            var keep = KeepView.Take();
+            try
+            {
+                using (FreeView.Hold()) return CameraMoveHeld(a, free);
+            }
+            finally
+            {
+                if (free) keep.Restore();
+            }
+        }
+
+        private static object CameraMoveHeld(Dictionary<string, object> a, bool free)
+        {
             var studio = Singleton<Studio.Studio>.Instance;
             var cc = studio.cameraCtrl;
             string preset = a.GetString("preset") ?? "orbit";
@@ -49,12 +64,14 @@ namespace StudioEX.Bridge.Api
 
             // Start from the camera at t0: at the playhead that's the camera as the user framed it; elsewhere it's
             // what the keys say there (so moves chain: an orbit's end is the next move's start).
-            if (Mathf.Abs(t0 - TL.playbackTime) > 1e-4f)
+            bool away = Mathf.Abs(t0 - TL.playbackTime) > 1e-4f;
+            if (away)
             {
                 if (PendingCount > 0) throw new BridgeException("Key or reset your unkeyed changes first — starting a move away from the playhead moves the playhead, which would undo them");
                 TL.Seek(t0);
                 Reapply(); // evaluate the camera tracks at t0 now, not next frame
             }
+            else if (free && PendingCount == 0) Reapply(); // Studio's view is the user's: start from the keyed camera instead
             var start = cc.Export();
             var s0 = new CamState { Pos = start.pos, Rot = start.rotate, Dist = start.distance, Fov = cc.fieldOfView };
             var rot0 = Quaternion.Euler(s0.Rot);
