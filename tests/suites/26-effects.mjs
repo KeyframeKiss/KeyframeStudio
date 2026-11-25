@@ -133,6 +133,30 @@ export default async function (t) {
       await ok('fx.reset');
     });
 
+  if (t.hello.commands.includes('camera.mean'))
+    await t.step('our bloom and ambient occlusion', async () => {
+      const mean = () => ok('camera.mean', { width: 96 });
+      const L = (c) => 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+      await ok('fx.reset');
+      await sleep(250);
+      const m0 = await mean();
+      const st = await ok('fx.set', { effect: 'bloom', values: { on: true, intensity: 1.5, threshold: 0.2 } });
+      check('bloom is one of the effects', st.effects.bloom?.on === true);
+      await sleep(300);
+      const glow = await mean();
+      check('bloom brightens', L(glow) > L(m0) + 0.01, `${L(m0).toFixed(3)} → ${L(glow).toFixed(3)}`);
+      await ok('fx.reset');
+      await ok('fx.set', { effect: 'ao', values: { on: true, intensity: 2.5, radius: 0.6 } });
+      await sleep(300);
+      const shade = await mean();
+      check('ambient occlusion darkens where things meet', L(shade) < L(m0) - 0.003, `${L(m0).toFixed(4)} → ${L(shade).toFixed(4)}`);
+      await ok('fx.set', { effect: 'ao', values: { color: [0, 0, 1, 1] } });
+      await sleep(300);
+      const blue = await mean();
+      check('…in its shade colour (blue: the shade keeps its blue)', blue[2] - blue[0] > shade[2] - shade[0] + 0.002, JSON.stringify({ shade, blue }));
+      await ok('fx.reset');
+    });
+
   await t.step('saved with the scene', async () => {
     await ok('fx.set', { effect: 'fog', values: { on: true, density: 0.123, far: [0.2, 0.3, 0.9, 0.5] } });
     const sceneDir = path.join(t.paths.userData, 'studio', 'scene');

@@ -39,6 +39,13 @@ namespace StudioEX.Bridge.Api
                 { "on", false }, { "a", "" }, { "aAmount", 1f }, { "aMode", 0f }, { "b", "" }, { "bAmount", 1f }, { "bMode", 0f }, { "combine", 0f } } },
             // curves, colour by colour, split toning, bleach bypass, density: baked into a colour table (GradingBake)
             { "grading", GradingBake.Defaults() },
+            // bloom: threshold with a soft knee, spread = how many levels (wider glow), wide = weight of the wider ones
+            { "bloom", new Dictionary<string, object> {
+                { "on", false }, { "intensity", 0.6f }, { "threshold", 0.8f }, { "softness", 0.5f }, { "spread", 0.6f }, { "wide", 0.8f },
+                { "saturation", 1f }, { "tint", new[] { 1f, 1f, 1f, 1f } } } },
+            // ambient occlusion: radius in metres, fade = distance (m) it fades out by (0 = never), colour of the shade
+            { "ao", new Dictionary<string, object> {
+                { "on", false }, { "intensity", 1f }, { "radius", 0.3f }, { "contrast", 1f }, { "fade", 0f }, { "color", new[] { 0f, 0f, 0f, 1f } } } },
             // barrel (+) / pincushion (-), refitted to fill the frame
             { "distortion", new Dictionary<string, object> { { "on", false }, { "amount", 0.15f }, { "fit", true } } },
             { "aberration", new Dictionary<string, object> { { "on", false }, { "amount", 0.3f } } },
@@ -50,7 +57,7 @@ namespace StudioEX.Bridge.Api
 
         private static Dictionary<string, Dictionary<string, object>> _fx = Clone(Defaults);
         private static string _bundleError;
-        private static Material _fog, _grade, _sharpen, _lens, _dof, _lut;
+        private static Material _fog, _grade, _sharpen, _lens, _dof, _lut, _bloom, _ao;
 
         // values that are choices, not amounts: no Timeline tracks for them
         private static readonly HashSet<string> NotAnimated = new HashSet<string> { "dof.autoFocus", "dof.chara", "lut.aMode", "lut.bMode", "lut.combine" };
@@ -242,6 +249,8 @@ namespace StudioEX.Bridge.Api
                 _lens = M("Lens");
                 _dof = M("Dof");
                 _lut = M("Lut");
+                _bloom = M("Bloom");
+                _ao = M("Ao");
                 return true;
             }
             catch (Exception e)
@@ -268,7 +277,7 @@ namespace StudioEX.Bridge.Api
                 comp.enabled = true;
             }
             else if (comp != null) comp.enabled = false;
-            bool wantDepth = AnyOn && ((bool)_fx["fog"]["on"] || (bool)_fx["dof"]["on"]);
+            bool wantDepth = AnyOn && ((bool)_fx["fog"]["on"] || (bool)_fx["dof"]["on"] || (bool)_fx["ao"]["on"]);
             if (wantDepth && (cam.depthTextureMode & DepthTextureMode.Depth) == 0) { cam.depthTextureMode |= DepthTextureMode.Depth; _addedDepth = cam; }
             else if (!wantDepth && _addedDepth == cam) { cam.depthTextureMode &= ~DepthTextureMode.Depth; _addedDepth = null; }
         }
@@ -381,6 +390,67 @@ namespace StudioEX.Bridge.Api
                 RenderTexture.ReleaseTemporary(bokeh);
             }
 
+            private void Bloom(RenderTexture src, RenderTexture dst)
+            {
+                int levels = Mathf.Clamp(Mathf.RoundToInt(Mathf.Lerp(3f, 7f, F("bloom", "spread"))), 2, 8);
+                _bloom.SetVector("_KfBloomPre", new Vector4(Mathf.Max(0f, F("bloom", "threshold")), Mathf.Clamp01(F("bloom", "softness")), 16f, 0f));
+                _bloom.SetVector("_KfBloomCombine", new Vector4(Mathf.Max(0f, F("bloom", "intensity")), F("bloom", "saturation"), Mathf.Lerp(0.35f, 1.25f, Mathf.Clamp01(F("bloom", "wide"))), 0f));
+                _bloom.SetVector("_KfBloomTint", V("bloom", "tint"));
+                var fmt = RenderTextureFormat.ARGBHalf;
+                var rts = new List<RenderTexture>();
+                int w = Mathf.Max(1, src.width / 2), h = Mathf.Max(1, src.height / 2);
+                var first = RenderTexture.GetTemporary(w, h, 0, fmt);
+                first.filterMode = FilterMode.Bilinear;
+                Graphics.Blit(src, first, _bloom, 0);
+                rts.Add(first);
+                for (int i = 1; i < levels; i++)
+                {
+                    w = Mathf.Max(1, w / 2);
+                    h = Mathf.Max(1, h / 2);
+                    if (w < 2 || h < 2) break;
+                    var r = RenderTexture.GetTemporary(w, h, 0, fmt);
+                    r.filterMode = FilterMode.Bilinear;
+                    Graphics.Blit(rts[rts.Count - 1], r, _bloom, 1);
+                    rts.Add(r);
+                }
+                var cur = rts[rts.Count - 1];
+                var made = new List<RenderTexture>();
+                for (int i = rts.Count - 2; i >= 0; i--)
+                {
+                    var up = RenderTexture.GetTemporary(rts[i].width, rts[i].height, 0, fmt);
+                    up.filterMode = FilterMode.Bilinear;
+                    _bloom.SetTexture("_KfBloomTex", rts[i]);
+                    Graphics.Blit(cur, up, _bloom, 2);
+                    made.Add(up);
+                    cur = up;
+                }
+                _bloom.SetTexture("_KfBloomTex", cur);
+                Graphics.Blit(src, dst, _bloom, 3);
+                foreach (var r in rts) RenderTexture.ReleaseTemporary(r);
+                foreach (var r in made) RenderTexture.ReleaseTemporary(r);
+            }
+
+            private void Ao(RenderTexture src, RenderTexture dst)
+            {
+                var p = _cam.projectionMatrix;
+                _ao.SetVector("_KfAo", new Vector4(Mathf.Max(0f, F("ao", "intensity")), Mathf.Max(0.01f, F("ao", "radius")), Mathf.Max(0f, F("ao", "fade")), Mathf.Max(0.1f, F("ao", "contrast"))));
+                _ao.SetVector("_KfAoProj", new Vector4(1f / p[0, 0], 1f / p[1, 1], _cam.farClipPlane * 0.9f, 0f));
+                _ao.SetVector("_KfAoColor", V("ao", "color"));
+                int w = Mathf.Max(1, src.width / 2), h = Mathf.Max(1, src.height / 2);
+                var a = RenderTexture.GetTemporary(w, h, 0, RenderTextureFormat.ARGBHalf);
+                var b = RenderTexture.GetTemporary(w, h, 0, RenderTextureFormat.ARGBHalf);
+                a.filterMode = b.filterMode = FilterMode.Bilinear;
+                Graphics.Blit(src, a, _ao, 0);
+                _ao.SetVector("_KfAoDir", new Vector4(1, 0, 0, 0));
+                Graphics.Blit(a, b, _ao, 1);
+                _ao.SetVector("_KfAoDir", new Vector4(0, 1, 0, 0));
+                Graphics.Blit(b, a, _ao, 1);
+                _ao.SetTexture("_KfAoTex", a);
+                Graphics.Blit(src, dst, _ao, 2);
+                RenderTexture.ReleaseTemporary(a);
+                RenderTexture.ReleaseTemporary(b);
+            }
+
             /// <summary>Render pixels per window pixel: above 1 for supersampled stills, so per-pixel effects keep their look.</summary>
             private static float PixelScale(RenderTexture src) => Mathf.Max(1f, (float)src.height / Mathf.Max(1, Screen.height));
 
@@ -390,6 +460,7 @@ namespace StudioEX.Bridge.Api
                 var passes = new List<object>(5); // a Material (one pass) or an Action for multi-pass effects
                 try
                 {
+                    if (B("ao", "on") && _ao != null) passes.Add((Action<RenderTexture, RenderTexture>)Ao);
                     if (B("fog", "on"))
                     {
                         _fog.SetMatrix("_KfInvProj", _cam.projectionMatrix.inverse);
@@ -407,6 +478,7 @@ namespace StudioEX.Bridge.Api
                         _sharpen.SetFloat("_KfPixelScale", PixelScale(src));
                         passes.Add(_sharpen);
                     }
+                    if (B("bloom", "on") && _bloom != null) passes.Add((Action<RenderTexture, RenderTexture>)Bloom);
                     if (B("grade", "on"))
                     {
                         _grade.SetVector("_KfGrade", new Vector4(F("grade", "exposure"), F("grade", "contrast"), F("grade", "saturation"), F("grade", "vibrance")));

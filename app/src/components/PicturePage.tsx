@@ -43,7 +43,7 @@ const ITEMS: Item[] = [
   { id: 'lut', title: 'Color grade', group: 'Colour', help: "Studio's LUT tints the whole picture (a second can blend in with KK_TwoLut); LUT files (.cube / PNG) from UserData/StudioEX/luts go on top.", studio: ['lut'], ours: ['lut'] },
   { id: 'grade', title: 'Colour correction', group: 'Colour', help: 'Exposure, white balance, contrast and saturation on the final picture, after the colour grade.', ours: ['grade'], toggle: { fx: 'grade' } },
   { id: 'grading', title: 'Grading', group: 'Colour', help: 'Tone curves, each colour on its own, split toning and film looks, like a photo editor.', toggle: { fx: 'grading' } },
-  { id: 'bloom', title: 'Bloom', group: 'Colour', help: 'Bright areas glow.', studio: ['bloom'], toggle: { studio: 'bloom' } },
+  { id: 'bloom', title: 'Bloom', group: 'Colour', help: "Bright areas glow. Keyframe Studio's has threshold softness, spread, a wide glow and a tint, and works the same in stills; Studio's is simpler. Use one of them.", ours: ['bloom'], studio: ['bloom'] },
   { id: 'dof', title: 'Depth of field', group: 'Lens', help: "Blur away from the focus. Keyframe Studio's follows a character's eyes and looks the same in stills; Studio's own is simpler. Use one of them.", ours: ['dof'], studio: ['dof'] },
   { id: 'vignette', title: 'Vignette', group: 'Lens', help: "Darkened corners. Keyframe Studio's has strength, roundness and colour; Studio's is on or off.", ours: ['vignette'], studio: ['vignette'] },
   { id: 'aberration', title: 'Chromatic aberration', group: 'Lens', help: 'Coloured fringes towards the edges, like a real lens.', ours: ['aberration'], toggle: { fx: 'aberration' } },
@@ -52,7 +52,7 @@ const ITEMS: Item[] = [
   { id: 'grain', title: 'Film grain', group: 'Lens', help: 'Fine moving noise, like film. Hides banding in gradients.', ours: ['grain'], toggle: { fx: 'grain' } },
   { id: 'fog', title: 'Fog', group: 'Atmosphere', help: "Haze with distance. Keyframe Studio's two-tone fog fades from a near colour to a far one; Studio's own is one colour.", ours: ['fog'], studio: ['fog'] },
   { id: 'sun', title: 'Sun shafts', group: 'Atmosphere', help: 'Light rays from a sun caster set in Studio.', studio: ['sun'], toggle: { studio: 'sunShafts' } },
-  { id: 'ssao', title: 'Ambient occlusion', group: 'Atmosphere', help: 'Soft shadows where things meet.', studio: ['ssao'], toggle: { studio: 'ssao' } },
+  { id: 'ssao', title: 'Ambient occlusion', group: 'Atmosphere', help: "Soft shade where things meet. Keyframe Studio's is measured in metres, has a shade colour and looks the same in stills; Studio's is simpler. Use one of them.", ours: ['ao'], studio: ['ssao'] },
   { id: 'toon', title: 'Toon shading', group: 'Characters', help: 'Shadow ramp, shadow colour and outlines for every character.', studio: ['toon'] },
   { id: 'xukmi', title: 'xukmi FX', group: 'Mods', help: "Effects placed as items by the xukmi FX mod. They stack with Keyframe Studio's effects of the same kind.", ours: ['xukmi'] },
 ];
@@ -149,11 +149,15 @@ export function PicturePage() {
       case 'grading':
         return { on: o('grading'), text: gradingSummary(ours('grading') as Parameters<typeof gradingSummary>[0]) };
       case 'bloom':
-        return { on: s('bloom'), text: s('bloom') ? `Intensity ${n2(e?.bloomIntensity)}` : 'Off' };
+      case 'ssao': {
+        const mine = it.id === 'bloom' ? 'bloom' : 'ao';
+        const a = o(mine);
+        const b = s(it.id);
+        const what = it.id === 'bloom' ? `intensity ${n2(ours('bloom')?.intensity)}` : `radius ${n2(ours('ao')?.radius)} m`;
+        return { on: a || b, text: a && b ? 'Both on: they stack' : a ? `Keyframe Studio, ${what}` : b ? (it.id === 'bloom' ? `Studio’s, intensity ${n2(e?.bloomIntensity)}` : `Studio’s, radius ${n2(e?.ssaoRadius)}`) : 'Off' };
+      }
       case 'sun':
         return { on: s('sunShafts'), text: s('sunShafts') ? 'On' : 'Off' };
-      case 'ssao':
-        return { on: s('ssao'), text: s('ssao') ? `Radius ${n2(e?.ssaoRadius)}` : 'Off' };
       case 'toon':
         return { on: true, text: name(look?.ramps, look?.toon.ramp ?? -1) || 'Ramp' };
       case 'xukmi': {
