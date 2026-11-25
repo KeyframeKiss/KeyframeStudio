@@ -52,7 +52,7 @@ const byGroup = <T extends { name: string }>(list: T[]): [string, T[]][] => {
 };
 const GROUP_NAMES: Record<string, string> = {
   'eye face': 'Eyes', 'kuti face': 'Mouth', 'kuti yaeba': 'Mouth (fangs)', 'kuti ha': 'Mouth (teeth)', 'kuti sita': 'Mouth (tongue)',
-  mayuge: 'Brows', tooth: 'Teeth', 'eye line': 'Eyelines', 'eye siroL': 'Eye whites', 'eye siroR': 'Eye whites', 'eye naL': 'Eye highlights',
+  mayuge: 'Brows', sexfaces: 'Extra expressions', tooth: 'Teeth', 'eye line': 'Eyelines', 'eye siroL': 'Eye whites', 'eye siroR': 'Eye whites', 'eye naL': 'Eye highlights',
 };
 /** Friendlier mesh names and the order they're listed in (face first). */
 const MESHES: Record<string, [string, number]> = {
@@ -70,6 +70,25 @@ export function ShapesPanel({ id, onChanged }: { id: number; onChanged: () => vo
   const [query, setQuery] = useState('');
   const [onlyChanged, setOnlyChanged] = useState(false);
   const [open, setOpen] = useState<Record<string, boolean>>({});
+  // the shape groups inside a mesh (Eyes, Mouth…): closed until opened, remembered
+  const [openGroups, setOpenGroups] = useState<Set<string>>(() => {
+    try {
+      return new Set(JSON.parse(localStorage.getItem('kf.shapes.open') || '[]'));
+    } catch {
+      return new Set();
+    }
+  });
+  const toggleGroup = (k: string) => {
+    const next = new Set(openGroups);
+    if (next.has(k)) next.delete(k);
+    else next.add(k);
+    setOpenGroups(next);
+    try {
+      localStorage.setItem('kf.shapes.open', JSON.stringify([...next]));
+    } catch {
+      /* not remembered; fine */
+    }
+  };
   const lastEdit = useRef(-1e9);
 
   const load = useCallback(() => {
@@ -164,9 +183,26 @@ export function ShapesPanel({ id, onChanged }: { id: number; onChanged: () => vo
                 )}
               </div>
               {isOpen &&
-                byGroup(set.shown).map(([g, list]) => (
-                  <div key={g}>
-                    {g && <div className="shape-group">{GROUP_NAMES[g] ?? g}</div>}
+                byGroup(set.shown).map(([g, list], _i, all) => {
+                  const gk = `${set.key}|${g}`;
+                  const changedN = list.filter((sh) => sh.edited).length;
+                  const inUse = list.filter((sh) => sh.weight > 0.5).length;
+                  // a mesh with one group: no fold; otherwise each group folds, open while searching or filtering
+                  const folds = all.length > 1;
+                  const groupOpen = !folds || !!q || onlyChanged || openGroups.has(gk);
+                  return (
+                  <div key={g} className="shape-fold">
+                    {folds && (
+                      <button className="shape-fold-head" aria-expanded={groupOpen} onClick={() => toggleGroup(gk)}>
+                        <span className={`chev ${groupOpen ? 'open' : ''}`}>▸</span>
+                        <b>{GROUP_NAMES[g] ?? (g || 'Other')}</b>
+                        <small>{list.length}</small>
+                        {changedN > 0 && <em className="me-badge">{changedN} changed</em>}
+                        <span className="shape-fold-sum">{inUse ? `${inUse} in use` : 'none in use'}</span>
+                      </button>
+                    )}
+                    {!folds && g && <div className="shape-group">{GROUP_NAMES[g] ?? g}</div>}
+                    {groupOpen && (
                     <div className="shape-grid">
                       {list.map((sh) => (
                         <div key={sh.i} className={`shape-row face-axis ${sh.edited ? 'changed' : ''}`} title={sh.name}>
@@ -179,8 +215,10 @@ export function ShapesPanel({ id, onChanged }: { id: number; onChanged: () => vo
                         </div>
                       ))}
                     </div>
+                    )}
                   </div>
-                ))}
+                  );
+                })}
               {isOpen && !set.shown.length && <div className="face-hint">No shapes match.</div>}
             </div>
           );

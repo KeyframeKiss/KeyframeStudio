@@ -11007,3 +11007,42 @@ a.btn {
   margin-left: auto;
   color: var(--accent);
 }
+/* Face shape › Shapes: each mesh's shape groups fold, with what's changed and in use */
+.shape-fold + .shape-fold {
+  border-top: 1px solid var(--line-soft);
+}
+.shape-fold-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 2px;
+  border: 0;
+  background: none;
+  color: var(--text-1);
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+}
+.shape-fold-head:hover {
+  color: var(--text-0);
+}
+.shape-fold-head .chev {
+  color: var(--text-3);
+  transition: transform var(--t-fast, 0.12s) ease;
+}
+.shape-fold-head .chev.open {
+  transform: rotate(90deg);
+}
+.shape-fold-head small {
+  color: var(--text-3);
+  font-size: 11px;
+}
+.shape-fold-head .me-badge {
+  margin-left: 0;
+}
+.shape-fold-sum {
+  margin-left: auto;
+  color: var(--text-3);
+  font-size: 11px;
+}
