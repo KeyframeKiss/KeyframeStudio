@@ -173,6 +173,9 @@ namespace StudioEX.Bridge.Api
             var path = CheckedCard(a);
             var c = CharaApi.Chara(a.GetInt("id"));
             c.ChangeChara(path);
+            // KK_FKIK only clears its "swapping" mark for a character with FK and IK both on; left set, it later turns
+            // body FK off on whichever character next switches FK + IK (see ViewportGizmos.ClearStaleFkikSwap)
+            if (!(c.oiCharInfo.enableFK && c.oiCharInfo.enableIK)) ViewportGizmos.ClearStaleFkikSwap();
             return true;
         }
     }

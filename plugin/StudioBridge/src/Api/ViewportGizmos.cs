@@ -574,11 +574,38 @@ namespace StudioEX.Bridge.Api
             if (studio == null) return;
             if (_fkOwner.Count > 64) _fkOwner.Clear();
             foreach (var oci in studio.dicObjectCtrl.Values)
-                if (oci is OCIChar c && c.charInfo != null && c.oiCharInfo.enableFK)
+            {
+                if (!(oci is OCIChar c) || c.charInfo == null) continue;
+                if (c.oiCharInfo.enableFK)
                 {
                     if (c.fkCtrl != null) _fkOwner[c.fkCtrl] = c;
                     SyncLimbs(c);
                 }
+                if (c.oiCharInfo.enableIK) SyncPull(c);
+            }
+        }
+
+        private static readonly Dictionary<RootMotion.FinalIK.IKSolverFullBodyBiped, float[]> _pull0 = new Dictionary<RootMotion.FinalIK.IKSolverFullBodyBiped, float[]>();
+
+        /// <summary>
+        /// A limb on its target doesn't drag the body unless the body is on its target too. With the full-body solver's
+        /// pull on, a hand or foot target — even one exactly where the hand is — turns the pelvis a little (a foot moved
+        /// centimetres when only an arm went to IK). Pull is 0 for the limbs while the body isn't on IK; the body on IK
+        /// gets the solver's own values back.
+        /// </summary>
+        private static void SyncPull(OCIChar c)
+        {
+            var solver = c.finalIK != null ? c.finalIK.solver : null;
+            if (solver?.chain == null || solver.chain.Length < 5) return;
+            if (_pull0.Count > 64) _pull0.Clear();
+            if (!_pull0.TryGetValue(solver, out var orig))
+                _pull0[solver] = orig = Enumerable.Range(0, 5).Select(i => solver.chain[i].pull).ToArray();
+            bool body = IkOn(c, 0);
+            for (int i = 1; i < 5; i++)
+            {
+                float want = body ? orig[i] : 0f;
+                if (solver.chain[i].pull != want) solver.chain[i].pull = want;
+            }
         }
 
         /// <summary>Right after Studio's FK has posed a character: with IK on as well, IK solves again on top of it.</summary>
@@ -684,11 +711,33 @@ namespace StudioEX.Bridge.Api
             {
                 for (int j = 0; j < c.oiCharInfo.activeIK.Length; j++) c.oiCharInfo.activeIK[j] = j == part;
                 bool fk = c.oiCharInfo.enableFK;
+                ClearStaleFkikSwap();
                 c.ActiveKinematicMode(OICharInfo.KinematicMode.IK, true, false); // (switches FK off…)
                 if (fk) FkAlongside(c); // …so it comes straight back as it was
             }
             else c.ActiveIK((OIBoneInfo.BoneGroup)(1 << part), true, false);
             SyncLimbs(c); // FK lets go of that limb's bones
+        }
+
+        private static System.Reflection.FieldInfo _fkikSwap;
+        private static bool _fkikLooked;
+
+        /// <summary>
+        /// KK_FKIK (FK and IK) marks "a character is being swapped" when one is (Studio's Change character, our card
+        /// swap) and clears it only if that character had FK and IK both on. Left set, the next FK + IK switch on any
+        /// character makes it run its FK &amp; IK setup, which turns body FK off — the legs dropping to the animation's
+        /// pose when only an arm went to IK. When we switch, no swap is under way: the mark is stale.
+        /// </summary>
+        internal static void ClearStaleFkikSwap()
+        {
+            if (!_fkikLooked)
+            {
+                _fkikLooked = true;
+                var hooks = HarmonyLib.AccessTools.TypeByName("KK_Plugins.FKIK")?.GetNestedType("Hooks", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public);
+                _fkikSwap = hooks != null ? HarmonyLib.AccessTools.Field(hooks, "ChangingChara") : null;
+            }
+            try { if (_fkikSwap != null && (bool)_fkikSwap.GetValue(null)) _fkikSwap.SetValue(null, false); }
+            catch (Exception e) { StudioBridgePlugin.Logger.LogDebug("KK_FKIK swap mark: " + e.Message); }
         }
 
         /// <summary>FK / IK switches, so undo puts the character's mode back with the pose.</summary>
