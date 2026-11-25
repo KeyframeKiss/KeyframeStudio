@@ -10729,3 +10729,130 @@ a.btn {
   color: var(--text-1);
   font-weight: 500;
 }
+/* Look › Materials: one material's values in closed groups by what they do */
+.me-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0 10px;
+}
+.me-filter-bar .me-filter {
+  flex: 1;
+  margin: 0;
+}
+.me-group-box {
+  margin-bottom: 8px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--bg-1);
+}
+.me-group-box > summary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 0 12px;
+  cursor: pointer;
+  border-radius: 10px;
+}
+.me-group-box > summary::-webkit-details-marker {
+  display: none;
+}
+.me-group-box > summary::before {
+  content: '';
+  flex: none;
+  width: 5px;
+  height: 5px;
+  border-right: 1.5px solid var(--text-2);
+  border-bottom: 1.5px solid var(--text-2);
+  transform: rotate(-45deg);
+  transition: transform var(--t-fast, 0.12s) ease;
+}
+.me-group-box[open] > summary::before {
+  transform: rotate(45deg);
+}
+.me-group-box > summary:hover {
+  background: var(--bg-2);
+}
+.me-group-box > summary b {
+  font-size: 13px;
+  color: var(--text-0);
+}
+.me-group-box > summary small {
+  color: var(--text-3);
+  font-size: 11px;
+}
+.me-group-box > summary .me-badge {
+  margin-left: 0;
+}
+.me-sum {
+  margin-left: auto;
+  color: var(--text-3);
+  font-size: 11.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.me-group-box > .me-section-body {
+  border: 0;
+  border-top: 1px solid var(--line-soft);
+  border-radius: 0 0 10px 10px;
+}
+.me-group-box > .me-cards {
+  margin: 0;
+  padding: 10px;
+  border-top: 1px solid var(--line-soft);
+}
+.me-group-box > .me-textures {
+  padding: 10px;
+  border-top: 1px solid var(--line-soft);
+}
+.me-switches {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 2px 12px;
+  padding: 6px 0;
+}
+.me-group-box > .me-switches {
+  padding: 8px 12px;
+  border-top: 1px solid var(--line-soft);
+}
+.me-section-body > .me-switches + .me-row {
+  border-top: 1px solid var(--line-soft);
+}
+.me-switch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+  color: var(--text-1);
+  font-size: 12.5px;
+}
+.me-switch > span:not(.me-tools) {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.me-switch.edited > span:not(.me-tools) {
+  color: var(--text-0);
+  font-weight: 600;
+}
+.me-renderer.single {
+  border-left-color: transparent;
+}
+.me-renderer.single > .me-mat > span {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.me-group-box .me-cards .me-row {
+  grid-template-columns: minmax(80px, 110px) minmax(0, 1fr) auto;
+}
+.me-group-box .me-cards .me-row > select {
+  width: 100%;
+  min-width: 0;
+}

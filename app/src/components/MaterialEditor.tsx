@@ -132,6 +132,43 @@ type Kind = 'float' | 'color' | 'keyword' | 'offset' | 'scale' | 'shader' | 'que
 const SHADOW_MODES = ['Off', 'On', 'TwoSided', 'ShadowsOnly'];
 const SHADOW_LABELS: Record<string, string> = { Off: 'Off', On: 'On', TwoSided: 'Two-sided', ShadowsOnly: 'Shadow only' };
 
+/** A material's values grouped by what they do, so 40 sliders aren't one list. Matched on the property name. */
+const TOPICS = ['Colors', 'Shadow and ramp', 'Shine', 'Rim light', 'Reflection and metal', 'Outline', 'Glow', 'Surface detail', 'Cut-out and drawing', 'Other'] as const;
+type Topic = (typeof TOPICS)[number];
+const TOPIC_RULES: [Topic, RegExp][] = [
+  ['Outline', /outline|linewidth|linecolor|linetex/i],
+  ['Glow', /emissi|glow/i],
+  ['Rim light', /rim/i],
+  ['Reflection and metal', /reflect|refl[A-Z_]|^refl|matcap|metal|roughness/i],
+  ['Shine', /specul|speclar|gloss|highlight/i],
+  ['Shadow and ramp', /shadow|ramp|shade|pointlight/i],
+  ['Cut-out and drawing', /cutoff|cull|zwrite|alphaoption|backface|premultipl|^alpha$/i],
+  ['Surface detail', /normal|detail|liquid|mask|nip|tessell|displace|^exp|expression/i],
+  ['Colors', /^(col\d|color\d*|overcolor\d*|maincolor|saturation|customambient|transparency|alpha_?[ab]?|colorinverse|colorsort|whiteoff|ambient)$/i],
+];
+function topicOf(name: string): Topic {
+  const n = name.replace(/^_+/, '');
+  for (const [t, re] of TOPIC_RULES) if (re.test(n)) return t;
+  return /col(or|our)/i.test(n) ? 'Colors' : 'Other';
+}
+/** On/off values drawn as 0..1 sliders by MaterialEditor ("Use ramp for lights"): shown as switches. */
+function isSwitch(p: FloatProp) {
+  const n = p.name.replace(/^_+/, '');
+  const binary = (p.min === undefined || p.min === 0) && (p.max === undefined || p.max === 1) && (p.value === 0 || p.value === 1);
+  return binary && /^(use|disable|enable|is[A-Z]|not?use|adjust)|(on|off|asdiffuse|overlayed|full|inverse|invert|sort)$/i.test(n);
+}
+/** A group's state in a few words: how many switches are on, the colours as dots. */
+function summaryOf(cs: ColorProp[], fs: FloatProp[]) {
+  const sw = fs.filter(isSwitch);
+  const on = sw.filter((x) => x.value >= 0.5).length;
+  const parts: string[] = [];
+  if (sw.length) parts.push(`${on} of ${sw.length} on`);
+  const n = fs.length - sw.length;
+  if (n) parts.push(`${n} value${n > 1 ? 's' : ''}`);
+  if (cs.length) parts.push(`${cs.length} color${cs.length > 1 ? 's' : ''}`);
+  return parts.join(', ');
+}
+
 /** Words out of MaterialEditor's property names: "ShadowColor" → "Shadow color", "rimpower" stays. */
 function nice(p: string) {
   const s = p.replace(/^_+/, '').replace(/([a-z])([A-Z])/g, '$1 $2').replace(/_/g, ' ');
@@ -230,6 +267,9 @@ export function MaterialEditorPage() {
                 {isOpen &&
                   rs.map((r, i) => {
                     const rHit = partHit || matches(r.name, r.nice, r.group);
+                    const ms = r.materials.filter((m) => rHit || matches(m.name, m.nice, m.shader));
+                    // one material on the renderer: one row, named in words; the raw names in the tooltip
+                    const single = r.materials.length === 1 && ms.length === 1 ? ms[0] : null;
                     return (
                       <div key={r.name}>
                         {r.group && r.group !== rs[i - 1]?.group && (
@@ -238,31 +278,36 @@ export function MaterialEditorPage() {
                             {r.group === 'Hidden' && <Help text="Parts the game normally doesn't show: the see-through silhouette used in H scenes and the invisible mesh that casts the body's shadow." />}
                           </div>
                         )}
-                        <div className={`me-renderer ${r.enabled ? '' : 'hidden'}`}>
+                        <div className={`me-renderer ${r.enabled ? '' : 'hidden'} ${single ? 'single' : ''}`}>
+                          {single ? (
+                            <button
+                              className={`me-mat ${sel?.part === p.key && sel.renderer === r.name && sel.material === single.name ? 'on' : ''}`}
+                              onClick={() => setSel({ part: p.key, renderer: r.name, material: single.name })}
+                              title={`${r.nice ?? single.nice ?? r.name}
+Renderer ${r.name}${r.enabled ? '' : ' (hidden)'}
+Material ${single.name}
+${single.shader}`}
+                            >
+                              <span>
+                                {!r.enabled && <Icon name="eyeOff" size={11} />} {r.nice ?? single.nice ?? r.name}
+                              </span>
+                              <small>{single.shader.replace(/^.*\//, '')}</small>
+                            </button>
+                          ) : (
                           <div className="me-renderer-name" title={`Renderer ${r.name}${r.enabled ? '' : ' (hidden)'}`}>
                             {!r.enabled && <Icon name="eyeOff" size={11} />}
-                            {r.nice ? (
-                              <>
-                                <b>{r.nice}</b>
-                                <code>{r.name}</code>
-                              </>
-                            ) : (
-                              <code className="raw">{r.name}</code>
-                            )}
+                            {r.nice ? <b>{r.nice}</b> : <code className="raw">{r.name}</code>}
                           </div>
-                          {r.materials
-                            .filter((m) => rHit || matches(m.name, m.nice, m.shader))
+                          )}
+                          {!single && ms
                             .map((m) => {
                               const on = sel?.part === p.key && sel.renderer === r.name && sel.material === m.name;
                               // the plain name only when it says more than the renderer's already does
                               const nice = m.nice && !r.nice?.startsWith(m.nice) ? m.nice : null;
                               return (
                                 <button key={m.name} className={`me-mat ${on ? 'on' : ''}`} onClick={() => setSel({ part: p.key, renderer: r.name, material: m.name })} title={[m.nice, m.name, m.shader].filter(Boolean).join('\n')}>
-                                  <span>{nice ?? m.name}</span>
-                                  <small>
-                                    {nice ? `${m.name} · ` : ''}
-                                    {m.shader.replace(/^.*\//, '')}
-                                  </small>
+                                  <span>{nice ?? (m.nice ? 'Main' : m.name)}</span>
+                                  <small>{m.shader.replace(/^.*\//, '')}</small>
                                 </button>
                               );
                             })}
@@ -305,7 +350,28 @@ function MaterialView({ id, sel, onTreeChange }: { id: number; sel: Sel; onTreeC
   const [mat, setMat] = useState<Mat | null>(null);
   const [err, setErr] = useState('');
   const [filter, setFilter] = useState('');
+  const [changedOnly, setChangedOnly] = useState(false);
   const [shaders, setShaders] = useState<string[]>([]);
+  // which value groups are open: remembered across materials (Colors open to start)
+  const [openTopics, setOpenTopics] = useState<Set<string>>(() => {
+    try {
+      return new Set(JSON.parse(localStorage.getItem('kf.me.open') || '["Colors"]'));
+    } catch {
+      return new Set(['Colors']);
+    }
+  });
+  const toggleTopic = (t: string, open: boolean) => {
+    if (open === openTopics.has(t) || filter.trim() || changedOnly) return; // forced open while filtering: not a choice
+    const next = new Set(openTopics);
+    if (open) next.add(t);
+    else next.delete(t);
+    setOpenTopics(next);
+    try {
+      localStorage.setItem('kf.me.open', JSON.stringify([...next]));
+    } catch {
+      /* not remembered; fine */
+    }
+  };
   const target = useMemo(() => ({ id, ...sel }), [id, sel]);
 
   // live edits: one request per frame per value; replies are ignored while a drag is still sending
@@ -383,11 +449,11 @@ function MaterialView({ id, sel, onTreeChange }: { id: number; sel: Sel; onTreeC
   if (!mat) return <Empty text="Reading the material…" />;
 
   const f = filter.trim().toLowerCase();
-  const show = (p: string) => !f || p.toLowerCase().includes(f) || nice(p).toLowerCase().includes(f);
-  const colors = mat.colors.filter((c) => show(c.name));
-  const floats = mat.floats.filter((c) => show(c.name));
-  const textures = mat.textures.filter((c) => show(c.name));
-  const keywords = mat.keywords.filter((c) => show(c.name));
+  const show = (p: string, edited: boolean) => (!changedOnly || edited) && (!f || p.toLowerCase().includes(f) || nice(p).toLowerCase().includes(f));
+  const colors = mat.colors.filter((c) => show(c.name, c.edited));
+  const floats = mat.floats.filter((c) => show(c.name, c.edited));
+  const textures = mat.textures.filter((c) => show(c.name, c.edited || c.offsetEdited || c.scaleEdited));
+  const keywords = mat.keywords.filter((c) => show(c.name, c.edited));
   const edits = [mat.shaderEdited, mat.renderQueueEdited, ...mat.colors.map((c) => c.edited), ...mat.floats.map((c) => c.edited), ...mat.keywords.map((c) => c.edited), ...mat.textures.map((c) => c.edited || c.offsetEdited || c.scaleEdited)].filter(Boolean).length;
   const r = mat.renderer;
 
@@ -419,6 +485,14 @@ function MaterialView({ id, sel, onTreeChange }: { id: number; sel: Sel; onTreeC
         </div>
       </header>
 
+      <details className="me-group-box" open={mat.shaderEdited || mat.renderQueueEdited || r.enabledEdited || r.shadowCastingEdited || r.receiveShadowsEdited || undefined}>
+        <summary>
+          <b>Shader and drawing</b>
+          <span className="me-sum">
+            {mat.shader.replace(/^.*\//, '')} · queue {mat.renderQueue} · {r.enabled ? 'visible' : 'hidden'} · shadows {SHADOW_LABELS[r.shadowCasting]?.toLowerCase() ?? r.shadowCasting}
+          </span>
+          {(mat.shaderEdited || mat.renderQueueEdited || r.enabledEdited || r.shadowCastingEdited || r.receiveShadowsEdited) && <em className="me-badge">changed</em>}
+        </summary>
       <div className="me-cards">
         <div className="look-card">
           <div className="look-card-head">
@@ -481,53 +555,89 @@ function MaterialView({ id, sel, onTreeChange }: { id: number; sel: Sel; onTreeC
           </div>
         </div>
       </div>
+      </details>
 
-      <div className="me-filter">
-        <Icon name="search" size={13} />
-        <input placeholder={`Find a value (${mat.colors.length + mat.floats.length + mat.textures.length + mat.keywords.length})`} value={filter} onChange={(e) => setFilter(e.target.value)} />
-        {f && (
-          <button className="btn icon" title="Clear" onClick={() => setFilter('')}>
-            ×
-          </button>
-        )}
+      <div className="me-filter-bar">
+        <div className="me-filter">
+          <Icon name="search" size={13} />
+          <input placeholder={`Find a value (${mat.colors.length + mat.floats.length + mat.textures.length + mat.keywords.length})`} value={filter} onChange={(e) => setFilter(e.target.value)} />
+          {f && (
+            <button className="btn icon" title="Clear" onClick={() => setFilter('')}>
+              ×
+            </button>
+          )}
+        </div>
+        <button className={`btn chip ${changedOnly ? 'on' : ''}`} aria-pressed={changedOnly} onClick={() => setChangedOnly(!changedOnly)} title="Only values changed from the material's own">
+          Changed only
+        </button>
       </div>
 
-      {colors.length > 0 && (
-        <Section title="Colors" count={colors.length}>
-          {colors.map((c) => (
-            <div key={c.name} className={`me-row ${c.edited ? 'edited' : ''}`}>
-              <label title={c.name}>{nice(c.name)}</label>
-              <span className="me-grow me-color">
-                <ColorInput value={c.value} onChange={(v) => set('color', c.name, v, (m) => ({ ...m, colors: m.colors.map((x) => (x.name === c.name ? { ...x, value: v, edited: true } : x)) }))} />
-                <span className="me-alpha" title="Alpha (opacity)">
-                  <Slider
-                    value={c.value[3] ?? 1}
-                    min={0}
-                    max={Math.max(1, Math.ceil(c.value[3] ?? 1))}
-                    step={0.01}
-                    onChange={(a) => {
-                      const v: RGBA = [c.value[0], c.value[1], c.value[2], a];
-                      set('color', c.name, v, (m) => ({ ...m, colors: m.colors.map((x) => (x.name === c.name ? { ...x, value: v, edited: true } : x)) }));
-                    }}
-                  />
-                </span>
-              </span>
-              <RowTools edited={c.edited} onReset={() => reset('color', c.name)} onAnimate={() => animate('color', c.name)} />
+      {TOPICS.map((topic) => {
+        const cs = colors.filter((c) => topicOf(c.name) === topic);
+        const fs = floats.filter((x) => topicOf(x.name) === topic);
+        const n = cs.length + fs.length;
+        if (!n) return null;
+        const changedN = cs.filter((c) => c.edited).length + fs.filter((x) => x.edited).length;
+        const switches = fs.filter(isSwitch);
+        const sliders = fs.filter((x) => !isSwitch(x));
+        return (
+          <details key={topic} className="me-group-box" open={!!f || changedOnly || openTopics.has(topic) || undefined} onToggle={(e) => toggleTopic(topic, (e.target as HTMLDetailsElement).open)}>
+            <summary>
+              <b>{topic}</b>
+              <small>{n}</small>
+              {changedN > 0 && <em className="me-badge">{changedN} changed</em>}
+              <span className="me-sum">{summaryOf(cs, fs)}</span>
+            </summary>
+            <div className="me-section-body">
+              {switches.length > 0 && (
+                <div className="me-switches">
+                  {switches.map((x) => (
+                    <div key={x.name} className={`me-switch ${x.edited ? 'edited' : ''}`}>
+                      <Switch on={x.value >= 0.5} onChange={(v) => set('float', x.name, v ? 1 : 0, (m) => ({ ...m, floats: m.floats.map((y) => (y.name === x.name ? { ...y, value: v ? 1 : 0, edited: true } : y)) }))} />
+                      <span title={x.name}>{nice(x.name)}</span>
+                      <RowTools edited={x.edited} onReset={() => reset('float', x.name)} onAnimate={() => animate('float', x.name)} />
+                    </div>
+                  ))}
+                </div>
+              )}
+              {cs.map((c) => (
+                <div key={c.name} className={`me-row ${c.edited ? 'edited' : ''}`}>
+                  <label title={c.name}>{nice(c.name)}</label>
+                  <span className="me-grow me-color">
+                    <ColorInput value={c.value} onChange={(v) => set('color', c.name, v, (m) => ({ ...m, colors: m.colors.map((x) => (x.name === c.name ? { ...x, value: v, edited: true } : x)) }))} />
+                    <span className="me-alpha" title="Alpha (opacity)">
+                      <Slider
+                        value={c.value[3] ?? 1}
+                        min={0}
+                        max={Math.max(1, Math.ceil(c.value[3] ?? 1))}
+                        step={0.01}
+                        onChange={(a) => {
+                          const v: RGBA = [c.value[0], c.value[1], c.value[2], a];
+                          set('color', c.name, v, (m) => ({ ...m, colors: m.colors.map((x) => (x.name === c.name ? { ...x, value: v, edited: true } : x)) }));
+                        }}
+                      />
+                    </span>
+                  </span>
+                  <RowTools edited={c.edited} onReset={() => reset('color', c.name)} onAnimate={() => animate('color', c.name)} />
+                </div>
+              ))}
+              {sliders.map((x) => (
+                <FloatRow key={x.name} p={x} onChange={(v) => set('float', x.name, v, (m) => ({ ...m, floats: m.floats.map((y) => (y.name === x.name ? { ...y, value: v, edited: true } : y)) }))} onReset={() => reset('float', x.name)} onAnimate={() => animate('float', x.name)} />
+              ))}
             </div>
-          ))}
-        </Section>
-      )}
-
-      {floats.length > 0 && (
-        <Section title="Values" count={floats.length}>
-          {floats.map((p) => (
-            <FloatRow key={p.name} p={p} onChange={(v) => set('float', p.name, v, (m) => ({ ...m, floats: m.floats.map((x) => (x.name === p.name ? { ...x, value: v, edited: true } : x)) }))} onReset={() => reset('float', p.name)} onAnimate={() => animate('float', p.name)} />
-          ))}
-        </Section>
-      )}
+          </details>
+        );
+      })}
 
       {textures.length > 0 && (
-        <Section title="Textures" count={textures.length} hint="Replace a texture with a PNG or JPG — it's stored in the scene. Export saves the current one as a PNG (MaterialEditor's export folder). Tiling repeats it; offset slides it.">
+        <details className="me-group-box" open={!!f || changedOnly || openTopics.has('Textures') || undefined} onToggle={(e) => toggleTopic('Textures', (e.target as HTMLDetailsElement).open)}>
+          <summary>
+            <b>Textures</b>
+            <small>{textures.length}</small>
+            {textures.some((t) => t.edited || t.offsetEdited || t.scaleEdited) && <em className="me-badge">{textures.filter((t) => t.edited || t.offsetEdited || t.scaleEdited).length} changed</em>}
+            <span className="me-sum">{textures.filter((t) => t.has).length} in use</span>
+            <Help text="Replace a texture with a PNG or JPG — it's stored in the scene. Export saves the current one as a PNG (MaterialEditor's export folder). Tiling repeats it; offset slides it." />
+          </summary>
           <div className="me-textures">
             {textures.map((t) => (
               <TextureTile
@@ -553,42 +663,36 @@ function MaterialView({ id, sel, onTreeChange }: { id: number; sel: Sel; onTreeC
               />
             ))}
           </div>
-        </Section>
+        </details>
       )}
 
       {keywords.length > 0 && (
-        <Section title="Keywords" count={keywords.length} hint="Shader features switched on or off.">
-          {keywords.map((k) => (
-            <div key={k.name} className={`me-row ${k.edited ? 'edited' : ''}`}>
-              <label title={k.name}>{nice(k.name)}</label>
-              <span className="me-grow">
+        <details className="me-group-box" open={!!f || changedOnly || openTopics.has('Features') || undefined} onToggle={(e) => toggleTopic('Features', (e.target as HTMLDetailsElement).open)}>
+          <summary>
+            <b>Shader features</b>
+            <small>{keywords.length}</small>
+            {keywords.some((k) => k.edited) && <em className="me-badge">{keywords.filter((k) => k.edited).length} changed</em>}
+            <span className="me-sum">{keywords.filter((k) => k.on).length} on</span>
+          </summary>
+          <div className="me-switches">
+            {keywords.map((k) => (
+              <div key={k.name} className={`me-switch ${k.edited ? 'edited' : ''}`}>
                 <Switch on={k.on} onChange={(v) => set('keyword', k.name, v, (m) => ({ ...m, keywords: m.keywords.map((x) => (x.name === k.name ? { ...x, on: v, edited: true } : x)) }))} />
-              </span>
-              <RowTools edited={k.edited} onReset={() => reset('keyword', k.name)} />
-            </div>
-          ))}
-        </Section>
+                <span title={k.name}>{nice(k.name)}</span>
+                <RowTools edited={k.edited} onReset={() => reset('keyword', k.name)} />
+              </div>
+            ))}
+          </div>
+        </details>
       )}
 
-      {f && !colors.length && !floats.length && !textures.length && !keywords.length && <div className="me-muted" style={{ padding: '12px 4px' }}>No value matches “{filter}”.</div>}
+      {(f || changedOnly) && !colors.length && !floats.length && !textures.length && !keywords.length && <div className="me-muted" style={{ padding: '12px 4px' }}>{f ? `No value matches “${filter}”.` : 'Nothing changed on this material.'}</div>}
       {!f && !mat.colors.length && !mat.floats.length && !mat.textures.length && !mat.keywords.length && (
         <div className="me-muted" style={{ padding: '12px 4px' }}>
           MaterialEditor doesn't list any values for {mat.shader}.
         </div>
       )}
     </div>
-  );
-}
-
-function Section({ title, count, hint, children }: { title: string; count: number; hint?: string; children: React.ReactNode }) {
-  return (
-    <section className="me-section">
-      <h3>
-        {title} <small>{count}</small>
-        {hint && <Help text={hint} />}
-      </h3>
-      <div className="me-section-body">{children}</div>
-    </section>
   );
 }
 
