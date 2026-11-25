@@ -4,8 +4,11 @@ import { addBoneTrack, listBones, useStore, type BoneEntry } from '../state/stor
 import { Icon } from './Icon';
 
 // the order groups appear in, the way people think of a body
-const ORDER = ['Head & neck', 'Body', 'Left arm', 'Right arm', 'Left fingers', 'Right fingers', 'Left leg', 'Right leg', 'IK targets', 'Chest', 'Hair', 'Skirt'];
-const OPEN_BY_DEFAULT = new Set(['Head & neck', 'Body']);
+const ORDER = ['Head & neck', 'Body', 'Left arm', 'Right arm', 'Left fingers', 'Right fingers', 'Left leg', 'Right leg', 'IK targets', 'Chest', 'Hair', 'Skirt', 'Other'];
+// closed to start: the group names are the overview; open the one you need
+const OPEN_BY_DEFAULT = new Set<string>();
+/** Bones that aren't part of the body's pose (the dan chain) go last, not in Body. */
+const groupOf = (b: BoneEntry) => (/dan\d|_dan/i.test(b.name) ? 'Other' : b.group);
 
 interface Picked {
   kind: string;
@@ -50,8 +53,9 @@ export function BoneTracks({ oci, query }: { oci: number; query: string }) {
     const m = new Map<string, BoneEntry[]>();
     for (const b of bones) {
       if (q && !`${b.label} ${b.name} ${b.group}`.toLowerCase().includes(q)) continue;
-      let l = m.get(b.group);
-      if (!l) m.set(b.group, (l = []));
+      const g = groupOf(b);
+      let l = m.get(g);
+      if (!l) m.set(g, (l = []));
       l.push(b);
     }
     return [...m.entries()].sort((a, b) => (ORDER.indexOf(a[0]) + 99) % 99 - (ORDER.indexOf(b[0]) + 99) % 99);

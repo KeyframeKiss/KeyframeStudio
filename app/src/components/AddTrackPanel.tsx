@@ -5,6 +5,25 @@ import { BoneTracks } from './BoneTracks';
 import { Icon, TypeIcon } from './Icon';
 
 import { pressable } from '../lib/pressable';
+
+/** What a property animates, so the list reads by meaning rather than by which mod provides it. */
+const KINDS = ['Face', 'Pose', 'Animation', 'Clothes', 'Body and colour', 'Posing strength', 'Physics', 'Camera', 'Effects', 'Other'] as const;
+type Kind = (typeof KINDS)[number];
+function kindOf(m: TrackModel): Kind {
+  const id = m.id;
+  const all = `${m.id} ${m.nameEn ?? ''} ${m.name}`;
+  if (/^fx\./.test(id)) return 'Effects';
+  if (/^camera/i.test(id)) return 'Camera';
+  if (/^(character(Neck|Eyes|EyesOpen|Eyebrows|EyebrowsOpen|Mouth|MouthOpen)|tears|blush|shakingEnabled|lastBlendShape|groupBlendShape)/i.test(id)) return 'Face';
+  if (/^(guideObject|bone(Pos|Rot|Scale)|character(Left|Right)Hand)/i.test(id)) return 'Pose';
+  if (/^(ikPositionWeight|fbbik)/i.test(id)) return 'Posing strength';
+  if (/^(charAnimation|objectAnimation|timeScale|objectEnabled)/i.test(id)) return 'Animation';
+  if (/^(charClothes|juice)/i.test(id)) return 'Clothes';
+  if (/^(dynamicBone|collider)|boob|butt/i.test(id)) return 'Physics';
+  if (/skin|tan|bust|hair|eyebrow|nipple|pregnan|week/i.test(all) || /SkinColor|Pregnancy/i.test(m.owner)) return 'Body and colour';
+  return 'Other';
+}
+
 export function AddTrackPanel() {
   const status = useStore((s) => s.status);
   const selection = useStore((s) => s.studioSelection);
@@ -38,15 +57,35 @@ export function AddTrackPanel() {
 
   const groups = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const m = new Map<string, TrackModel[]>();
+    const m = new Map<Kind, TrackModel[]>();
     for (const x of models) {
       if (q && !`${x.name} ${x.nameEn ?? ''} ${x.owner} ${x.id}`.toLowerCase().includes(q)) continue;
-      let l = m.get(x.owner);
-      if (!l) m.set(x.owner, (l = []));
+      const k = kindOf(x);
+      let l = m.get(k);
+      if (!l) m.set(k, (l = []));
       l.push(x);
     }
-    return [...m.entries()];
+    return KINDS.filter((k) => m.has(k)).map((k) => [k, m.get(k)!] as const);
   }, [models, query]);
+  // which groups are open: Face and Pose to start, then as left; all of them while searching
+  const [open, setOpenState] = useState<Set<string>>(() => {
+    try {
+      return new Set(JSON.parse(localStorage.getItem('kf.addTrack.open') || '["Face","Pose","Camera"]'));
+    } catch {
+      return new Set(['Face', 'Pose', 'Camera']);
+    }
+  });
+  const toggle = (k: string) => {
+    const next = new Set(open);
+    if (next.has(k)) next.delete(k);
+    else next.add(k);
+    setOpenState(next);
+    try {
+      localStorage.setItem('kf.addTrack.open', JSON.stringify([...next]));
+    } catch {
+      /* not remembered; fine */
+    }
+  };
 
   return (
     <>
@@ -93,12 +132,18 @@ export function AddTrackPanel() {
             {query ? 'Try another search.' : 'No animatable properties for this object.'}
           </div>
           ) : (
-          groups.map(([owner, list]) => (
-            <div className="model-group" key={owner}>
-              <div className="model-group-title">
-                {owner} · {list.length}
-              </div>
-              {list.map((m, mi) => {
+          groups.map(([kind, list]) => {
+            const isOpen = !!query.trim() || open.has(kind);
+            const animated = list.filter((m) => existing.has(`${m.owner}/${m.id}`)).length;
+            return (
+            <div className="model-group" key={kind}>
+              <button className="model-group-title model-group-toggle" aria-expanded={isOpen} onClick={() => toggle(kind)}>
+                <Icon name={isOpen ? 'chevronDown' : 'chevronRight'} size={11} />
+                <span>{kind}</span>
+                <small>{list.length}</small>
+                {animated > 0 && <small className="model-group-anim">{animated} animated</small>}
+              </button>
+              {isOpen && list.map((m, mi) => {
                 const has = existing.has(`${m.owner}/${m.id}`);
                 return (
                   <div {...pressable}
@@ -116,7 +161,8 @@ export function AddTrackPanel() {
                 );
               })}
             </div>
-          ))
+            );
+          })
           )}
           </>
         )}

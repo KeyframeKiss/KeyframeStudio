@@ -10978,3 +10978,32 @@ a.btn {
   color: var(--accent);
   font-size: 11px;
 }
+/* + Track: groups by what they animate, closed until opened */
+.model-group-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  border: 0;
+  border-top: 1px solid var(--line-soft);
+  text-align: left;
+  cursor: pointer;
+  color: var(--text-1);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: 0;
+  padding: 7px 10px;
+}
+.model-group-toggle:hover {
+  background: var(--bg-2);
+}
+.model-group-toggle small {
+  color: var(--text-3);
+  font-weight: 500;
+  font-size: var(--fs-xs);
+}
+.model-group-toggle .model-group-anim {
+  margin-left: auto;
+  color: var(--accent);
+}
