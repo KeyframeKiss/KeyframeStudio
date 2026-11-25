@@ -36,6 +36,7 @@ namespace StudioEX.Bridge.Api
             r.Add("me.copy", a => { Require(); return Copy(a); });
             r.Add("me.paste", a => { Require(); return Paste(a); });
             r.Add("me.animate", a => { Require(); return Animate(a); });
+            r.Add("me.shaderSwap", a => { Require(); return ShaderSwap(a); });
         }
 
         private static void Require()
@@ -53,6 +54,7 @@ namespace StudioEX.Bridge.Api
         [MethodImpl(MethodImplOptions.NoInlining)] private static object Copy(Dictionary<string, object> a) => MeImpl.Copy(a);
         [MethodImpl(MethodImplOptions.NoInlining)] private static object Paste(Dictionary<string, object> a) => MeImpl.Paste(a);
         [MethodImpl(MethodImplOptions.NoInlining)] private static object Animate(Dictionary<string, object> a) => MeImpl.Animate(a);
+        [MethodImpl(MethodImplOptions.NoInlining)] private static object ShaderSwap(Dictionary<string, object> a) => MeImpl.ShaderSwap(a);
     }
 
     internal static class MeImpl
@@ -444,6 +446,82 @@ namespace StudioEX.Bridge.Api
         }
 
         private static bool RendererKind(string k) => k == "enabled" || k == "shadowCasting" || k == "receiveShadows";
+
+        // ------------------------------------------------------------------ a whole character to Az Standard and back
+        // Az Standard (Acezen) shaders have an add-light pass, so lights placed in the scene show on the character;
+        // KK's own and xukmi Vanilla Plus character shaders draw the main light only.
+
+        /// <summary>The Az shader for a material, from its shader's name and the part it's on; null = leave it.</summary>
+        private static string AzFor(Part part, string shader)
+        {
+            string n = (shader ?? "").ToLowerInvariant();
+            if (n.StartsWith("az/") || n.Contains("shadowcast") || n.Contains("silhouette") || n.Contains("outline") || n.Contains("glasses") || n.Contains("nose") || n.Contains("mnpb") || n.Contains("tooth") || n.Contains("tongue") || n.StartsWith("custom/") || n.StartsWith("hidden/") || n.Contains("particle") || n.Contains("unlit")) return null;
+            if (n.Contains("eyew")) return "Az/StandardEyeW";
+            if (n.Contains("eye")) return "Az/StandardEye";
+            if (n.Contains("skin")) return "Az/StandardSkin";
+            if (n.Contains("hair")) return "Az/StandardHair";
+            bool alpha = n.Contains("alpha") || n.Contains("transparent");
+            if (part.Type == ObjectType.Accessory || n.Contains("item")) return alpha ? "Az/StandardItemAlpha" : "Az/StandardItemCutout";
+            if (part.Type == ObjectType.Clothing || n.Contains("main_") || n.Contains("opaque") || n.Contains("main")) return alpha ? "Az/StandardClothAlpha" : "Az/StandardClothCutout";
+            return null;
+        }
+
+        private sealed class MultiUndo : IUndoEntry
+        {
+            private readonly List<Change> _changes;
+            public MultiUndo(List<Change> changes, string label) { _changes = changes; Label = label; }
+            public string Label { get; }
+            public bool Absorbs(IUndoEntry newer) => false;
+            public IUndoEntry Restore()
+            {
+                var inverse = new List<Change>();
+                for (int i = _changes.Count - 1; i >= 0; i--)
+                {
+                    var c = _changes[i];
+                    if (c.Target.Part.Go == null || c.Target.Renderer == null || c.Target.Mat == null) continue;
+                    inverse.Add(new Change { Target = c.Target, Kind = c.Kind, Prop = c.Prop, Previous = Current(c.Target, c.Kind, c.Prop) });
+                    if (c.Previous == null) Remove(c.Target, c.Kind, c.Prop);
+                    else Apply(c.Target, c.Kind, c.Prop, c.Previous);
+                }
+                inverse.Reverse();
+                return new MultiUndo(inverse, Label);
+            }
+        }
+
+        /// <summary>args: {id, to: "az" | "original"} → {changed, kept, az}: every material of a character to its Az Standard match, or Az swaps undone. One undo step.</summary>
+        public static object ShaderSwap(Dictionary<string, object> a)
+        {
+            var oci = Oci(a);
+            if (!(oci is OCIChar)) throw new BridgeException("Select a character");
+            bool toAz = (a.GetString("to") ?? "az") != "original";
+            var loaded = MaterialEditorAPI.MaterialEditorPluginBase.LoadedShaders;
+            if (toAz && !loaded.ContainsKey("Az/StandardSkin")) throw new BridgeException("Az Standard shaders aren't installed (Acezen's Az.Shader.Standard zipmod)");
+            var changes = new List<Change>();
+            int kept = 0, az = 0;
+            foreach (var part in Parts(oci))
+                foreach (var r in Renderers(part))
+                    foreach (var m in MaterialEditorAPI.MaterialAPI.GetMaterials(part.Go, r))
+                    {
+                        if (m == null || m.shader == null) continue;
+                        var t = new Target { Part = part, Renderer = r, Mat = m };
+                        string edited = GetShader(t);
+                        if (!toAz)
+                        {
+                            if (edited == null || !edited.StartsWith("Az/")) continue;
+                            changes.Add(new Change { Target = t, Kind = "shader", Prop = null, Previous = edited });
+                            Remove(t, "shader", null);
+                            continue;
+                        }
+                        string want = AzFor(part, m.shader.name);
+                        if (m.shader.name.StartsWith("Az/")) { az++; continue; }
+                        if (want == null || !loaded.ContainsKey(want)) { kept++; continue; }
+                        changes.Add(new Change { Target = t, Kind = "shader", Prop = null, Previous = edited });
+                        Apply(t, "shader", null, want);
+                        az++;
+                    }
+            if (changes.Count > 0) UndoStack.Push(new MultiUndo(changes, toAz ? "Az Standard shaders" : "Original shaders"));
+            return new Dictionary<string, object> { { "changed", changes.Count }, { "kept", kept }, { "az", toAz ? az : 0 } };
+        }
 
         /// <summary>args: {id, part, renderer, material?, kind, prop?, value}</summary>
         /// <summary>Like Set, but no undo step: for undo / redo putting back values on an object it re-created.</summary>

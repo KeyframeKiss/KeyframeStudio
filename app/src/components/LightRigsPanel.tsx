@@ -7,6 +7,8 @@ import { IconTile, SwitchCard } from './EditorBits';
 import { RigDiagram, type DiagramLight } from './RigDiagram';
 import { call, displayName, selectedCharacters, setNodeVisible, toast, useStore } from '../state/store';
 import { AimLightsPanel, ProjectorsPanel } from './ProjectorsPanel';
+import { ParamRow, type Param, type Value } from './EffectsPage';
+import { bridge } from '../bridge/client';
 
 interface Rig {
   name: string;
@@ -211,6 +213,89 @@ export function LightingScene({ refreshKey }: { refreshKey: number }) {
   );
 }
 
+const CL_PARAMS: Param[] = [
+  { key: 'strength', label: 'Strength', kind: 'float', min: 0, max: 3, step: 0.01, help: 'How strongly lights show on characters' },
+  { key: 'toon', label: 'Toon edge', kind: 'bool', help: 'A clean edge between lit and unlit, like anime shading. Off: soft, like a regular light' },
+  { key: 'softness', label: 'Edge softness', kind: 'float', min: 0.005, max: 0.5, step: 0.005, help: 'How soft the toon edge is' },
+];
+
+/**
+ * Lights on characters. Studio's character shaders draw only its built-in character light, so a light added to the
+ * scene never shows on them. Keyframe Studio draws those lights onto characters itself (any shader, soft or with a
+ * toon edge, keyable); or, for characters on shaders that take extra lights (Az Standard), the shaders do it.
+ */
+export function CharacterLights() {
+  const status = useStore((s) => s.status);
+  const target = useTarget();
+  const nodes = useStore((s) => s.nodes);
+  const [v, setV] = useState<Record<string, Value> | null>(null);
+  const load = useCallback(() => {
+    call<{ effects: Record<string, Record<string, Value>> }>('fx.get').then((r) => r?.effects?.charaLight && setV(r.effects.charaLight));
+  }, []);
+  useEffect(() => {
+    if (status !== 'open') return;
+    load();
+    const on = () => load();
+    window.addEventListener('kf:picture-changed', on);
+    window.addEventListener('kf:history', on);
+    const off = bridge.on('fx.changed', (d) => {
+      const e = (d as { effects?: Record<string, Record<string, Value>> })?.effects?.charaLight;
+      if (e) setV(e);
+    });
+    return () => {
+      window.removeEventListener('kf:picture-changed', on);
+      window.removeEventListener('kf:history', on);
+      off();
+    };
+  }, [status, load]);
+  const set = (values: Record<string, Value>) =>
+    call<{ effects: Record<string, Record<string, Value>> }>('fx.set', { effect: 'charaLight', values }).then((r) => r?.effects?.charaLight && setV(r.effects.charaLight));
+  const swap = async (to: 'az' | 'original') => {
+    if (target == null) return;
+    const r = await call<{ changed: number; kept: number }>('me.shaderSwap', { id: target, to });
+    if (r) toast(to === 'az' ? `${r.changed} material${r.changed === 1 ? '' : 's'} on Az Standard${r.kept ? `, ${r.kept} kept as they were` : ''} (Ctrl+Z to undo)` : `${r.changed} material${r.changed === 1 ? '' : 's'} back to the original shader`, 'done');
+  };
+  if (!v) return null;
+  const ours = v.on === true;
+  return (
+    <Section
+      title="Lights on characters"
+      help="Studio's character shaders show only its built-in character light: lights added to the scene never reach them. Keyframe Studio can draw those lights onto characters itself — any shader, soft or with a toon edge, in videos and stills. Or put a character on Az Standard shaders, which take scene lights the usual way. Lights reach characters when their Characters switch (In this scene) is on."
+    >
+      <div className="cleanup-row">
+        <span>Drawn by</span>
+        <div>
+          <div className="seg">
+          <button className={ours ? 'on' : ''} onClick={() => set({ on: true })} title="Keyframe Studio draws scene lights onto characters: works with every shader, keeps the anime look">
+            Keyframe Studio
+          </button>
+          <button className={!ours ? 'on' : ''} onClick={() => set({ on: false })} title="Scene lights reach characters the usual way: only shaders made for extra lights (Az Standard) show them">
+            The shaders
+          </button>
+          </div>
+        </div>
+      </div>
+      {ours && CL_PARAMS.filter((p) => p.key !== 'softness' || v.toon === true).map((p) => <ParamRow key={p.key} effect="charaLight" p={p} v={v[p.key] ?? 0} onSet={set} />)}
+      {target != null && (
+        <div className="cleanup-row">
+          <span>
+            {displayName(nodes[target])}’s shaders{' '}
+            <Help text="Az Standard shaders (Acezen) take scene lights the way any 3D program does — a more realistic look than the anime shaders. Switches each material to its Az match (skin, hair, eyes, clothes, accessories) through MaterialEditor, saved with the scene; nose, mouth, glasses and outlines stay. One undo step; Back puts the original shaders back." />
+          </span>
+          <span className="tool-actions">
+            <button className="btn small solid" onClick={() => swap('az')}>
+              Use Az Standard
+            </button>
+            <button className="btn small solid" onClick={() => swap('original')}>
+              Back to original
+            </button>
+          </span>
+        </div>
+      )}
+    </Section>
+  );
+}
+
 function CharaOnlySwitch() {
   const [on, setOn] = useState(charaOnlyPref);
   return (
@@ -318,6 +403,7 @@ export function LightingPage() {
   return (
     <>
       <LightingScene refreshKey={key} />
+      <CharacterLights />
       <LightRigsPanel onChanged={changed} />
       <ProjectorsPanel onChanged={changed} />
       <AimLightsPanel />

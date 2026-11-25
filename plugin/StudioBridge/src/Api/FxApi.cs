@@ -46,6 +46,8 @@ namespace StudioEX.Bridge.Api
             // ambient occlusion: radius in metres, fade = distance (m) it fades out by (0 = never), colour of the shade
             { "ao", new Dictionary<string, object> {
                 { "on", false }, { "intensity", 1f }, { "radius", 0.3f }, { "contrast", 1f }, { "fade", 0f }, { "color", new[] { 0f, 0f, 0f, 1f } } } },
+            // character lights: scene lights switched to light characters, drawn onto them by us (any shader)
+            { "charaLight", new Dictionary<string, object> { { "on", false }, { "strength", 1f }, { "toon", false }, { "softness", 0.08f } } },
             // barrel (+) / pincushion (-), refitted to fill the frame
             { "distortion", new Dictionary<string, object> { { "on", false }, { "amount", 0.15f }, { "fit", true } } },
             { "aberration", new Dictionary<string, object> { { "on", false }, { "amount", 0.3f } } },
@@ -57,7 +59,7 @@ namespace StudioEX.Bridge.Api
 
         private static Dictionary<string, Dictionary<string, object>> _fx = Clone(Defaults);
         private static string _bundleError;
-        private static Material _fog, _grade, _sharpen, _lens, _dof, _lut, _bloom, _ao, _accum;
+        private static Material _fog, _grade, _sharpen, _lens, _dof, _lut, _bloom, _ao, _accum, _charaLight;
         /// <summary>A quality still with a real lens makes its own blur: our depth of field steps aside while it renders.</summary>
         internal static bool HoldDof;
 
@@ -75,6 +77,8 @@ namespace StudioEX.Bridge.Api
             r.Add("fx.get", a => State());
             r.Add("fx.luts", a => new Dictionary<string, object> { { "folder", LutFiles.Folder }, { "files", LutFiles.List() } });
             r.Add("fx.set", Set);
+            // tests / diagnosis: what the character-lights step saw last frame (its surface and colour pictures)
+            r.Add("fx.charaLightDebug", a => Camera.main?.GetComponent<KfEffects>()?.CharaDebug(a.GetInt("width", 320)));
             r.Add("fx.reset", a =>
             {
                 string e = a.GetString("effect");
@@ -260,6 +264,7 @@ namespace StudioEX.Bridge.Api
                 _bloom = M("Bloom");
                 _ao = M("Ao");
                 _accum = M("Accum");
+                _charaLight = M("CharaLight");
                 return true;
             }
             catch (Exception e)
@@ -289,7 +294,8 @@ namespace StudioEX.Bridge.Api
                 comp.enabled = true;
             }
             else if (comp != null) comp.enabled = false;
-            bool wantDepth = AnyOn && ((bool)_fx["fog"]["on"] || (bool)_fx["dof"]["on"] || (bool)_fx["ao"]["on"]);
+            bool wantDepth = AnyOn && ((bool)_fx["fog"]["on"] || (bool)_fx["dof"]["on"] || (bool)_fx["ao"]["on"] || (bool)_fx["charaLight"]["on"]);
+            LightsApi.SyncCharaMasks();
             if (wantDepth && (cam.depthTextureMode & DepthTextureMode.Depth) == 0) { cam.depthTextureMode |= DepthTextureMode.Depth; _addedDepth = cam; }
             else if (!wantDepth && _addedDepth == cam) { cam.depthTextureMode &= ~DepthTextureMode.Depth; _addedDepth = null; }
         }
@@ -348,6 +354,18 @@ namespace StudioEX.Bridge.Api
 
         // for the viewport's focus marker
         internal static bool DofOn => B("dof", "on");
+
+        /// <summary>Whether we draw character lights (else the lights reach characters the usual way: shaders with an add-light pass).</summary>
+        internal static bool CharaLightOurs => B("charaLight", "on");
+
+        /// <summary>A light was just switched to light characters: our character lights come on with it (no undo step of their own).</summary>
+        internal static void EnsureCharaLight()
+        {
+            if (B("charaLight", "on")) return;
+            _fx["charaLight"]["on"] = true;
+            Ensure();
+            StudioBridgePlugin.Instance?.Broadcast("fx.changed", State());
+        }
 
         /// <summary>
         /// Where depth of field focuses (its Eyes / View centre / Fixed setting), in metres along the view — used by
@@ -462,6 +480,159 @@ namespace StudioEX.Bridge.Api
                 foreach (var r in made) RenderTexture.ReleaseTemporary(r);
             }
 
+            // ---- character lights: before the camera renders, the characters' surface direction / distance and colour
+            private RenderTexture _cgGeo, _cgAlb;
+            private int _cgCount;
+            private readonly Vector4[] _cgPos = new Vector4[8], _cgDir = new Vector4[8], _cgCol = new Vector4[8];
+
+            private void ReleaseChara()
+            {
+                if (_cgGeo != null) RenderTexture.ReleaseTemporary(_cgGeo);
+                if (_cgAlb != null) RenderTexture.ReleaseTemporary(_cgAlb);
+                _cgGeo = _cgAlb = null;
+                _cgCount = 0;
+            }
+
+            // before the camera culls: our view matrices are set back by its own render that follows
+            private void OnPreCull() => RenderChara();
+
+            private void RenderChara()
+            {
+                ReleaseChara();
+                if (!B("charaLight", "on") || _charaLight == null || !Shaders.TryGetValue("Hidden/KeyframeStudio/CharaGeo", out var geo) || !Shaders.TryGetValue("Hidden/KeyframeStudio/CharaAlbedo", out var alb)) return;
+                try
+                {
+                    int n = 0;
+                    foreach (var l in LightsApi.CharaLightsNow())
+                    {
+                        if (n >= 8) break;
+                        var t = l.transform;
+                        float type = l.type == LightType.Directional ? 2 : l.type == LightType.Spot ? 1 : 0;
+                        _cgPos[n] = new Vector4(t.position.x, t.position.y, t.position.z, type);
+                        _cgDir[n] = new Vector4(t.forward.x, t.forward.y, t.forward.z, Mathf.Cos(l.spotAngle * 0.5f * Mathf.Deg2Rad));
+                        var c = (QualitySettings.activeColorSpace == ColorSpace.Linear ? l.color.linear : l.color) * l.intensity;
+                        _cgCol[n] = new Vector4(c.r, c.g, c.b, Mathf.Max(0.01f, l.range));
+                        n++;
+                    }
+                    if (n == 0) return;
+                    int w = Mathf.Max(1, _cam.pixelWidth), h = Mathf.Max(1, _cam.pixelHeight);
+                    // every shown character part drawn straight (no culling): its surface, then its colour
+                    var draws = CharaDraws();
+                    if (draws.Count == 0) return;
+                    _cgGeo = RenderTexture.GetTemporary(w, h, 24, RenderTextureFormat.ARGBHalf);
+                    _cgAlb = RenderTexture.GetTemporary(w, h, 24, RenderTextureFormat.ARGB32);
+                    if (_cgCb == null) _cgCb = new UnityEngine.Rendering.CommandBuffer { name = "Keyframe Studio character lights" };
+                    var cb = _cgCb;
+                    cb.Clear();
+                    cb.SetViewProjectionMatrices(_cam.worldToCameraMatrix, _cam.projectionMatrix);
+                    for (int pass = 0; pass < 2; pass++)
+                    {
+                        cb.SetRenderTarget(pass == 0 ? _cgGeo : _cgAlb);
+                        cb.ClearRenderTarget(true, true, new Color(0, 0, 0, 0));
+                        foreach (var d in draws) cb.DrawRenderer(d.R, CopyFor(d.M, pass == 0 ? geo : alb, pass == 0 ? _cgGeoMats : _cgAlbMats), d.Sub);
+                    }
+                    Graphics.ExecuteCommandBuffer(cb);
+                    _cgCount = n;
+                }
+                catch (Exception e)
+                {
+                    StudioBridgePlugin.Logger.LogDebug("Character lights: " + e.Message);
+                    ReleaseChara();
+                }
+            }
+
+            private struct CgDraw { public Renderer R; public Material M; public int Sub; }
+            private static UnityEngine.Rendering.CommandBuffer _cgCb;
+            private static readonly Dictionary<Material, Material> _cgGeoMats = new Dictionary<Material, Material>(), _cgAlbMats = new Dictionary<Material, Material>();
+            private static readonly List<CgDraw> _cgDraws = new List<CgDraw>();
+            private static readonly List<Renderer> _cgRenderers = new List<Renderer>();
+            private static int _cgListFrame = -1000;
+
+            /// <summary>The characters' shown parts (mesh, material, sub-mesh); the part list is gathered again every second or so.</summary>
+            private static List<CgDraw> CharaDraws()
+            {
+                if (Time.frameCount - _cgListFrame > 60 || _cgRenderers.Any(r => r == null))
+                {
+                    _cgListFrame = Time.frameCount;
+                    _cgRenderers.Clear();
+                    var st = Singleton<Studio.Studio>.Instance;
+                    if (st != null)
+                        foreach (var o in st.dicObjectCtrl.Values)
+                            if (o is OCIChar c && c.charInfo != null)
+                                foreach (var r in c.charInfo.GetComponentsInChildren<Renderer>(true))
+                                    if ((r is SkinnedMeshRenderer || r is MeshRenderer) && r.gameObject.layer == 10) _cgRenderers.Add(r);
+                    if (_cgGeoMats.Count > 2000) { foreach (var m in _cgGeoMats.Values.Concat(_cgAlbMats.Values)) if (m != null) Destroy(m); _cgGeoMats.Clear(); _cgAlbMats.Clear(); }
+                }
+                _cgDraws.Clear();
+                foreach (var r in _cgRenderers)
+                {
+                    if (r == null || !r.enabled || !r.gameObject.activeInHierarchy || r.shadowCastingMode == UnityEngine.Rendering.ShadowCastingMode.ShadowsOnly) continue;
+                    var mesh = r is SkinnedMeshRenderer sk ? sk.sharedMesh : r.GetComponent<MeshFilter>()?.sharedMesh;
+                    if (mesh == null) continue;
+                    var mats = r.sharedMaterials;
+                    for (int i = 0; i < mats.Length; i++)
+                        if (mats[i] != null) _cgDraws.Add(new CgDraw { R = r, M = mats[i], Sub = Mathf.Min(i, mesh.subMeshCount - 1) });
+                }
+                return _cgDraws;
+            }
+
+            /// <summary>Our shader with this part's texture and colour.</summary>
+            private static Material CopyFor(Material src, Shader sh, Dictionary<Material, Material> cache)
+            {
+                if (!cache.TryGetValue(src, out var m) || m == null) cache[src] = m = new Material(sh) { hideFlags = HideFlags.HideAndDontSave };
+                if (src.HasProperty("_MainTex"))
+                {
+                    m.SetTexture("_MainTex", src.GetTexture("_MainTex"));
+                    m.SetTextureScale("_MainTex", src.GetTextureScale("_MainTex"));
+                    m.SetTextureOffset("_MainTex", src.GetTextureOffset("_MainTex"));
+                }
+                else m.SetTexture("_MainTex", Texture2D.whiteTexture);
+                m.SetColor("_Color", src.HasProperty("_Color") ? src.GetColor("_Color") : Color.white);
+                return m;
+            }
+
+            private void CharaLightPass(RenderTexture src, RenderTexture dst)
+            {
+                _charaLight.SetTexture("_KfCharaGeo", _cgGeo);
+                _charaLight.SetTexture("_KfCharaAlbedo", _cgAlb);
+                _charaLight.SetMatrix("_KfInvProj", _cam.projectionMatrix.inverse);
+                _charaLight.SetMatrix("_KfCamToWorld", _cam.worldToCameraMatrix.inverse);
+                _charaLight.SetVectorArray("_KfLPos", _cgPos);
+                _charaLight.SetVectorArray("_KfLDir", _cgDir);
+                _charaLight.SetVectorArray("_KfLCol", _cgCol);
+                _charaLight.SetVector("_KfCharaLight", new Vector4(_cgCount, Mathf.Max(0f, F("charaLight", "strength")), B("charaLight", "toon") ? 1 : 0, Mathf.Clamp(F("charaLight", "softness"), 0.005f, 1f)));
+                Graphics.Blit(src, dst, _charaLight);
+            }
+
+            private void OnDisable() => ReleaseChara();
+
+            internal object CharaDebug(int width)
+            {
+                if (_cgGeo == null) return new Dictionary<string, object> { { "lights", _cgCount }, { "ready", false } };
+                string Pic(RenderTexture rt, out float cover)
+                {
+                    int w = Mathf.Clamp(width, 32, 1024), h = Mathf.Max(1, w * rt.height / Mathf.Max(1, rt.width));
+                    var tmp = RenderTexture.GetTemporary(w, h, 0, RenderTextureFormat.ARGB32);
+                    Graphics.Blit(rt, tmp);
+                    var prev = RenderTexture.active;
+                    RenderTexture.active = tmp;
+                    var tex = new Texture2D(w, h, TextureFormat.RGBA32, false);
+                    tex.ReadPixels(new Rect(0, 0, w, h), 0, 0);
+                    tex.Apply();
+                    RenderTexture.active = prev;
+                    RenderTexture.ReleaseTemporary(tmp);
+                    var px = tex.GetPixels32();
+                    int n = 0;
+                    foreach (var c in px) if (c.r + c.g + c.b > 6) n++;
+                    cover = n / (float)px.Length;
+                    string url = "data:image/jpeg;base64," + Convert.ToBase64String(tex.EncodeToJPG(85));
+                    Destroy(tex);
+                    return url;
+                }
+                string geo = Pic(_cgGeo, out float cg), alb = Pic(_cgAlb, out float ca);
+                return new Dictionary<string, object> { { "lights", _cgCount }, { "ready", true }, { "geoCover", (double)cg }, { "albCover", (double)ca }, { "geo", geo }, { "albedo", alb } };
+            }
+
             /// <summary>Ray-traced shade (quality stills): the view's depth in metres, traced, then the same blend as AO.</summary>
             private void RtAo(RenderTexture src, RenderTexture dst)
             {
@@ -521,6 +692,7 @@ namespace StudioEX.Bridge.Api
                 var passes = new List<object>(5); // a Material (one pass) or an Action for multi-pass effects
                 try
                 {
+                    if (_cgCount > 0 && _cgGeo != null && _charaLight != null) passes.Add((Action<RenderTexture, RenderTexture>)CharaLightPass);
                     if (RtShade.Active != null && _ao != null && _accum != null) passes.Add((Action<RenderTexture, RenderTexture>)RtAo);
                     else if (B("ao", "on") && _ao != null) passes.Add((Action<RenderTexture, RenderTexture>)Ao);
                     if (B("fog", "on"))

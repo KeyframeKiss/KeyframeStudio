@@ -122,4 +122,59 @@ export default async function (t) {
     const aimed = (await ok('aim.list')).lights.filter((l) => l.target >= 0);
     check('aimed light back', aimed.length === 1 && aimed[0].bone === 'head', JSON.stringify(aimed));
   });
+
+  if (!t.hello.commands.includes('fx.charaLightDebug')) return;
+  await t.step('scene lights on characters: ours (any shader), the shaders, Az Standard', async () => {
+    const lights = await ok('light.charaList');
+    if (!lights.length) t.skip('no scene lights');
+    const ids = lights.map((l) => l.id);
+    const mean = async () => ok('camera.mean', { width: 96 });
+    const diff = (a, b) => a.reduce((s, v, i) => s + Math.abs(v - b[i]), 0);
+    const litChara = async () => (await ok('diag.lighting', {})).lights.filter((l) => /Spotlight|Pointlight/i.test(l.name)).map((l) => l.litChara);
+    t.defer(async () => {
+      await req('light.lightsChara', { ids, on: false });
+      await req('fx.reset', { effect: 'charaLight' });
+    });
+    await ok('fx.set', { effect: 'charaLight', values: { on: false } });
+    await ok('light.lightsChara', { ids, on: false });
+    await sleep(300);
+    const m0 = await mean();
+    await ok('light.lightsChara', { ids, on: true });
+    await sleep(500);
+    check('switching lights on turns our character lights on', (await ok('fx.get')).effects.charaLight.on === true);
+    check('drawn by us: the lights stay off the characters\' layer (no double light)', (await litChara()).every((x) => !x), JSON.stringify(await litChara()));
+    const dbg = await ok('fx.charaLightDebug', { width: 96 });
+    check('the characters are in our surface picture', dbg.ready && dbg.lights >= 1 && dbg.geoCover > 0.02 && dbg.albCover > 0.02, `lights ${dbg.lights}, cover ${dbg.geoCover?.toFixed(3)} / ${dbg.albCover?.toFixed(3)}`);
+    const m1 = await mean();
+    check('the character picks up the light', diff(m0, m1) > 0.01, diff(m0, m1).toFixed(4));
+    await ok('fx.set', { effect: 'charaLight', values: { toon: true } });
+    await sleep(300);
+    check('toon edge changes the look', diff(m1, await mean()) > 0.001);
+    await ok('fx.set', { effect: 'charaLight', values: { toon: false, strength: 0 } });
+    await sleep(300);
+    check('strength 0 = as without', diff(m0, await mean()) < 0.003);
+    await ok('fx.set', { effect: 'charaLight', values: { strength: 1, on: false } });
+    await sleep(300);
+    check('drawn by the shaders: the lights reach the characters\' layer', (await litChara()).every((x) => x), JSON.stringify(await litChara()));
+
+    if (!t.has('materials')) return;
+    const shaders = async () => {
+      const tree = await ok('me.tree', { id: chara.id });
+      return tree.parts.flatMap((p) => p.renderers.flatMap((r) => r.materials.map((m) => m.shader)));
+    };
+    const r = await req('me.shaderSwap', { id: chara.id, to: 'az' });
+    if (!r.ok) { check('Az Standard missing: a clear message', /Az Standard/.test(r.error ?? ''), r.error); return; }
+    t.defer(async () => { await req('me.shaderSwap', { id: chara.id, to: 'original' }); });
+    await sleep(600);
+    const az = await shaders();
+    check('Az Standard on skin, hair and clothes; helper parts kept', r.result.changed > 0 && az.includes('Az/StandardSkin') && az.some((x) => /^Az\/StandardHair/.test(x)) && az.includes('Custom/Silhouette'), JSON.stringify(r.result));
+    await ok('undo');
+    await sleep(600);
+    check('one undo puts every original back', !(await shaders()).some((x) => x.startsWith('Az/')));
+    await ok('redo');
+    await sleep(600);
+    const back = await ok('me.shaderSwap', { id: chara.id, to: 'original' });
+    await sleep(600);
+    check('"Back to original" removes only our Az edits', back.changed === r.result.changed && !(await shaders()).some((x) => x.startsWith('Az/')), JSON.stringify(back));
+  });
 }

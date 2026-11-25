@@ -35,7 +35,12 @@ namespace StudioEX.Bridge
         /// <summary>A light just added with Studio's Add › Light: it lights characters too (unless switched off in settings).</summary>
         [HarmonyPostfix, HarmonyPatch(typeof(Studio.AddObjectLight), nameof(Studio.AddObjectLight.Add), new[] { typeof(int) })]
         private static void LightAdded(Studio.OCILight __result) =>
-            Try(() => { if (__result != null && (LightsApi.NewLightsChara?.Value ?? true)) LightsApi.ApplyLightsChara(__result, true); });
+            Try(() =>
+            {
+                if (__result == null || !(LightsApi.NewLightsChara?.Value ?? true)) return;
+                LightsApi.ApplyLightsChara(__result, true);
+                FxApi.EnsureCharaLight();
+            });
 
         [HarmonyPrefix, HarmonyPatch(typeof(Studio.SceneInfo), nameof(Studio.SceneInfo.Save), new[] { typeof(string) })]
         private static void Saving() => Try(() => Api.CameraTools.Instance?.BeforeSave());

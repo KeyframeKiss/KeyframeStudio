@@ -592,7 +592,31 @@ namespace StudioEX.Bridge.Api
         private const int CharaLayer = 10;
         internal static BepInEx.Configuration.ConfigEntry<bool> NewLightsChara;
 
-        private static bool LightsChara(OCILight l) => l?.light != null && (l.light.cullingMask & (1 << CharaLayer)) != 0;
+        private static bool LightsChara(OCILight l) => l?.light != null && (l.light.GetComponent<KfLightsChara>() != null || (l.light.cullingMask & (1 << CharaLayer)) != 0);
+
+        /// <summary>After "who draws character lights" changes: each switched light's mask follows.</summary>
+        internal static void SyncCharaMasks()
+        {
+            var s = Singleton<Studio.Studio>.Instance;
+            if (s == null) return;
+            foreach (var o in s.dicObjectCtrl.Values)
+                if (o is OCILight l && l.light != null && l.light.GetComponent<KfLightsChara>() != null) ApplyLightsChara(l, true);
+        }
+
+        /// <summary>Lights to draw onto characters now: switched to light characters (or made for them), on and shown.</summary>
+        internal static List<Light> CharaLightsNow()
+        {
+            var list = new List<Light>();
+            var s = Singleton<Studio.Studio>.Instance;
+            if (s == null) return list;
+            foreach (var o in s.dicObjectCtrl.Values)
+            {
+                if (!(o is OCILight l) || l.light == null || !l.light.enabled || !l.light.gameObject.activeInHierarchy || l.light.intensity <= 0f) continue;
+                var mark = l.light.GetComponent<KfLightsChara>();
+                if (mark != null || (l.light.cullingMask & (1 << CharaLayer)) != 0) list.Add(l.light);
+            }
+            return list;
+        }
 
         internal static void ApplyLightsChara(OCILight l, bool on)
         {
@@ -601,7 +625,10 @@ namespace StudioEX.Bridge.Api
             if (on)
             {
                 if (mark == null) { mark = l.light.gameObject.AddComponent<KfLightsChara>(); mark.OriginalMask = l.light.cullingMask; }
-                l.light.cullingMask |= 1 << CharaLayer;
+                // drawn by us: the light itself stays off the characters' layer (no double light on Az-shaded ones);
+                // else the shaders take it the usual way
+                if (FxApi.CharaLightOurs) l.light.cullingMask = mark.OriginalMask & ~(1 << CharaLayer);
+                else l.light.cullingMask |= 1 << CharaLayer;
             }
             else
             {
@@ -637,6 +664,7 @@ namespace StudioEX.Bridge.Api
                 return () => { foreach (var kv in was) if (kv.Key?.light != null && LightsChara(kv.Key) != kv.Value) ApplyLightsChara(kv.Key, kv.Value); };
             }));
             foreach (var l in lights) ApplyLightsChara(l, on);
+            if (on) FxApi.EnsureCharaLight(); // drawn by us unless switched to the shaders
             return CharaLightList();
         }
 

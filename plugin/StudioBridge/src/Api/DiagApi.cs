@@ -82,8 +82,26 @@ namespace StudioEX.Bridge.Api
                 { "named", named },
                 { "pixelLightCount", UnityEngine.QualitySettings.pixelLightCount }, { "quality", UnityEngine.QualitySettings.GetQualityLevel() },
                 { "renderingPath", cam != null ? cam.actualRenderingPath.ToString() : null }, { "camMask", cam != null ? cam.cullingMask : 0 },
-                { "lights", lights }, { "charaShaders", shaders },
+                { "lights", lights }, { "charaShaders", shaders }, { "charaLayers", CharaLayers() },
+                { "cameras", UnityEngine.Camera.allCameras.Select(c => (object)new Dictionary<string, object> { { "name", c.name }, { "mask", c.cullingMask }, { "depth", (double)c.depth }, { "main", c == cam } }).ToList() },
             };
+        }
+
+        /// <summary>Per character: how many of its renderers sit on each layer (and which shaders), shown or not.</summary>
+        private static object CharaLayers()
+        {
+            var list = new List<object>();
+            foreach (var cha in UnityEngine.Object.FindObjectsOfType<ChaControl>())
+            {
+                var layers = new Dictionary<string, object>();
+                foreach (var r in cha.GetComponentsInChildren<UnityEngine.Renderer>(true))
+                {
+                    string k = r.gameObject.layer + (r.enabled && r.gameObject.activeInHierarchy ? "" : " (hidden)") + " " + r.GetType().Name;
+                    layers[k] = (layers.TryGetValue(k, out var n) ? (int)n : 0) + 1;
+                }
+                list.Add(new Dictionary<string, object> { { "name", cha.name }, { "layer", cha.gameObject.layer }, { "renderers", layers } });
+            }
+            return list;
         }
 
         private static Dictionary<string, object> Info()
