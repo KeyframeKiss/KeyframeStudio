@@ -10723,3 +10723,9 @@ a.btn {
 .body-subhead:first-child {
   padding-top: 2px;
 }
+/* dope sheet: a character's body part (Left arm, Face…), under the character's row */
+.sheet-row.obj.part {
+  border-top: 0;
+  color: var(--text-1);
+  font-weight: 500;
+}

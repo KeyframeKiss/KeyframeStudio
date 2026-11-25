@@ -45,6 +45,7 @@ import {
 } from '../state/store';
 import { Icon, TypeIcon } from './Icon';
 import { keyWholePose } from '../lib/keyPose';
+import { PARTS_FROM, splitParts, trackPart, trackPartLabel, type Part } from '../lib/trackParts';
 import { ContextMenu, type MenuItem } from './ContextMenu';
 import { PromptDialog, type PromptState } from './PromptDialog';
 import { GraphEditor } from './GraphEditor';
@@ -120,7 +121,8 @@ const summaryCache = new WeakMap<object, { sel: Set<string>; drag: number; ts: n
 type Row =
   | { kind: 'obj'; key: string; oci: number; label: string; type: string; sex?: number; tracks: WireTrack[] }
   | { kind: 'grp'; key: string; gid: number; label: string; depth: number; expanded: boolean; tracks: WireTrack[] }
-  | { kind: 'track'; key: string; track: WireTrack; depth?: number; showObject?: boolean };
+  | { kind: 'part'; key: string; oci: number; part: Part; open: boolean; tracks: WireTrack[] }
+  | { kind: 'track'; key: string; track: WireTrack; depth?: number; showObject?: boolean; label?: string | null };
 
 interface View {
   t0: number;
@@ -197,6 +199,28 @@ export function DopeSheet({ compact = false }: { compact?: boolean } = {}) {
   const groups = useStore((s) => s.groups);
   const trackKinds = useStore((s) => s.trackKinds);
   const [renamingGroup, setRenamingGroup] = useState<number | null>(null);
+  // a character's body parts (Left arm, Face…) that are open; closed by default, remembered
+  const [openParts, setOpenParts] = useState<Set<string>>(() => {
+    try {
+      return new Set(JSON.parse(localStorage.getItem('kf.sheet.openParts') || '[]'));
+    } catch {
+      return new Set();
+    }
+  });
+  const togglePart = (key: string, open?: boolean) =>
+    setOpenParts((cur) => {
+      const next = new Set(cur);
+      if (open ?? !next.has(key)) next.add(key);
+      else next.delete(key);
+      return next;
+    });
+  useEffect(() => {
+    try {
+      localStorage.setItem('kf.sheet.openParts', JSON.stringify([...openParts]));
+    } catch {
+      /* not remembered; fine */
+    }
+  }, [openParts]);
   // a folder just made from the toolbar opens straight into naming it
   useEffect(() => {
     const on = (e: Event) => setRenamingGroup((e as CustomEvent<number>).detail);
@@ -316,10 +340,19 @@ export function DopeSheet({ compact = false }: { compact?: boolean } = {}) {
         sex: node?.sex,
         tracks: list,
       });
-      if (!collapsed.has(oci)) for (const t of list) out.push({ kind: 'track', key: `t${t.id}`, track: t });
+      if (collapsed.has(oci)) continue;
+      // a character with many tracks: its body parts, closed, each with its keys on one row (open while searching)
+      if (node?.type === 'Char' && list.length >= PARTS_FROM) {
+        for (const { part, tracks: inPart } of splitParts(list)) {
+          const pk = `${oci}|${part}`;
+          const open = openParts.has(pk) || !!search.trim();
+          out.push({ kind: 'part', key: `p${pk}`, oci, part, open, tracks: inPart });
+          if (open) for (const t of inPart) out.push({ kind: 'track', key: `t${t.id}`, track: t, depth: 1, label: trackPartLabel(t) });
+        }
+      } else for (const t of list) out.push({ kind: 'track', key: `t${t.id}`, track: t });
     }
     return out;
-  }, [tracks, nodes, filter, studioSelection, search, collapsed, showEnglish, groupMode, groups, trackKinds]);
+  }, [tracks, nodes, filter, studioSelection, search, collapsed, showEnglish, groupMode, groups, trackKinds, openParts]);
 
   const rowsRef = useRef(rows);
   rowsRef.current = rows;
@@ -1499,9 +1532,15 @@ export function DopeSheet({ compact = false }: { compact?: boolean } = {}) {
                     const anyOpen = st.groups.some((g) => g.expanded);
                     for (const g of st.groups) if (g.expanded === anyOpen) setFolderExpanded(g.id, !anyOpen);
                   } else {
+                    // anything open: close everything; else open every object and its body parts
                     const objs = rows.filter((r) => r.kind === 'obj').map((r) => (r as { oci: number }).oci);
-                    const allClosed = objs.every((o) => st.collapsed.has(o));
-                    useStore.setState({ collapsed: allClosed ? new Set() : new Set(objs) });
+                    const anyOpen = rows.some((r) => r.kind === 'track');
+                    useStore.setState({ collapsed: anyOpen ? new Set(objs) : new Set() });
+                    if (!anyOpen) {
+                      const keys = new Set(openParts);
+                      for (const t of tracks) if (objs.includes(t.oci) && nodes[t.oci]?.type === 'Char') keys.add(`${t.oci}|${trackPart(t)}`);
+                      setOpenParts(keys);
+                    } else setOpenParts(new Set());
                   }
                 }}
                 title={groupMode === 'folders' ? 'Open or close every folder' : 'Open or close every object'}
@@ -1566,6 +1605,36 @@ export function DopeSheet({ compact = false }: { compact?: boolean } = {}) {
                     <GroupEye tracks={row.tracks} />
                     <TypeIcon type={row.type} sex={row.sex} />
                     <span className="name">{row.label}</span>
+                    <span className="count">{row.tracks.length}</span>
+                  </div>
+                );
+              }
+              if (row.kind === 'part') {
+                const pk = `${row.oci}|${row.part}`;
+                const selN = row.tracks.filter((t) => selTracks.has(t.id)).length;
+                return (
+                  <div {...pressable}
+                    key={row.key}
+                    className={`sheet-row obj part ${selN === row.tracks.length ? 'selected' : ''}`}
+                    style={{ top, height: ROW_H, paddingLeft: 18 }}
+                    onClick={(e) => selectTracks(row.tracks.map((t) => t.id), e.ctrlKey ? 'add' : 'replace')}
+                    onDoubleClick={() => togglePart(pk)}
+                    title={`${row.part}: ${row.tracks.length} track${row.tracks.length > 1 ? 's' : ''} · click selects them · double-click or the arrow opens it`}
+                  >
+                    <span
+                      {...pressable}
+                      aria-label="Open or close"
+                      aria-expanded={row.open}
+                      className="toggle"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        togglePart(pk);
+                      }}
+                    >
+                      <Icon name={row.open ? 'chevronDown' : 'chevronRight'} size={12} />
+                    </span>
+                    <GroupEye tracks={row.tracks} />
+                    <span className="name">{row.part}</span>
                     <span className="count">{row.tracks.length}</span>
                   </div>
                 );
@@ -1681,10 +1750,10 @@ export function DopeSheet({ compact = false }: { compact?: boolean } = {}) {
                   ) : (
                     <span className="name">
                       {objName && <span style={{ color: 'var(--text-3)' }}>{objName} › </span>}
-                      {displayName(tr)}
+                      {tr.alias || row.label || displayName(tr)}
                     </span>
                   )}
-                  <span className="owner">{tr.owner}</span>
+                  {!row.label && <span className="owner">{tr.owner}</span>}
                 </div>
               );
             })}
