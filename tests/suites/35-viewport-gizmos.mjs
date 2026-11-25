@@ -122,6 +122,57 @@ export default async function (t) {
     check('and undone', Math.abs(((back[2] - before[2] + 540) % 360) - 180) < 0.5, JSON.stringify(back));
   });
 
+  // DragDoll-style posing, our own: the hand / foot target of a limb that isn't on IK bends the limb on its joints
+  await t.step('reach: drag a hand, the arm bends on its joints (no IK); drag the elbow, the arm swings, hand planted', async () => {
+    const g = await ok('gizmo.get');
+    if (g.gizmo.reachFk === undefined) return t.say('(bridge without reach)');
+    await ok('gizmo.set', { gizmo: { on: true, mode: 0, reachFk: true }, overlays: { on: true, ik: true } });
+    const bone = (b) => sim({ id, bone: b });
+    const st0 = await bone('cf_j_hand_L');
+    const shoulder0 = (await bone('cf_j_arm00_L')).world;
+    const elbow0 = (await bone('cf_j_forearm01_L')).world;
+    const ikLimb = st0.activeIK[4];
+    if (st0.ik && ikLimb) return t.say('(the left arm is on IK here)');
+    // grab the left hand's target by the handles' middle and pull it
+    await ok('gizmo.target', { kind: 'ik', id, index: 3 });
+    await frame();
+    const a = (await sim({ at: [0, 0] })).anchor;
+    if (!a) return check('handles on screen', false);
+    const [cx, cy] = a.center;
+    const over = await hoverAt([cx, cy]);
+    check('the hand target’s middle is under the pointer', over.hover === 'Free', over.hover);
+    await drag([[cx, cy], [cx + 15, cy + 10], [cx + 35, cy + 25], [cx + 50, cy + 35]]);
+    await frame();
+    const st1 = await bone('cf_j_hand_L');
+    check('the hand moved toward the pointer', dist(st1.world, st0.world) > 0.02, `${dist(st1.world, st0.world).toFixed(3)} m`);
+    check('the arm is still posed by its joints — not on IK', !(st1.ik && st1.activeIK[4]) && st1.fk, JSON.stringify({ ik: st1.ik, activeIK: st1.activeIK, fk: st1.fk }));
+    check('the shoulder didn’t move', dist((await bone('cf_j_arm00_L')).world, shoulder0) < 0.002);
+    check('the body didn’t move', dist(st1.hips, st0.hips) < 0.002, `${dist(st1.hips, st0.hips).toFixed(4)} m`);
+    const turn = (p, q) => Math.max(...[0, 1, 2].map((i) => Math.abs((((p[i] - q[i]) % 360) + 540) % 360 - 180)));
+    check('the hand kept its own angle in the world', turn(st1.worldRot, st0.worldRot) < 1, JSON.stringify([st0.worldRot, st1.worldRot]));
+    await ok('undo');
+    await frame();
+    const back = await bone('cf_j_hand_L');
+    check('one undo: the hand back, and the FK / IK state', dist(back.world, st0.world) < 0.003 && back.fk === st0.fk && back.ik === st0.ik, `${dist(back.world, st0.world).toFixed(4)} m`);
+
+    // the elbow's target: the arm swings around shoulder → hand, the hand stays put
+    await ok('gizmo.target', { kind: 'ik', id, index: 2 });
+    await frame();
+    const e = (await sim({ at: [0, 0] })).anchor;
+    if (!e) return check('elbow handles on screen', false);
+    const [ex, ey] = e.center;
+    await drag([[ex, ey], [ex + 10, ey], [ex + 25, ey - 5], [ex + 40, ey - 10]]);
+    await frame();
+    const hand2 = (await bone('cf_j_hand_L')).world;
+    const elbow2 = (await bone('cf_j_forearm01_L')).world;
+    check('the elbow swung', dist(elbow2, elbow0) > 0.01, `${dist(elbow2, elbow0).toFixed(3)} m`);
+    check('the hand stayed where it was', dist(hand2, st0.world) < 0.004, `${dist(hand2, st0.world).toFixed(4)} m`);
+    await ok('undo');
+    await frame();
+    check('undo: the elbow back', dist((await bone('cf_j_forearm01_L')).world, elbow0) < 0.003);
+    await ok('gizmo.target', { kind: 'none' });
+  });
+
   let handIk;
   await t.step('IK on one limb: the rest of the body stays put', async () => {
     const hand = await sim({ id, bone: 'cf_j_hand_L' });

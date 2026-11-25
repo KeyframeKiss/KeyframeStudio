@@ -24,7 +24,7 @@ interface Target {
 
 interface GizmoState {
   overlays: { on: boolean; skeleton: boolean; ik: boolean; accessories: boolean; highlight: boolean; lights: boolean; cameras: boolean; focus: boolean; cameraRoute?: boolean; allCharacters: boolean; labels: boolean };
-  gizmo: { on: boolean; world: boolean; snapMove: number; snapRot: number; snapScale: number; mode: number };
+  gizmo: { on: boolean; world: boolean; snapMove: number; snapRot: number; snapScale: number; mode: number; reachFk?: boolean };
   pick: { characters: boolean; accessories: boolean; items: boolean; lights: boolean; cameras: boolean };
   target: Target | null;
   dragging: boolean;
@@ -169,6 +169,13 @@ export function OverlayOptions() {
         <NumberField value={g.snapRot} width={54} format={(v) => `${+v.toFixed(1)}°`} parse={num} onCommit={(v) => set({ gizmo: { snapRot: v } })} />
         <NumberField value={g.snapScale} width={54} format={(v) => `×${+v.toFixed(2)}`} parse={num} onCommit={(v) => set({ gizmo: { snapScale: v } })} />
       </div>
+      {g.reachFk !== undefined &&
+        check(
+          'Drag a hand or foot to pose the limb',
+          g.reachFk,
+          (v) => set({ gizmo: { reachFk: v } }),
+          'Drag the target on a hand or foot: the arm or leg bends to reach it and stays posed by its joints (FK) — nothing switches to IK. Drag the elbow or knee target to swing the limb with the hand or foot kept in place. Off: dragging a target switches that limb to IK, as Studio does. Limbs already on IK move their targets as usual.',
+        )}
 
       <div className="menu-sep" />
       <div className="menu-label">

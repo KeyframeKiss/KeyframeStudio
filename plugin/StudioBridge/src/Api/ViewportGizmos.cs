@@ -31,6 +31,7 @@ namespace StudioEX.Bridge.Api
         private bool _gizmo, _allChars, _labels = true;
         private bool _pickChars = true, _pickAcc = true, _pickItems = true, _pickLights = true, _pickCameras = true;
         private bool _world; // object handles along the world's axes (else the object's own)
+        private bool _reachFk = true; // dragging a hand / foot (or elbow / knee) of a limb not on IK poses its joints
         private float _snapMove = 0.05f, _snapRot = 15f, _snapScale = 0.1f;
         private bool Any => _gizmo || _show && (_skeleton || _ik || _acc || _highlight || _lights || _cameras || _focus || _camRoute) || _camRoute && ShotApi.FreeViewWanted;
 
@@ -39,7 +40,7 @@ namespace StudioEX.Bridge.Api
         private Kind _kind;
         private int _ociId = -1, _index = -1; // index: a bone (listBones), an IK target (listIKTarget) or an accessory slot
 
-        private enum H { None, AxisX, AxisY, AxisZ, Free, RingX, RingY, RingZ, RingView, ScaleX, ScaleY, ScaleZ, ScaleAll, Focus, CamKey }
+        private enum H { None, AxisX, AxisY, AxisZ, Free, RingX, RingY, RingZ, RingView, ScaleX, ScaleY, ScaleZ, ScaleAll, Focus, CamKey, Reach }
         private H _hover, _drag;
         private List<Cand> _hoverList = new List<Cand>();
         private string _hoverPick; // the top of _hoverList: "joint:<oci>:<index>", "ik:..", "acc:<oci>:<slot>", "object:<oci>"
@@ -97,7 +98,7 @@ namespace StudioEX.Bridge.Api
             return new Dictionary<string, object>
             {
                 { "overlays", new Dictionary<string, object> { { "on", _show }, { "skeleton", _skeleton }, { "ik", _ik }, { "accessories", _acc }, { "highlight", _highlight }, { "lights", _lights }, { "cameras", _cameras }, { "focus", _focus }, { "cameraRoute", _camRoute }, { "allCharacters", _allChars }, { "labels", _labels } } },
-                { "gizmo", new Dictionary<string, object> { { "on", _gizmo }, { "world", _world }, { "snapMove", (double)_snapMove }, { "snapRot", (double)_snapRot }, { "snapScale", (double)_snapScale }, { "mode", StudioMode() } } },
+                { "gizmo", new Dictionary<string, object> { { "on", _gizmo }, { "world", _world }, { "snapMove", (double)_snapMove }, { "snapRot", (double)_snapRot }, { "snapScale", (double)_snapScale }, { "mode", StudioMode() }, { "reachFk", _reachFk } } },
                 { "pick", new Dictionary<string, object> { { "characters", _pickChars }, { "accessories", _pickAcc }, { "items", _pickItems }, { "lights", _pickLights }, { "cameras", _pickCameras } } },
                 { "target", TargetInfo() },
                 { "dragging", _drag != H.None },
@@ -124,6 +125,7 @@ namespace StudioEX.Bridge.Api
             {
                 if (g.Has("on")) _gizmo = g.GetBool("on");
                 if (g.Has("world")) _world = g.GetBool("world");
+                if (g.Has("reachFk")) _reachFk = g.GetBool("reachFk", true);
                 if (g.Has("snapMove")) _snapMove = Mathf.Clamp(g.GetFloat("snapMove"), 0.001f, 10f);
                 if (g.Has("snapRot")) _snapRot = Mathf.Clamp(g.GetFloat("snapRot"), 1f, 90f);
                 if (g.Has("snapScale")) _snapScale = Mathf.Clamp(g.GetFloat("snapScale"), 0.01f, 1f);
@@ -1416,6 +1418,7 @@ namespace StudioEX.Bridge.Api
             CloseSpread();
             if (h == H.Focus) { BeginFocus(cam, m); return; }
             if (h == H.CamKey) { BeginCamKey(cam, m); return; }
+            if (h == H.Free && _kind == Kind.IK && _reachFk && BeginReach(cam, m)) return;
             if (!Frame(out var t, out var c, out var axes, out _)) return;
             var undo = Begin(t);
             TakeOver(t, undo);
@@ -1484,6 +1487,7 @@ namespace StudioEX.Bridge.Api
         {
             if (_drag == H.Focus) { DragFocus(cam, m); return; }
             if (_drag == H.CamKey) { DragCamKey(cam, m); return; }
+            if (_drag == H.Reach) { DragReach(cam, m); return; }
             var t = _dragTgt;
             if (t?.T == null) { EndDrag(false); return; }
             var c = _startWorldPos;
@@ -1542,6 +1546,7 @@ namespace StudioEX.Bridge.Api
             _drag = H.None;
             if (was == H.Focus) { EndFocus(keep); _down = false; return; }
             if (was == H.CamKey) { EndCamKey(keep); _down = false; return; }
+            if (was == H.Reach) { EndReach(keep); _down = false; return; }
             bool click = keep && (was == H.Free || was == H.ScaleAll) && (_mLast - _m0).magnitude < 3f && _kind != Kind.Bone;
             if (_undo != null)
             {
@@ -1562,6 +1567,161 @@ namespace StudioEX.Bridge.Api
             _undo = null;
             _dragTgt = null;
             _down = false;
+            Broadcast();
+        }
+
+        // ================================================================== reach: pose a limb by its hand or foot, on its joints
+        // Grabbing the hand / foot target of a limb that isn't on IK bends the limb to reach the pointer: upper and
+        // lower joints turn in the plane the limb bends in now, the hand / foot keeps its own angle in the world, and it
+        // all goes into the joints (FK) — the limb never switches to IK, nothing else on the body is pulled. Grabbing the
+        // elbow / knee target swings the limb around the line from shoulder to hand (hip to foot), the end planted.
+
+        private sealed class ReachJob
+        {
+            public OCIChar C;
+            public GuideObject Root, Mid, End;
+            public Transform RootT, MidT, EndT;
+            public Quaternion Root0, Mid0, End0, MidParent0, EndParent0;
+            public Vector3 R0, M0, E0, PlaneN, Grab;
+            public float La, Lb;
+            public bool Swivel;
+            public string Name;
+        }
+
+        private ReachJob _reach;
+
+        /// <summary>The limb's IK targets from its root (shoulder / thigh) to its end (hand / foot).</summary>
+        private static List<int> LimbChain(OCIChar c, int part)
+        {
+            var idx = new List<int>();
+            for (int i = 0; i < c.listIKTarget.Count; i++)
+            {
+                var k = c.listIKTarget[i];
+                if (k?.boneObject != null && IkPart(k.boneGroup) == part) idx.Add(i);
+            }
+            return idx.OrderBy(i => idx.Count(j => j != i && c.listIKTarget[i].boneObject.IsChildOf(c.listIKTarget[j].boneObject))).ToList();
+        }
+
+        private static int FkBoneOn(OCIChar c, Transform bone)
+        {
+            for (int i = 0; i < c.listBones.Count; i++)
+                if (c.listBones[i]?.guideObject?.transformTarget == bone) return i;
+            for (int i = 0; i < c.listBones.Count; i++)
+                if (c.listBones[i]?.guideObject?.transformTarget != null && c.listBones[i].guideObject.transformTarget.name == bone.name) return i;
+            return -1;
+        }
+
+        private bool BeginReach(Camera cam, Vector2 m)
+        {
+            if (!(SceneApi.FindOci(_ociId) is OCIChar c) || c.charInfo == null || _index < 0 || _index >= c.listIKTarget.Count) return false;
+            int part = IkPart(c.listIKTarget[_index].boneGroup);
+            if (part < 1 || IkOn(c, part)) return false; // the hips, or a limb already on its target: moved as before
+            var chain = LimbChain(c, part);
+            if (chain.Count < 3) return false;
+            int at = chain.IndexOf(_index);
+            if (at < 1) return false; // a shoulder / thigh target: as before
+            var R = c.listIKTarget[chain[0]].boneObject;
+            var M = c.listIKTarget[chain[1]].boneObject;
+            var E = c.listIKTarget[chain[2]].boneObject;
+            int fr = FkBoneOn(c, R), fm = FkBoneOn(c, M), fe = FkBoneOn(c, E);
+            if (fr < 0 || fm < 0 || fe < 0 || R.parent == null || M.parent == null || E.parent == null) return false;
+            var t = Target();
+            if (t == null) return false;
+            var undo = Begin(t);
+            undo.Label = at == 2 ? "Reach" : "Swivel";
+            undo.Add(KinematicsRestorer(c), true);
+            foreach (var b in c.listBones) if (b?.guideObject != null) undo.Add(new GuideTgt(b.guideObject, Kind.Bone, null).CaptureNow(), false);
+            EnsureFk(c, fe); // the limb's joints take over from the pose on screen (no jump)
+            EnsureFk(c, fr);
+            _reach = new ReachJob
+            {
+                C = c,
+                Root = c.listBones[fr].guideObject, Mid = c.listBones[fm].guideObject, End = c.listBones[fe].guideObject,
+                RootT = R, MidT = M, EndT = E,
+                Root0 = R.rotation, Mid0 = M.rotation, End0 = E.rotation, MidParent0 = M.parent.rotation, EndParent0 = E.parent.rotation,
+                R0 = R.position, M0 = M.position, E0 = E.position,
+                La = (M.position - R.position).magnitude, Lb = (E.position - M.position).magnitude,
+                Swivel = at == 1,
+                Name = Pretty(E.name),
+                PlaneN = cam.transform.forward,
+            };
+            var anchor = _reach.Swivel ? _reach.M0 : _reach.E0;
+            var ray = cam.ScreenPointToRay(m);
+            _reach.Grab = new Plane(_reach.PlaneN, anchor).Raycast(ray, out float d) ? ray.GetPoint(d) - anchor : Vector3.zero;
+            _undo = undo;
+            _drag = H.Reach;
+            _m0 = m;
+            _mLast = m;
+            return true;
+        }
+
+        private static float SignedAngleAbout(Vector3 a, Vector3 b, Vector3 axis)
+        {
+            float ang = Vector3.Angle(a, b);
+            return Vector3.Dot(axis, Vector3.Cross(a, b)) < 0f ? -ang : ang;
+        }
+
+        private static void SetJoint(GuideObject g, Quaternion world, Quaternion parentWorld) =>
+            g.changeAmount.rot = (Quaternion.Inverse(parentWorld) * world).eulerAngles;
+
+        private void DragReach(Camera cam, Vector2 m)
+        {
+            var r = _reach;
+            if (r == null || r.C?.charInfo == null || r.RootT == null) { EndDrag(false); return; }
+            var anchor = r.Swivel ? r.M0 : r.E0;
+            var ray = cam.ScreenPointToRay(m);
+            if (!new Plane(r.PlaneN, anchor).Raycast(ray, out float d)) return;
+            var goal = ray.GetPoint(d) - r.Grab;
+            Quaternion qRoot, qMid;
+            if (r.Swivel)
+            {
+                var axis = r.E0 - r.R0;
+                if (axis.sqrMagnitude < 1e-8f) return;
+                axis.Normalize();
+                var a = Vector3.ProjectOnPlane(r.M0 - r.R0, axis);
+                var b = Vector3.ProjectOnPlane(goal - r.R0, axis);
+                if (a.sqrMagnitude < 1e-8f || b.sqrMagnitude < 1e-8f) return;
+                float ang = SignedAngleAbout(a, b, axis);
+                qRoot = qMid = Quaternion.AngleAxis(ang, axis);
+                _tag = "Swing " + r.Name + " " + ang.ToString("0") + "°";
+            }
+            else
+            {
+                var to = goal - r.R0;
+                float dist = to.magnitude;
+                if (dist < 1e-5f) return;
+                float reach = Mathf.Clamp(dist, Mathf.Abs(r.La - r.Lb) + 1e-4f, r.La + r.Lb - 1e-4f);
+                var u = to / dist;
+                // bends the way it bends now
+                var side = Vector3.ProjectOnPlane(r.M0 - r.R0, u);
+                if (side.sqrMagnitude < 1e-10f) side = Vector3.ProjectOnPlane(r.Root0 * Vector3.forward, u);
+                var perp = side.normalized;
+                float ca = Mathf.Clamp((r.La * r.La + reach * reach - r.Lb * r.Lb) / (2f * r.La * reach), -1f, 1f);
+                var newM = r.R0 + u * (r.La * ca) + perp * (r.La * Mathf.Sqrt(Mathf.Max(0f, 1f - ca * ca)));
+                var newE = r.R0 + u * reach;
+                var t1 = Quaternion.FromToRotation(r.M0 - r.R0, newM - r.R0);
+                var t2 = Quaternion.FromToRotation(t1 * (r.E0 - r.M0), newE - newM);
+                qRoot = t1;
+                qMid = t2 * t1;
+                _tag = r.Name + (dist > r.La + r.Lb ? " — as far as it reaches" : "");
+            }
+            // the joints: shoulder / thigh and elbow / knee turned; the hand / foot keeps its own angle in the world
+            SetJoint(r.Root, qRoot * r.Root0, r.RootT.parent.rotation);
+            SetJoint(r.Mid, qMid * r.Mid0, qRoot * r.MidParent0);
+            SetJoint(r.End, r.End0, qMid * r.EndParent0);
+            if (OnScreen(cam, goal, out var s)) _tagAt = s;
+        }
+
+        private void EndReach(bool keep)
+        {
+            bool moved = (_mLast - _m0).magnitude >= 3f;
+            if (_undo != null)
+            {
+                if (keep && moved) UndoStack.Push(_undo);
+                else _undo.Restore(); // a click: nothing changes (the FK switch goes back too)
+            }
+            _undo = null;
+            _reach = null;
             Broadcast();
         }
 
