@@ -11144,3 +11144,33 @@ a.btn {
 .ms-area {
   padding: 8px 10px;
 }
+/* Settings › Shortcuts and the "?" overlay: headed groups and a filter */
+.shortcut-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.shortcut-list > .input {
+  max-width: 360px;
+}
+.shortcut-groups {
+  columns: 2 340px;
+  column-gap: 28px;
+}
+.shortcut-group {
+  break-inside: avoid;
+  margin-bottom: 16px;
+}
+.shortcut-group h3 {
+  margin: 0 0 4px;
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+.shortcut-grid.one {
+  grid-template-columns: 1fr;
+}
+.dialog .shortcut-list {
+  max-height: 70vh;
+  overflow: auto;
+}

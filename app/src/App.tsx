@@ -9,7 +9,7 @@ import { MessagesButton, ToastItem } from './components/Messages';
 import { CameraTakeoverChip, toggleGuides } from './components/CameraToolsCards';
 import { Header, MiniHeader, TransportBar } from './components/Shell';
 import { DopeSheet } from './components/DopeSheet';
-import { SHORTCUTS } from './components/shortcuts';
+import { ShortcutList } from './components/ShortcutList';
 import { Disconnected, AnimateWorkspace, LibraryWorkspace, LookWorkspace, PoseWorkspace, SettingsWorkspace, ShootWorkspace } from './components/Workspaces';
 import { PRESETS, toFlat } from './lib/curve';
 import { isInteractive } from './lib/pressable';
@@ -299,14 +299,7 @@ export function App() {
         <div className="overlay" onClick={() => useStore.setState({ helpOpen: false })}>
           <div className="dialog" onClick={(e) => e.stopPropagation()}>
             <h2>Keyboard &amp; mouse</h2>
-            <div className="shortcut-grid">
-              {SHORTCUTS.map(([k, d]) => (
-                <div key={k}>
-                  <span>{d}</span>
-                  <span className="kbd">{k}</span>
-                </div>
-              ))}
-            </div>
+            <ShortcutList autoFocus />
           </div>
         </div>
       )}

@@ -45,7 +45,7 @@ import { TransportBar } from './Shell';
 import { TranslatePanel } from './TranslatePanel';
 import { FaceStudio } from './FaceStudio';
 import { ErrorBoundary } from './ErrorBoundary';
-import { SHORTCUTS } from './shortcuts';
+import { ShortcutList } from './ShortcutList';
 import { DiagnosticsPage } from './DiagnosticsPage';
 import { HelpGuide } from './HelpGuide';
 import { AppearancePage } from './AppearancePage';
@@ -791,14 +791,7 @@ export function SettingsWorkspace() {
           <div className="page">
             <div className="page-inner narrow" style={{ padding: 20, overflow: 'auto' }}>
               <h2 className="page-title">Keyboard &amp; mouse</h2>
-              <div className="shortcut-grid">
-                {SHORTCUTS.map(([k, d]) => (
-                  <div key={k}>
-                    <span>{d}</span>
-                    <span className="kbd">{k}</span>
-                  </div>
-                ))}
-              </div>
+              <ShortcutList />
             </div>
           </div>
         )}

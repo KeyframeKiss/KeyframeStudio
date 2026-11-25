@@ -37,3 +37,13 @@ export const SHORTCUTS: [string, string][] = [
   ['Outliner ↑↓←→', 'Select / collapse / expand (Shift = whole branch)'],
   ['Right-click', 'Context menu (keys, tracks, folders, objects, looks)'],
 ];
+
+/** The headings the list is shown under, in order, and which shortcut goes where (by its key text). */
+export const SHORTCUT_GROUPS: [string, string[]][] = [
+  ['General', ['Ctrl K', 'Ctrl 1 – 5', 'Ctrl S', 'Ctrl Z / Ctrl Y', 'Esc', 'Ctrl Shift M', 'G', 'Ctrl O', 'Ctrl ,', 'F1', 'Right-click']],
+  ['Playback', ['Space', '← / →', 'Shift ← / →', 'Home / End']],
+  ['Keying', ['K  or  I', 'Shift K', 'Shift Enter', 'R', 'Ctrl K in Studio']],
+  ['Editing keys', ['Del / Backspace', 'Ctrl C / Ctrl V', 'Ctrl D', 'Ctrl A', '1 – 5', 'Ctrl G', 'Drag key', 'Graph: drag key ↕', 'Double-click row/curve']],
+  ['Timeline view', ['F / Shift F', '+ / −', 'Ctrl + wheel', 'Shift + wheel, middle drag', 'Tab']],
+  ['Scene and characters', ['M', 'F2', 'Outliner ↑↓←→']],
+];
