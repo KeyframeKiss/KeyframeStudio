@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { bridge } from '../bridge/client';
-import { call, saveSceneFile, copySelected, deleteSelectedKeys, displayName, duplicateSelectedToPlayhead, keyAllOfSelectedObjects, keyChanged, keySelected, lsSet, openLibrary, pasteAtPlayhead, redo, seek, selectAllKeys, selectedCharacters, setAutoKey, setTimelineUiVisible, setWorkspace, showTab, stop, studioSelect, toast, togglePlay, undo, useStore, setMiniMode } from '../state/store';
+import { call, saveSceneFile, saveOverOn, copySelected, deleteSelectedKeys, displayName, duplicateSelectedToPlayhead, keyAllOfSelectedObjects, keyChanged, keySelected, lsSet, openLibrary, pasteAtPlayhead, redo, seek, selectAllKeys, selectedCharacters, setAutoKey, setTimelineUiVisible, setWorkspace, showTab, stop, studioSelect, toast, togglePlay, undo, useStore, setMiniMode } from '../state/store';
 import { applyCurveToSelected } from '../state/store';
 import { PRESETS, toFlat } from '../lib/curve';
 import { Icon } from './Icon';
@@ -71,7 +71,8 @@ function PaletteInner() {
       { id: 'chara.anim', group: 'Character', title: 'Change animation…', keywords: 'animation clip motion idle dance walk pose loop studio anime', run: () => openAnimations() },
       { id: 'anim.lock', group: 'Keys', title: 'Lock a foot or hand in place', keywords: 'lock pin plant foot hand sliding contact ik stick', run: () => showTab('animate', 'cleanup') },
       { id: 'lib.scenes', group: 'Scenes', title: 'Open scene browser', kbd: 'Ctrl O', keywords: 'load import', run: () => openLibrary('scenes') },
-      { id: 'scene.save', group: 'Scenes', title: 'Save scene (new file)', kbd: 'Ctrl S', keywords: 'save scene charastudio', run: () => { void saveSceneFile(); } },
+      { id: 'scene.save', group: 'Scenes', title: saveOverOn() ? 'Save scene (over the open file)' : 'Save scene (new file)', kbd: 'Ctrl S', keywords: 'save scene charastudio overwrite', run: () => { void saveSceneFile(); } },
+      { id: 'scene.saveNew', group: 'Scenes', title: 'Save scene as a new file', kbd: 'Ctrl Shift S', keywords: 'save as copy new scene charastudio', run: () => { void saveSceneFile('new'); } },
       { id: 'lib.translate', group: 'Settings', title: 'Fix translations', keywords: 'english japanese names', run: () => openLibrary('translate') },
       { id: 'lib.settings', group: 'Settings', title: 'Mod settings', kbd: 'Ctrl ,', keywords: 'config plugins options', run: () => openLibrary('settings') },
       { id: 'studio.clean', group: 'Studio', title: "Clean Studio window (hide / show Studio's menus)", keywords: 'hide ui hideallui menus viewport', run: toggleCleanStudio },

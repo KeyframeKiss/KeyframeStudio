@@ -196,9 +196,9 @@ export function SceneBrowser() {
           </button>
           <button
             className="btn primary"
-            title="Save the current scene as a new file (same as Studio's Save)"
+            title="Save the current scene as a new file (same as Studio's Save; Ctrl+Shift+S)"
             onClick={async () => {
-              if ((await saveSceneFile()) !== undefined) {
+              if ((await saveSceneFile('new')) !== undefined) {
                 window.setTimeout(load, 1500);
               }
             }}

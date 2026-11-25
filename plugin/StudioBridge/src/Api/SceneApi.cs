@@ -39,12 +39,31 @@ namespace StudioEX.Bridge.Api
             r.Add("scene.load", LoadScene);
             r.Add("scene.import", ImportScene);
             // Same as Studio's Save button (new timestamped file + notification); mods' save hooks run.
+            // overwrite: Studio saves its new file as always, then it replaces the open scene's file, whose old
+            // version is copied to UserData/StudioEX/scene-backups first. No open file → a new file, as before.
             r.Add("scene.save", a => {
+                string target = a.GetBool("overwrite") ? OverwriteTarget() : null;
                 var before = SaveCount;
                 Studio.systemButtonCtrl.OnClickSave();
                 if (before == SaveCount) throw new BridgeException("Studio did not confirm the scene save");
-                return a.GetBool("returnName") ? (object)CurrentFile : true;
+                if (!a.Has("overwrite")) return a.GetBool("returnName") ? (object)CurrentFile : true;
+                string backup = null;
+                bool over = false;
+                if (target != null && CurrentPath != null && !string.Equals(CurrentPath, target, StringComparison.OrdinalIgnoreCase))
+                {
+                    string fresh = CurrentPath;
+                    backup = BackUp(target);
+                    System.IO.File.Copy(fresh, target, true);
+                    System.IO.File.Delete(fresh);
+                    CurrentPath = target;
+                    CurrentFile = System.IO.Path.GetFileName(target);
+                    StudioBridgePlugin.Instance?.Broadcast("scene.file", CurrentFile);
+                    over = true;
+                }
+                return new Dictionary<string, object> { { "file", CurrentFile }, { "path", CurrentPath }, { "overwritten", over }, { "backup", backup } };
             });
+            r.Add("scene.backups", a => ListBackups(a.GetString("path") ?? CurrentPath));
+            r.Add("scene.backupFolder", a => BackupRoot);
             r.Add("scene.new", a => { Studio.InitScene(); return true; });
             r.Add("scene.rename", Rename);
         }
@@ -106,6 +125,43 @@ namespace StudioEX.Bridge.Api
 
         private static string SceneFolder =>
             System.IO.Path.GetFullPath(System.IO.Path.Combine(UserData.Path, "studio/scene"));
+
+        internal static string BackupRoot => System.IO.Path.GetFullPath(System.IO.Path.Combine(UserData.Path, "StudioEX/scene-backups"));
+        private const int BackupsKept = 10;
+
+        /// <summary>The open scene's file when it can be saved over: an existing scene under Studio's scene folder.</summary>
+        private static string OverwriteTarget()
+        {
+            if (string.IsNullOrEmpty(CurrentPath) || !System.IO.File.Exists(CurrentPath)) return null;
+            var root = SceneFolder.TrimEnd('\\', '/') + System.IO.Path.DirectorySeparatorChar;
+            return CurrentPath.StartsWith(root, StringComparison.OrdinalIgnoreCase) ? CurrentPath : null;
+        }
+
+        private static string BackupDir(string scene) =>
+            System.IO.Path.Combine(BackupRoot, System.IO.Path.GetFileNameWithoutExtension(scene));
+
+        /// <summary>Copies a scene file into its backup folder (newest 10 kept); returns the copy's path.</summary>
+        private static string BackUp(string scene)
+        {
+            var dir = BackupDir(scene);
+            System.IO.Directory.CreateDirectory(dir);
+            var dest = System.IO.Path.Combine(dir, DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss") + ".png");
+            System.IO.File.Copy(scene, dest, true);
+            var old = new System.IO.DirectoryInfo(dir).GetFiles("*.png").OrderByDescending(f => f.LastWriteTimeUtc).Skip(BackupsKept);
+            foreach (var f in old) { try { f.Delete(); } catch { /* in use: next time */ } }
+            return dest;
+        }
+
+        private static object ListBackups(string scene)
+        {
+            var list = new List<object>();
+            if (string.IsNullOrEmpty(scene)) return list;
+            var dir = BackupDir(scene);
+            if (!System.IO.Directory.Exists(dir)) return list;
+            foreach (var f in new System.IO.DirectoryInfo(dir).GetFiles("*.png").OrderByDescending(f => f.LastWriteTimeUtc))
+                list.Add(new Dictionary<string, object> { { "path", f.FullName }, { "size", f.Length }, { "modified", (f.LastWriteTimeUtc - new DateTime(1970, 1, 1)).TotalMilliseconds } });
+            return list;
+        }
 
         private static object ListScenes()
         {

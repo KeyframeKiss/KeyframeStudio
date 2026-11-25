@@ -7,7 +7,7 @@ import { NumberField, TimeField } from './TopBar';
 import { ViewCluster } from './ViewCluster';
 import { PathsGhostsSync } from './ViewportControls';
 import { OverlaySync } from './ViewportOverlays';
-import { saveSceneFile, jumpKey, keyChanged, lsSet, openLibrary, redo, seek, setAutoKey, setSettings, setTimelineUiVisible, setWorkspace, stepFrames, togglePlay, undo, useStore, useTlInfo, type Workspace, setMiniMode } from '../state/store';
+import { call, saveOverOn, saveSceneFile, setSaveOver, toast, jumpKey, keyChanged, lsSet, openLibrary, redo, seek, setAutoKey, setSettings, setTimelineUiVisible, setWorkspace, stepFrames, togglePlay, undo, useStore, useTlInfo, type Workspace, setMiniMode } from '../state/store';
 import { parseTime } from '../lib/time';
 
 import { applyLayout, deleteLayout, resetLayout, saveLayout, savedLayouts, setCompact, setPanelSizes, useCompact, usePanelSizes } from '../lib/layout';
@@ -41,7 +41,7 @@ export function Header() {
         {(close) => <div className="layout-menu">
           <b>{sceneName ?? 'Current scene'}</b>
           <button className="menu-item" onClick={() => { close(); useStore.setState({ sceneFilter: 'recent' }); openLibrary('scenes'); }}>Open recent</button>
-          <button className="menu-item" disabled={status !== 'open'} onClick={() => { close(); void saveSceneFile(); }}>Save as new scene file</button>
+          <SaveItems close={close} />
         </div>}
       </Popover>
       <nav className="ws-tabs">
@@ -363,6 +363,46 @@ export function TransportBar() {
         </div>
       </Popover>
     </div>
+  );
+}
+
+/** Save over the open scene (Ctrl+S, when set), save as a new file (Ctrl+Shift+S), the Ctrl+S setting, backups. */
+function SaveItems({ close }: { close: () => void }) {
+  const status = useStore((s) => s.status);
+  const sceneName = useStore((s) => s.sceneName);
+  const canOver = useStore((s) => !!s.hello?.commands.includes('scene.backups'));
+  const [over, setOver] = useState(saveOverOn);
+  useEffect(() => {
+    const on = () => setOver(saveOverOn());
+    window.addEventListener('kf:save-mode', on);
+    return () => window.removeEventListener('kf:save-mode', on);
+  }, []);
+  const off = status !== 'open';
+  const openBackups = async () => {
+    const dir = await call<string>('scene.backupFolder');
+    const r = dir ? await window.studioEx?.openFolder?.(dir) : 'no';
+    if (r) toast('No backups yet: they appear the first time Ctrl+S saves over a scene');
+  };
+  return (
+    <>
+      {canOver && sceneName && (
+        <button className="menu-item" disabled={off} onClick={() => { close(); void saveSceneFile('over'); }} title="Replace the open scene's file; its old version is kept in backups">
+          Save over {sceneName} {over && <span className="kbd">Ctrl S</span>}
+        </button>
+      )}
+      <button className="menu-item" disabled={off} onClick={() => { close(); void saveSceneFile('new'); }} title="A new file, like Studio's Save">
+        Save as new scene file <span className="kbd">{over && canOver ? 'Ctrl Shift S' : 'Ctrl S'}</span>
+      </button>
+      {canOver && (
+        <>
+          <div {...pressable} role="menuitemcheckbox" aria-checked={over} className="menu-item" onClick={() => setSaveOver(!over)} title="Studio's Save always makes a new file. With this on, Ctrl+S replaces the open scene's file; the version it replaces is copied to UserData/StudioEX/scene-backups (the last 10 of each scene). A new scene still gets a new file.">
+            <span style={{ width: 14, display: 'inline-flex' }}>{over ? <Icon name="check" size={13} /> : null}</span>
+            Ctrl+S saves over the open scene
+          </div>
+          <button className="menu-item" onClick={() => { close(); void openBackups(); }}>Open scene backups</button>
+        </>
+      )}
+    </>
   );
 }
 

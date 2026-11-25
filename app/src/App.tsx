@@ -93,10 +93,11 @@ export function App() {
         setMiniMode(!st.miniMode);
         return;
       }
-      // Ctrl+S anywhere (even in a text box): save the scene in CharaStudio, like its own Save button (a new file)
-      if (ctrl && !e.shiftKey && !e.altKey && k === 's') {
+      // Ctrl+S anywhere (even in a text box): save the scene in CharaStudio — over the open file or as a new one,
+      // as set in the scene menu; Ctrl+Shift+S always makes a new file
+      if (ctrl && !e.altKey && k === 's') {
         e.preventDefault();
-        if (!e.repeat) void saveSceneFile();
+        if (!e.repeat) void saveSceneFile(e.shiftKey ? 'new' : undefined);
         return;
       }
       if (st.paletteOpen) return;

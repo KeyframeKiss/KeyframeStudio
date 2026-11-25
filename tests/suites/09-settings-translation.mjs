@@ -38,6 +38,52 @@ export default async function (t) {
       check('override removed', !e3.override && e3.translation !== 'StudioEX Test Name');
     });
 
+  if (t.hello.commands.includes('scene.backups'))
+    await t.step('Ctrl+S: save over the open scene, the old version kept as a backup', async () => {
+      const sceneDir = path.join(t.paths.userData, 'studio', 'scene');
+      const stamp = /^\d{4}_\d{4}_\d{4}_\d{2}_\d{3}\.png$/;
+      const made = [];
+      let backupDir = null;
+      t.defer(() => {
+        for (const f of made) if (stamp.test(path.basename(f)) && fs.existsSync(f)) fs.unlinkSync(f);
+        if (backupDir && fs.existsSync(backupDir)) fs.rmSync(backupDir, { recursive: true, force: true });
+      });
+      // a scene of our own to save over: a new-file save of the sample (never the sample or anything of the user's)
+      const before = new Set(fs.readdirSync(sceneDir));
+      await ok('scene.save', { returnName: true });
+      await sleep(1500);
+      const added = fs.readdirSync(sceneDir).filter((f) => !before.has(f));
+      added.forEach((f) => made.push(path.join(sceneDir, f)));
+      check('a copy to work on', added.length === 1 && stamp.test(added[0]), added.join(','));
+      if (added.length !== 1 || !stamp.test(added[0])) return;
+      const own = path.join(sceneDir, added[0]);
+      await ok('scene.load', { path: own });
+      await sleep(2500);
+      const size0 = fs.statSync(own).size;
+      const names0 = (await ok('scene.get')).nodes.length;
+      // change the scene a little (delete nothing of value: it's our copy) and save over it
+      const r = await ok('scene.save', { returnName: true, overwrite: true });
+      await sleep(1500);
+      const after = fs.readdirSync(sceneDir).filter((f) => !before.has(f));
+      after.forEach((f) => made.includes(path.join(sceneDir, f)) || made.push(path.join(sceneDir, f)));
+      check('saved over the open file', r?.overwritten === true && r.file === path.basename(own), JSON.stringify(r));
+      check('no new file in the scene folder', after.length === 1, after.join(','));
+      const backups = await ok('scene.backups', { path: own });
+      backupDir = backups[0] ? path.dirname(backups[0].path) : null;
+      check('the old version is in backups', backups.length === 1 && fs.existsSync(backups[0].path) && backups[0].size === size0, JSON.stringify(backups));
+      check('the scene still loads', (await ok('scene.get')).nodes.length === names0 && (await ok('scene.get')).fileName === path.basename(own));
+      // a new scene has no file: Ctrl+S makes a new one
+      await ok('scene.new');
+      await sleep(1000);
+      const b2 = new Set(fs.readdirSync(sceneDir));
+      const r2 = await ok('scene.save', { returnName: true, overwrite: true });
+      await sleep(1500);
+      const added2 = fs.readdirSync(sceneDir).filter((f) => !b2.has(f));
+      added2.forEach((f) => made.push(path.join(sceneDir, f)));
+      check('a new scene gets a new file', r2?.overwritten === false && added2.length === 1, JSON.stringify(r2));
+      await t.loadSample();
+    });
+
   await t.step('scene save / new', async () => {
     const sceneDir = path.join(t.paths.userData, 'studio', 'scene');
     const before = new Set(fs.readdirSync(sceneDir));

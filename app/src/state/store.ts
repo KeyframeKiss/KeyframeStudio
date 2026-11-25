@@ -307,9 +307,29 @@ export function renderShots(ids: string[]) {
   showTab('shoot', 'render');
 }
 
-export async function saveSceneFile() {
-  const result = await call<boolean | string>('scene.save', { returnName: true });
-  if (typeof result === 'string') toast(`Saved ${result}`, 'done');
+/** Whether Ctrl+S saves over the open scene (a backup of the old version kept) rather than as a new file. */
+export function saveOverOn(): boolean {
+  try {
+    return localStorage.getItem('kf.save.over') !== '0';
+  } catch {
+    return true;
+  }
+}
+export function setSaveOver(on: boolean) {
+  lsSet('kf.save.over', on ? '1' : '0');
+  window.dispatchEvent(new CustomEvent('kf:save-mode'));
+}
+
+/**
+ * Saves the scene in CharaStudio through Studio's own Save, so every mod's save hooks run. 'over' replaces the open
+ * scene's file (its old version goes to UserData/StudioEX/scene-backups, newest 10 kept); without an open file, or
+ * with 'new', it's a new file like Studio's Save. Default: what the Ctrl+S setting says.
+ */
+export async function saveSceneFile(mode: 'over' | 'new' = saveOverOn() ? 'over' : 'new') {
+  const over = mode === 'over' && !!get().hello?.commands.includes('scene.backups');
+  const result = await call<boolean | string | { file: string; overwritten: boolean }>('scene.save', over ? { returnName: true, overwrite: true } : { returnName: true });
+  if (result && typeof result === 'object') toast(result.overwritten ? `Saved over ${result.file} (the old version is kept in backups)` : `Saved as a new file: ${result.file}`, 'done');
+  else if (typeof result === 'string') toast(`Saved ${result}`, 'done');
   else if (result === true) toast('Save requested in CharaStudio');
   return result;
 }

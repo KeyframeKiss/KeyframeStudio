@@ -14,7 +14,8 @@ export const SHORTCUTS: [string, string][] = [
   ['Ctrl C / Ctrl V', 'Copy / paste keys at playhead'],
   ['Ctrl D', 'Duplicate keys to playhead'],
   ['Ctrl A', 'Select all visible keys'],
-  ['Ctrl S', 'Save the scene in CharaStudio (a new file, like Studio’s Save)'],
+  ['Ctrl S', 'Save the scene in CharaStudio: over the open file (a backup is kept), or as a new file — set in the scene menu'],
+  ['Ctrl Shift S', 'Save the scene as a new file, like Studio’s Save'],
   ['Ctrl G', 'New folder from selected tracks'],
   ['G', 'Frame guides on / off (which ones: Shoot, on the right)'],
   ['Ctrl K in Studio', 'Key while CharaStudio is the active window (Ctrl Shift K: the whole object). Change them in Mod settings › Keyframe Studio Bridge'],
@@ -40,7 +41,7 @@ export const SHORTCUTS: [string, string][] = [
 
 /** The headings the list is shown under, in order, and which shortcut goes where (by its key text). */
 export const SHORTCUT_GROUPS: [string, string[]][] = [
-  ['General', ['Ctrl K', 'Ctrl 1 – 5', 'Ctrl S', 'Ctrl Z / Ctrl Y', 'Esc', 'Ctrl Shift M', 'G', 'Ctrl O', 'Ctrl ,', 'F1', 'Right-click']],
+  ['General', ['Ctrl K', 'Ctrl 1 – 5', 'Ctrl S', 'Ctrl Shift S', 'Ctrl Z / Ctrl Y', 'Esc', 'Ctrl Shift M', 'G', 'Ctrl O', 'Ctrl ,', 'F1', 'Right-click']],
   ['Playback', ['Space', '← / →', 'Shift ← / →', 'Home / End']],
   ['Keying', ['K  or  I', 'Shift K', 'Shift Enter', 'R', 'Ctrl K in Studio']],
   ['Editing keys', ['Del / Backspace', 'Ctrl C / Ctrl V', 'Ctrl D', 'Ctrl A', '1 – 5', 'Ctrl G', 'Drag key', 'Graph: drag key ↕', 'Double-click row/curve']],
