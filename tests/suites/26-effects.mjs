@@ -46,6 +46,63 @@ export default async function (t) {
     check('reset all', Object.values(r.effects).every((e) => e.on === false));
   });
 
+  // white balance in kelvin, LUT files, lens distortion and natural falloff (YuppiEffects-style, our own)
+  if (t.hello.commands.includes('fx.luts') && t.hello.commands.includes('camera.mean'))
+    await t.step('white balance (K), LUT files, distortion, lens falloff', async () => {
+      const mean = () => ok('camera.mean', { width: 96 });
+      await ok('fx.reset');
+      await sleep(250);
+      const m0 = await mean();
+      await ok('fx.set', { effect: 'grade', values: { on: true, kelvin: 3200 } });
+      await sleep(250);
+      const cool = await mean();
+      await ok('fx.set', { effect: 'grade', values: { kelvin: 10000 } });
+      await sleep(250);
+      const warm = await mean();
+      check('3200 K cools the picture (bluer than red)', cool[2] - cool[0] > m0[2] - m0[0] + 0.02, JSON.stringify({ m0, cool }));
+      check('10000 K warms it', warm[0] - warm[2] > m0[0] - m0[2] + 0.02, JSON.stringify({ m0, warm }));
+      await ok('fx.reset');
+
+      // a tiny LUT that inverts colours, made for the test and removed after
+      const lut = await ok('fx.luts');
+      const file = path.join(lut.folder, 'kf-test-invert.cube');
+      const lines = ['TITLE "kf test invert"', 'LUT_3D_SIZE 2'];
+      for (let b = 0; b < 2; b++) for (let g = 0; g < 2; g++) for (let r = 0; r < 2; r++) lines.push(`${1 - r} ${1 - g} ${1 - b}`);
+      fs.writeFileSync(file, lines.join(String.fromCharCode(10)));
+      t.defer(() => fs.existsSync(file) && fs.unlinkSync(file));
+      const listed = (await ok('fx.luts')).files.find((f) => f.name === 'kf-test-invert.cube');
+      check('a .cube in the LUT folder is listed with its size', listed?.size === 2 && !listed.error, JSON.stringify(listed));
+      await sleep(250);
+      const before = await mean();
+      await ok('fx.set', { effect: 'lut', values: { on: true, a: 'kf-test-invert.cube', aAmount: 1, aMode: 0 } });
+      await sleep(250);
+      const inv = await mean();
+      check('the LUT applies (colours inverted)', [0, 1, 2].every((i) => near(inv[i], 1 - before[i], 0.06)), JSON.stringify({ before, inv }));
+      await ok('fx.set', { effect: 'lut', values: { aAmount: 0.5 } });
+      await sleep(250);
+      const half = await mean();
+      check('half strength: halfway', [0, 1, 2].every((i) => near(half[i], 0.5, 0.06)), JSON.stringify(half));
+      await ok('fx.set', { effect: 'lut', values: { aAmount: 1, aMode: 2 } });
+      await sleep(250);
+      const colourOnly = await mean();
+      const L = (c) => 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+      check('colour only: the picture keeps its brightness', near(L(colourOnly), L(before), 0.05), `${L(before).toFixed(3)} → ${L(colourOnly).toFixed(3)}`);
+      check('a missing LUT file is no harm', (await req('fx.set', { effect: 'lut', values: { a: 'nope.cube' } })).ok);
+      await ok('fx.reset');
+
+      await sleep(250);
+      const plain = await snap();
+      await ok('fx.set', { effect: 'distortion', values: { on: true, amount: 0.4 } });
+      await sleep(250);
+      check('distortion renders', Math.abs((await snap()) - plain) > plain * 0.01);
+      await ok('fx.reset');
+      await ok('fx.set', { effect: 'vignette', values: { on: true, intensity: 0, natural: 1 } });
+      await sleep(250);
+      const fall = await mean();
+      check('lens falloff darkens (with the shaped vignette at 0)', L(fall) < L(before) - 0.005, `${L(before).toFixed(3)} → ${L(fall).toFixed(3)}`);
+      await ok('fx.reset');
+    });
+
   await t.step('saved with the scene', async () => {
     await ok('fx.set', { effect: 'fog', values: { on: true, density: 0.123, far: [0.2, 0.3, 0.9, 0.5] } });
     const sceneDir = path.join(t.paths.userData, 'studio', 'scene');

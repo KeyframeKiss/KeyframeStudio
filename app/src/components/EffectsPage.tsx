@@ -14,7 +14,7 @@ import { Col, Columns, Page, Section } from './Page';
 // scene, undoable, and every value can be animated.
 // ---------------------------------------------------------------------------
 
-type Value = number | boolean | number[];
+type Value = number | boolean | number[] | string;
 type Fx = Record<string, Record<string, Value>>;
 interface FxState {
   effects: Fx;
@@ -45,7 +45,7 @@ interface Xukmi {
 interface Param {
   key: string;
   label: string;
-  kind: 'float' | 'color' | 'bool' | 'choice' | 'chara';
+  kind: 'float' | 'color' | 'bool' | 'choice' | 'chara' | 'lut';
   options?: { v: number; label: string }[];
   min?: number;
   max?: number;
@@ -96,7 +96,8 @@ const EFFECTS: EffectDef[] = [
       { key: 'contrast', label: 'Contrast', kind: 'float', min: 0, max: 2, step: 0.01 },
       { key: 'saturation', label: 'Saturation', kind: 'float', min: 0, max: 2, step: 0.01 },
       { key: 'vibrance', label: 'Vibrance', kind: 'float', min: -1, max: 1, step: 0.01, help: 'Saturates dull colours more than vivid ones (skin stays natural)' },
-      { key: 'temperature', label: 'Temperature', kind: 'float', min: -1, max: 1, step: 0.01, help: 'Cool (blue) ← → warm (orange)' },
+      { key: 'kelvin', label: 'White balance', kind: 'float', min: 2000, max: 12000, step: 50, help: 'In kelvin, like a camera: the light the picture was taken under is made neutral. Lower (3200 K, tungsten) cools the picture, higher warms it; 6500 K changes nothing' },
+      { key: 'temperature', label: 'Warmth', kind: 'float', min: -1, max: 1, step: 0.01, advanced: true, help: 'A simple push: cool (blue) ← → warm (orange), on top of the white balance' },
       { key: 'tint', label: 'Tint', kind: 'float', min: -1, max: 1, step: 0.01, help: 'Green ← → magenta' },
       { key: 'brightness', label: 'Brightness', kind: 'float', min: -1, max: 1, step: 0.01 },
       { key: 'amount', label: 'Mix', kind: 'float', min: 0, max: 1, step: 0.01, help: 'How much of the correction to use' },
@@ -149,6 +150,32 @@ const EFFECTS: EffectDef[] = [
       { key: 'smoothness', label: 'Softness', kind: 'float', min: 0, max: 1, step: 0.01 },
       { key: 'roundness', label: 'Roundness', kind: 'float', min: 0, max: 1, step: 0.01, help: '1 = a circle; 0 = follows the frame’s shape' },
       { key: 'color', label: 'Colour', kind: 'color' },
+      { key: 'natural', label: 'Lens falloff', kind: 'float', min: 0, max: 1, step: 0.01, help: 'A real lens’s darkening towards the edges (cos⁴): stronger with wider lenses, follows the camera’s field of view. Works with or without the shaped vignette above (set its Intensity to 0 for only this)' },
+    ],
+  },
+  {
+    id: 'lut',
+    title: 'LUT files',
+    help: 'Colour looks from LUT files: .cube (from Resolve, Photoshop or LUT packs) or PNG strips, put in UserData/StudioEX/luts. Two slots: one after the other, or mixed. Each can change everything, only the light, or only the colour.',
+    xukmi: [],
+    params: [
+      { key: 'a', label: 'First LUT', kind: 'lut' },
+      { key: 'aAmount', label: 'Strength', kind: 'float', min: 0, max: 1, step: 0.01 },
+      { key: 'aMode', label: 'Changes', kind: 'choice', options: [{ v: 0, label: 'Everything' }, { v: 1, label: 'Light only' }, { v: 2, label: 'Colour only' }], help: 'Light only: its brightness and contrast, your colours. Colour only: its colours, your light' },
+      { key: 'b', label: 'Second LUT', kind: 'lut' },
+      { key: 'bAmount', label: 'Strength', kind: 'float', min: 0, max: 1, step: 0.01, help: 'After the first: how much of it. Mixed: 0 = only the first, 1 = only the second' },
+      { key: 'bMode', label: 'Changes', kind: 'choice', options: [{ v: 0, label: 'Everything' }, { v: 1, label: 'Light only' }, { v: 2, label: 'Colour only' }] },
+      { key: 'combine', label: 'Together', kind: 'choice', options: [{ v: 0, label: 'One after the other' }, { v: 1, label: 'Mixed' }] },
+    ],
+  },
+  {
+    id: 'distortion',
+    title: 'Lens distortion',
+    help: 'Barrel (wide lenses bulge out) or pincushion (long lenses pinch in). Refitted so the frame stays filled.',
+    xukmi: [],
+    params: [
+      { key: 'amount', label: 'Amount', kind: 'float', min: -0.5, max: 0.5, step: 0.005, help: 'Above 0: barrel. Below 0: pincushion' },
+      { key: 'fit', label: 'Fill the frame', kind: 'bool', help: 'Zooms just enough that no edge is left empty' },
     ],
   },
   {
@@ -464,6 +491,7 @@ function ParamRow({ effect, p, v, onSet }: { effect: string; p: Param; v: Value;
         <span />
       </div>
     );
+  if (p.kind === 'lut') return <LutRow p={p} v={(v as string) ?? ''} onSet={onSet} />;
   if (p.kind === 'chara') {
     const charas = Object.values(nodes).filter((n) => n.type === 'Char');
     // nothing picked (or that character is gone): the plugin focuses on the first character in the scene
@@ -535,6 +563,47 @@ function ParamRow({ effect, p, v, onSet }: { effect: string; p: Param; v: Value;
         <NumberBox value={n} step={p.step ?? 0.01} onChange={(x) => onSet({ [p.key]: x })} />
       </span>
       {tools}
+    </div>
+  );
+}
+
+/** A LUT file from UserData/StudioEX/luts (refreshed when opened), the folder a click away. */
+function LutRow({ p, v, onSet }: { p: Param; v: string; onSet: (v: Record<string, Value>) => void }) {
+  const [files, setFiles] = useState<{ name: string; size: number; error: string | null }[]>([]);
+  const [folder, setFolder] = useState('');
+  const load = useCallback(() => {
+    call<{ folder: string; files: { name: string; size: number; error: string | null }[] }>('fx.luts').then((r) => {
+      if (!r) return;
+      setFiles(r.files);
+      setFolder(r.folder);
+    });
+  }, []);
+  useEffect(load, [load]);
+  const missing = !!v && !files.some((f) => f.name === v);
+  return (
+    <div className="fx-row">
+      <label>
+        {p.label}
+        {p.help && <Help text={p.help} />}
+      </label>
+      <span className="fx-lut">
+        <select className="input" value={v} onFocus={load} onChange={(e) => onSet({ [p.key]: e.target.value })}>
+          <option value="">None</option>
+          {missing && <option value={v}>{v} (not found)</option>}
+          {files.map((f) => (
+            <option key={f.name} value={f.name} disabled={!!f.error} title={f.error ?? `${f.size}³`}>
+              {f.name.replace(/\.(cube|png)$/i, '')}
+              {f.error ? ' (can’t read)' : ''}
+            </option>
+          ))}
+        </select>
+        {window.studioEx?.openFolder && folder && (
+          <button className="btn icon" title={`Open the LUT folder: put .cube or PNG LUTs here\n${folder}`} onClick={() => window.studioEx?.openFolder?.(folder)}>
+            <Icon name="folder" size={13} />
+          </button>
+        )}
+      </span>
+      <span />
     </div>
   );
 }

@@ -81,6 +81,7 @@ namespace StudioEX.Bridge.Api
                 else throw new BridgeException("That object is not a camera");
                 return Get();
             });
+            r.Add("camera.mean", a => Mean(a.GetInt("width", 96)));
             r.Add("camera.setFov", a => { SceneApi.Studio.cameraCtrl.fieldOfView = Mathf.Clamp(a.GetFloat("fov", 23f), 1f, 179f); return Get(); });
             r.Add("camera.key", a => KeyCamera(a));
             r.Add("camera.shots", a => Shots());
@@ -149,6 +150,39 @@ namespace StudioEX.Bridge.Api
         }
 
         /// <summary>Renders the main camera into a small JPEG (base64). Includes image effects, not the UI.</summary>
+        /// <summary>The average colour of Studio's view with every effect (tests check an effect's direction with it), 0..1.</summary>
+        public static object Mean(int width)
+        {
+            var cam = Camera.main;
+            if (cam == null) return null;
+            width = Mathf.Clamp(width, 16, 512);
+            int height = Mathf.Max(9, Mathf.RoundToInt(width * (float)Screen.height / Mathf.Max(1, Screen.width)));
+            var rt = RenderTexture.GetTemporary(width, height, 24);
+            var prevTarget = cam.targetTexture;
+            var prevActive = RenderTexture.active;
+            Texture2D tex = null;
+            try
+            {
+                cam.targetTexture = rt;
+                cam.Render();
+                RenderTexture.active = rt;
+                tex = new Texture2D(width, height, TextureFormat.RGB24, false);
+                tex.ReadPixels(new Rect(0, 0, width, height), 0, 0);
+                double r = 0, g = 0, b = 0;
+                var px = tex.GetPixels32();
+                foreach (var c in px) { r += c.r; g += c.g; b += c.b; }
+                double n = Math.Max(1, px.Length) * 255.0;
+                return new List<object> { r / n, g / n, b / n };
+            }
+            finally
+            {
+                cam.targetTexture = prevTarget;
+                RenderTexture.active = prevActive;
+                RenderTexture.ReleaseTemporary(rt);
+                if (tex != null) UnityEngine.Object.Destroy(tex);
+            }
+        }
+
         public static string Snapshot(int width)
         {
             var cam = Camera.main;

@@ -30,10 +30,15 @@ namespace StudioEX.Bridge.Api
                 { "height", 0f }, { "heightFalloff", 0f }, { "sky", true }, { "skyDistance", 60f } } },
             { "grade", new Dictionary<string, object> {
                 { "on", false }, { "exposure", 0f }, { "contrast", 1f }, { "saturation", 1f }, { "vibrance", 0f },
-                { "temperature", 0f }, { "tint", 0f }, { "brightness", 0f }, { "amount", 1f },
+                { "temperature", 0f }, { "tint", 0f }, { "brightness", 0f }, { "amount", 1f }, { "kelvin", 6500f },
                 { "filter", new[] { 1f, 1f, 1f, 1f } }, { "lift", new[] { 0f, 0f, 0f, 1f } }, { "gamma", new[] { 1f, 1f, 1f, 1f } }, { "gain", new[] { 1f, 1f, 1f, 1f } } } },
             { "sharpen", new Dictionary<string, object> { { "on", false }, { "amount", 0.5f } } },
-            { "vignette", new Dictionary<string, object> { { "on", false }, { "intensity", 0.35f }, { "smoothness", 0.45f }, { "roundness", 1f }, { "color", new[] { 0f, 0f, 0f, 1f } } } },
+            { "vignette", new Dictionary<string, object> { { "on", false }, { "intensity", 0.35f }, { "smoothness", 0.45f }, { "roundness", 1f }, { "color", new[] { 0f, 0f, 0f, 1f } }, { "natural", 0f } } },
+            // LUT files (UserData/StudioEX/luts): mode 0 everything, 1 light only, 2 colour only; combine 0 chain, 1 mix
+            { "lut", new Dictionary<string, object> {
+                { "on", false }, { "a", "" }, { "aAmount", 1f }, { "aMode", 0f }, { "b", "" }, { "bAmount", 1f }, { "bMode", 0f }, { "combine", 0f } } },
+            // barrel (+) / pincushion (-), refitted to fill the frame
+            { "distortion", new Dictionary<string, object> { { "on", false }, { "amount", 0.15f }, { "fit", true } } },
             { "aberration", new Dictionary<string, object> { { "on", false }, { "amount", 0.3f } } },
             { "grain", new Dictionary<string, object> { { "on", false }, { "amount", 0.2f }, { "size", 1.5f } } },
             // focus: metres from the camera; blur: how quickly things leave focus; maxBlur: biggest blur, in screen heights;
@@ -43,10 +48,10 @@ namespace StudioEX.Bridge.Api
 
         private static Dictionary<string, Dictionary<string, object>> _fx = Clone(Defaults);
         private static string _bundleError;
-        private static Material _fog, _grade, _sharpen, _lens, _dof;
+        private static Material _fog, _grade, _sharpen, _lens, _dof, _lut;
 
         // values that are choices, not amounts: no Timeline tracks for them
-        private static readonly HashSet<string> NotAnimated = new HashSet<string> { "dof.autoFocus", "dof.chara" };
+        private static readonly HashSet<string> NotAnimated = new HashSet<string> { "dof.autoFocus", "dof.chara", "lut.aMode", "lut.bMode", "lut.combine" };
 
         private static Dictionary<string, Dictionary<string, object>> Clone(Dictionary<string, Dictionary<string, object>> src) =>
             src.ToDictionary(kv => kv.Key, kv => CloneOne(kv.Value));
@@ -57,6 +62,7 @@ namespace StudioEX.Bridge.Api
         public static void Register(CommandRouter r)
         {
             r.Add("fx.get", a => State());
+            r.Add("fx.luts", a => new Dictionary<string, object> { { "folder", LutFiles.Folder }, { "files", LutFiles.List() } });
             r.Add("fx.set", Set);
             r.Add("fx.reset", a =>
             {
@@ -161,6 +167,7 @@ namespace StudioEX.Bridge.Api
         private static object Parse(object def, object v)
         {
             if (def is bool) return Convert.ToBoolean(v);
+            if (def is string) return v == null ? "" : Convert.ToString(v, CultureInfo.InvariantCulture);
             if (def is float) return Convert.ToSingle(v, CultureInfo.InvariantCulture);
             var l = v as List<object> ?? throw new BridgeException("Expected a colour [r, g, b, a]");
             var d = (float[])def;
@@ -232,6 +239,7 @@ namespace StudioEX.Bridge.Api
                 _sharpen = M("Sharpen");
                 _lens = M("Lens");
                 _dof = M("Dof");
+                _lut = M("Lut");
                 return true;
             }
             catch (Exception e)
@@ -281,6 +289,39 @@ namespace StudioEX.Bridge.Api
         }
 
         private static float F(string e, string k) => (float)_fx[e][k];
+
+        /// <summary>A colour temperature's light as RGB (Tanner Helland's fit of the black-body curve), 0..1.</summary>
+        private static Vector3 KelvinRgb(float kelvin)
+        {
+            float t = Mathf.Clamp(kelvin, 1000f, 40000f) / 100f;
+            float r, g, b;
+            if (t <= 66f)
+            {
+                r = 255f;
+                g = 99.4708025861f * Mathf.Log(t) - 161.1195681661f;
+                b = t <= 19f ? 0f : 138.5177312231f * Mathf.Log(t - 10f) - 305.0447927307f;
+            }
+            else
+            {
+                r = 329.698727446f * Mathf.Pow(t - 60f, -0.1332047592f);
+                g = 288.1221695283f * Mathf.Pow(t - 60f, -0.0755148492f);
+                b = 255f;
+            }
+            return new Vector3(Mathf.Clamp(r, 1f, 255f), Mathf.Clamp(g, 1f, 255f), Mathf.Clamp(b, 1f, 255f)) / 255f;
+        }
+
+        /// <summary>
+        /// White balance like a camera's: shot under light of this temperature, made neutral — so a low setting (3200 K,
+        /// tungsten) cools the picture, a high one warms it; 6500 K changes nothing. Brightness kept.
+        /// </summary>
+        internal static Vector4 WhiteBalance(float kelvin)
+        {
+            var n = KelvinRgb(6500f);
+            var w = KelvinRgb(kelvin);
+            var g = new Vector3(n.x / w.x, n.y / w.y, n.z / w.z);
+            float l = 0.2126f * g.x + 0.7152f * g.y + 0.0722f * g.z;
+            return new Vector4(g.x / l, g.y / l, g.z / l, 1f);
+        }
 
         // for the viewport's focus marker
         internal static bool DofOn => B("dof", "on");
@@ -372,11 +413,31 @@ namespace StudioEX.Bridge.Api
                         _grade.SetVector("_KfLift", V("grade", "lift"));
                         _grade.SetVector("_KfGamma", V("grade", "gamma"));
                         _grade.SetVector("_KfGain", V("grade", "gain"));
+                        _grade.SetVector("_KfWB", WhiteBalance(F("grade", "kelvin")));
                         passes.Add(_grade);
                     }
-                    bool vig = B("vignette", "on"), ca = B("aberration", "on"), grain = B("grain", "on");
-                    if (vig || ca || grain)
+                    if (B("lut", "on") && _lut != null)
                     {
+                        var ta = LutFiles.Get((string)_fx["lut"]["a"], out int na);
+                        var tb = LutFiles.Get((string)_fx["lut"]["b"], out int nb);
+                        if (ta != null || tb != null)
+                        {
+                            if (ta != null) _lut.SetTexture("_KfLutA", ta);
+                            if (tb != null) _lut.SetTexture("_KfLutB", tb);
+                            _lut.SetVector("_KfLutAInfo", new Vector4(na, Mathf.Clamp01(F("lut", "aAmount")), F("lut", "aMode"), ta != null ? 1 : 0));
+                            _lut.SetVector("_KfLutBInfo", new Vector4(nb, Mathf.Clamp01(F("lut", "bAmount")), F("lut", "bMode"), tb != null ? 1 : 0));
+                            _lut.SetFloat("_KfLutCombine", F("lut", "combine"));
+                            _lut.SetFloat("_KfLinear", QualitySettings.activeColorSpace == ColorSpace.Linear ? 1f : 0f);
+                            passes.Add(_lut);
+                        }
+                    }
+                    bool vig = B("vignette", "on"), ca = B("aberration", "on"), grain = B("grain", "on"), dist = B("distortion", "on");
+                    if (vig || ca || grain || dist)
+                    {
+                        float k = dist ? F("distortion", "amount") : 0f;
+                        float aspect = (float)src.width / Mathf.Max(1, src.height);
+                        float fit = dist && B("distortion", "fit") ? 1f + k * (k >= 0f ? 0.25f * (aspect * aspect + 1f) : 0.25f * Mathf.Min(1f, aspect * aspect)) : 1f;
+                        _lens.SetVector("_KfLens2", new Vector4(k, Mathf.Max(0.05f, fit), vig ? Mathf.Clamp01(F("vignette", "natural")) : 0f, Mathf.Tan(_cam.fieldOfView * 0.5f * Mathf.Deg2Rad)));
                         _lens.SetVector("_KfLens", new Vector4(ca ? F("aberration", "amount") : 0, vig ? F("vignette", "intensity") : 0, F("vignette", "smoothness"), F("vignette", "roundness")));
                         _lens.SetVector("_KfVigColor", V("vignette", "color"));
                         _lens.SetVector("_KfGrain", new Vector4(grain ? F("grain", "amount") : 0, F("grain", "size"), Time.frameCount % 997, PixelScale(src)));
@@ -447,7 +508,7 @@ namespace StudioEX.Bridge.Api
             foreach (var e in Defaults)
                 foreach (var v in e.Value)
                 {
-                    if (v.Value is bool || NotAnimated.Contains(e.Key + "." + v.Key)) continue;
+                    if (v.Value is bool || v.Value is string || NotAnimated.Contains(e.Key + "." + v.Key)) continue;
                     string effect = e.Key, name = v.Key;
                     if (v.Value is float) TimelineImpl.AddSceneFloatModel(Owner, "fx." + effect + "." + name, Title(effect, name), () => F(effect, name), x => { _fx[effect][name] = x; Ensure(); });
                     else TimelineImpl.AddSceneColorModel(Owner, "fx." + effect + "." + name, Title(effect, name), () => V(effect, name), c => { _fx[effect][name] = new[] { c.x, c.y, c.z, c.w }; Ensure(); });

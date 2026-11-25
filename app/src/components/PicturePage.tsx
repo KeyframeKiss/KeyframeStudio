@@ -3,6 +3,7 @@ import { Help } from './Help';
 import { Page } from './Page';
 import { LookPanel, Switch } from './LookPanel';
 import { EffectsPage } from './EffectsPage';
+import { ScopesPanel } from './ScopesPanel';
 import { bridge } from '../bridge/client';
 import { call, displayName, showTab, toast, useStore } from '../state/store';
 
@@ -38,12 +39,13 @@ interface Item {
 }
 
 const ITEMS: Item[] = [
-  { id: 'lut', title: 'Color grade', group: 'Colour', help: "Studio's LUT tints the whole picture; a second LUT can blend in (KK_TwoLut).", studio: ['lut'] },
+  { id: 'lut', title: 'Color grade', group: 'Colour', help: "Studio's LUT tints the whole picture (a second can blend in with KK_TwoLut); LUT files (.cube / PNG) from UserData/StudioEX/luts go on top.", studio: ['lut'], ours: ['lut'] },
   { id: 'grade', title: 'Colour correction', group: 'Colour', help: 'Exposure, white balance, contrast and saturation on the final picture, after the colour grade.', ours: ['grade'], toggle: { fx: 'grade' } },
   { id: 'bloom', title: 'Bloom', group: 'Colour', help: 'Bright areas glow.', studio: ['bloom'], toggle: { studio: 'bloom' } },
   { id: 'dof', title: 'Depth of field', group: 'Lens', help: "Blur away from the focus. Keyframe Studio's follows a character's eyes and looks the same in stills; Studio's own is simpler. Use one of them.", ours: ['dof'], studio: ['dof'] },
   { id: 'vignette', title: 'Vignette', group: 'Lens', help: "Darkened corners. Keyframe Studio's has strength, roundness and colour; Studio's is on or off.", ours: ['vignette'], studio: ['vignette'] },
   { id: 'aberration', title: 'Chromatic aberration', group: 'Lens', help: 'Coloured fringes towards the edges, like a real lens.', ours: ['aberration'], toggle: { fx: 'aberration' } },
+  { id: 'distortion', title: 'Lens distortion', group: 'Lens', help: 'Barrel or pincushion, refitted to fill the frame.', ours: ['distortion'], toggle: { fx: 'distortion' } },
   { id: 'sharpen', title: 'Sharpen', group: 'Lens', help: 'Crisper detail without halos.', ours: ['sharpen'], toggle: { fx: 'sharpen' } },
   { id: 'grain', title: 'Film grain', group: 'Lens', help: 'Fine moving noise, like film. Hides banding in gradients.', ours: ['grain'], toggle: { fx: 'grain' } },
   { id: 'fog', title: 'Fog', group: 'Atmosphere', help: "Haze with distance. Keyframe Studio's two-tone fog fades from a near colour to a far one; Studio's own is one colour.", ours: ['fog'], studio: ['fog'] },
@@ -68,6 +70,21 @@ export function PicturePage() {
       return 'lut';
     }
   });
+  const [scopes, setScopesState] = useState(() => {
+    try {
+      return localStorage.getItem('kf.scopes.open') === '1';
+    } catch {
+      return false;
+    }
+  });
+  const setScopes = (v: boolean) => {
+    setScopesState(v);
+    try {
+      localStorage.setItem('kf.scopes.open', v ? '1' : '0');
+    } catch {
+      /* not remembered; fine */
+    }
+  };
   const setPick = (id: string) => {
     setPickState(id);
     try {
@@ -123,8 +140,10 @@ export function PicturePage() {
     const s = (k: string) => e?.[k] === true;
     const o = (k: string) => ours(k)?.on === true;
     switch (it.id) {
-      case 'lut':
-        return { on: true, text: [name(look?.luts, e?.lut ?? -1), (e?.lutBlend ?? 0) > 0 ? `→ ${name(look?.luts, e?.lut2 ?? -1)} ${n2(e?.lutBlend)}` : ''].filter(Boolean).join(' ') };
+      case 'lut': {
+        const files = o('lut') ? [ours('lut')?.a, ours('lut')?.b].filter((x) => typeof x === 'string' && x).map((x) => String(x).replace(/^.*\//, '').replace(/\.(cube|png)$/i, '')) : [];
+        return { on: true, text: [name(look?.luts, e?.lut ?? -1), (e?.lutBlend ?? 0) > 0 ? `→ ${name(look?.luts, e?.lut2 ?? -1)} ${n2(e?.lutBlend)}` : '', files.length ? `+ ${files.join(', ')}` : ''].filter(Boolean).join(' ') };
+      }
       case 'bloom':
         return { on: s('bloom'), text: s('bloom') ? `Intensity ${n2(e?.bloomIntensity)}` : 'Off' };
       case 'sun':
@@ -178,6 +197,9 @@ export function PicturePage() {
     <Page max={1400}>
       <div className="look-page-bar">
         <span style={{ flex: 1 }} />
+        <button className={`btn solid ${scopes ? 'on' : ''}`} aria-pressed={scopes} title="Histogram, waveform, RGB parade and vectorscope of Studio's view" onClick={() => setScopes(!scopes)}>
+          Scopes
+        </button>
         <Help text="Changes show in Studio right away, are undoable (Ctrl+Z) and are saved with the scene. Settings tagged Studio are Studio's own; Keyframe Studio's effects run after them, and ◆ beside a value adds a Timeline track for it." />
         <button
           className="btn solid"
@@ -185,6 +207,18 @@ export function PicturePage() {
           onClick={() => call('look.resetDefault').then((r) => r !== undefined && window.dispatchEvent(new Event('studioex:look-changed')))}
         >
           Reset Studio settings
+        </button>
+        <button
+          className="btn solid"
+          title="Switch off Studio's own bloom, ambient occlusion, depth of field, vignette, fog and sun shafts in one go (one undo step) — to build the look from Keyframe Studio's effects alone. The LUT and toon shading stay"
+          onClick={() =>
+            bridge
+              .request('look.set', { effects: { bloom: false, ssao: false, dof: false, vignette: false, fog: false, sunShafts: false } })
+              .then(() => window.dispatchEvent(new Event('studioex:look-changed')))
+              .catch((err) => toast((err as Error).message, 'error'))
+          }
+        >
+          Studio effects off
         </button>
         <button className="btn solid" title="Turn every Keyframe Studio effect off and back to its starting values" onClick={() => bridge.request('fx.reset').then(() => window.dispatchEvent(new Event('kf:history')))}>
           Reset effects
@@ -220,6 +254,7 @@ export function PicturePage() {
 
         {cur && (
           <section className="pic-editor" aria-label={cur.title}>
+            {scopes && <ScopesPanel />}
             <header className="pic-editor-head">
               <h2>{cur.title}</h2>
               <p>{cur.help}</p>

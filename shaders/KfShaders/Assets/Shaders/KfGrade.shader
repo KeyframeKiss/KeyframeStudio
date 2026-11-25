@@ -22,6 +22,7 @@ Shader "Hidden/KeyframeStudio/Grade"
             float4 _KfLift;    // rgb shadows offset
             float4 _KfGamma;   // rgb midtones (1 = none)
             float4 _KfGain;    // rgb highlights (1 = none)
+            float4 _KfWB;      // rgb white balance gains from the kelvin setting (1 = 6500 K)
 
             fixed4 frag(v2f i) : SV_Target
             {
@@ -29,6 +30,7 @@ Shader "Hidden/KeyframeStudio/Grade"
                 float3 c = src.rgb;
 
                 c *= exp2(_KfGrade.x);
+                c *= _KfWB.rgb;
                 // white balance: warm/cool along blue-orange, tint along green-magenta
                 c *= float3(1 + 0.1 * _KfBalance.x, 1 - 0.1 * _KfBalance.y, 1 - 0.1 * _KfBalance.x) / (1 + 0.033 * abs(_KfBalance.x));
                 c *= _KfFilter.rgb;

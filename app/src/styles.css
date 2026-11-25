@@ -11288,3 +11288,47 @@ a.btn {
   margin-left: 4px;
   vertical-align: middle;
 }
+
+/* Look › Picture: a LUT file picker; the scopes above the editor */
+.fx-lut {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.fx-lut select {
+  flex: 1;
+  min-width: 0;
+}
+.scopes {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  margin-bottom: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg-1);
+}
+.scopes-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.scopes-canvas {
+  width: 100%;
+  max-width: 520px;
+  aspect-ratio: 360 / 150;
+  border-radius: 4px;
+  image-rendering: auto;
+}
+.scopes-canvas.square {
+  width: auto;
+  height: 180px;
+  aspect-ratio: 1;
+  align-self: center;
+}
+.scopes-err {
+  color: var(--text-3);
+}
+
