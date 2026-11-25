@@ -217,6 +217,15 @@ const CL_PARAMS: Param[] = [
   { key: 'strength', label: 'Strength', kind: 'float', min: 0, max: 3, step: 0.01, help: 'How strongly lights show on characters' },
   { key: 'toon', label: 'Toon edge', kind: 'bool', help: 'A clean edge between lit and unlit, like anime shading. Off: soft, like a regular light' },
   { key: 'softness', label: 'Edge softness', kind: 'float', min: 0.005, max: 0.5, step: 0.005, help: 'How soft the toon edge is' },
+  {
+    key: 'base',
+    label: 'Built-in light',
+    kind: 'float',
+    min: 0,
+    max: 1,
+    step: 0.01,
+    help: "Anime shaders always draw characters fully lit, whatever the lights do. 1 keeps that look; lower it and the characters get darker until, at 0, only lights light them — Studio's character light and the scene's lights, like in any 3D program. A little (0.1–0.2) works as soft ambient light.",
+  },
 ];
 
 /**

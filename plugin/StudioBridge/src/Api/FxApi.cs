@@ -47,7 +47,7 @@ namespace StudioEX.Bridge.Api
             { "ao", new Dictionary<string, object> {
                 { "on", false }, { "intensity", 1f }, { "radius", 0.3f }, { "contrast", 1f }, { "fade", 0f }, { "color", new[] { 0f, 0f, 0f, 1f } } } },
             // character lights: scene lights switched to light characters, drawn onto them by us (any shader)
-            { "charaLight", new Dictionary<string, object> { { "on", false }, { "strength", 1f }, { "toon", false }, { "softness", 0.08f } } },
+            { "charaLight", new Dictionary<string, object> { { "on", false }, { "strength", 1f }, { "toon", false }, { "softness", 0.08f }, { "base", 1f } } },
             // barrel (+) / pincushion (-), refitted to fill the frame
             { "distortion", new Dictionary<string, object> { { "on", false }, { "amount", 0.15f }, { "fit", true } } },
             { "aberration", new Dictionary<string, object> { { "on", false }, { "amount", 0.3f } } },
@@ -483,6 +483,16 @@ namespace StudioEX.Bridge.Api
             // ---- character lights: before the camera renders, the characters' surface direction / distance and colour
             private RenderTexture _cgGeo, _cgAlb;
             private int _cgCount;
+            private bool _cgReady;
+            private static Light _studioCharaLight;
+
+            /// <summary>Studio's character light (the one that follows the camera).</summary>
+            private static Light StudioCharaLight()
+            {
+                if (_studioCharaLight == null)
+                    _studioCharaLight = FindObjectsOfType<Light>().FirstOrDefault(l => l.name == "Directional Chara");
+                return _studioCharaLight;
+            }
             private readonly Vector4[] _cgPos = new Vector4[8], _cgDir = new Vector4[8], _cgCol = new Vector4[8];
 
             private void ReleaseChara()
@@ -491,6 +501,7 @@ namespace StudioEX.Bridge.Api
                 if (_cgAlb != null) RenderTexture.ReleaseTemporary(_cgAlb);
                 _cgGeo = _cgAlb = null;
                 _cgCount = 0;
+                _cgReady = false;
             }
 
             // before the camera culls: our view matrices are set back by its own render that follows
@@ -503,18 +514,26 @@ namespace StudioEX.Bridge.Api
                 try
                 {
                     int n = 0;
-                    foreach (var l in LightsApi.CharaLightsNow())
+                    // the shaders' own look kept this much (1 as drawn, 0 none): what's gone, lights give back — Studio's
+                    // character light among them, as a real light
+                    float keep = Mathf.Clamp01(F("charaLight", "base"));
+                    var lights = LightsApi.CharaLightsNow();
+                    var sc = StudioCharaLight();
+                    if (keep < 0.999f && sc != null && sc.enabled && sc.gameObject.activeInHierarchy && sc.intensity > 0) lights.Insert(0, sc);
+                    foreach (var l in lights)
                     {
                         if (n >= 8) break;
                         var t = l.transform;
                         float type = l.type == LightType.Directional ? 2 : l.type == LightType.Spot ? 1 : 0;
                         _cgPos[n] = new Vector4(t.position.x, t.position.y, t.position.z, type);
-                        _cgDir[n] = new Vector4(t.forward.x, t.forward.y, t.forward.z, Mathf.Cos(l.spotAngle * 0.5f * Mathf.Deg2Rad));
-                        var c = (QualitySettings.activeColorSpace == ColorSpace.Linear ? l.color.linear : l.color) * l.intensity;
+                        // Studio's character light points back at the camera's side: the game's shaders light what faces it
+                        var fwd = l == sc ? -t.forward : t.forward;
+                        _cgDir[n] = new Vector4(fwd.x, fwd.y, fwd.z, Mathf.Cos(l.spotAngle * 0.5f * Mathf.Deg2Rad));
+                        var c = (QualitySettings.activeColorSpace == ColorSpace.Linear ? l.color.linear : l.color) * l.intensity * (l == sc ? 1 - keep : 1);
                         _cgCol[n] = new Vector4(c.r, c.g, c.b, Mathf.Max(0.01f, l.range));
                         n++;
                     }
-                    if (n == 0) return;
+                    if (n == 0 && keep >= 0.999f) return;
                     int w = Mathf.Max(1, _cam.pixelWidth), h = Mathf.Max(1, _cam.pixelHeight);
                     // every shown character part drawn straight (no culling): its surface, then its colour
                     var draws = CharaDraws();
@@ -529,10 +548,11 @@ namespace StudioEX.Bridge.Api
                     {
                         cb.SetRenderTarget(pass == 0 ? _cgGeo : _cgAlb);
                         cb.ClearRenderTarget(true, true, new Color(0, 0, 0, 0));
-                        foreach (var d in draws) cb.DrawRenderer(d.R, CopyFor(d.M, pass == 0 ? geo : alb, pass == 0 ? _cgGeoMats : _cgAlbMats), d.Sub);
+                        foreach (var d in draws) cb.DrawRenderer(d.R, CopyFor(d.M, d.Over, pass == 0 ? geo : alb, pass == 0 ? _cgGeoMats : _cgAlbMats), d.Sub);
                     }
                     Graphics.ExecuteCommandBuffer(cb);
                     _cgCount = n;
+                    _cgReady = true;
                 }
                 catch (Exception e)
                 {
@@ -541,7 +561,7 @@ namespace StudioEX.Bridge.Api
                 }
             }
 
-            private struct CgDraw { public Renderer R; public Material M; public int Sub; }
+            private struct CgDraw { public Renderer R; public Material M; public int Sub; public bool Over; public int Queue; }
             private static UnityEngine.Rendering.CommandBuffer _cgCb;
             private static readonly Dictionary<Material, Material> _cgGeoMats = new Dictionary<Material, Material>(), _cgAlbMats = new Dictionary<Material, Material>();
             private static readonly List<CgDraw> _cgDraws = new List<CgDraw>();
@@ -571,15 +591,26 @@ namespace StudioEX.Bridge.Api
                     if (mesh == null) continue;
                     var mats = r.sharedMaterials;
                     for (int i = 0; i < mats.Length; i++)
-                        if (mats[i] != null) _cgDraws.Add(new CgDraw { R = r, M = mats[i], Sub = Mathf.Min(i, mesh.subMeshCount - 1) });
+                    {
+                        var m = mats[i];
+                        // like the view's own depth: what's drawn after solid things (tears, eye shine, see-through) is left out
+                        if (m == null || m.renderQueue > 2500) continue;
+                        string sh = m.shader != null ? m.shader.name.ToLowerInvariant() : "";
+                        // layers over the skin (brows, eyelines, decals) and cut-out parts: by their texture, checked one way only
+                        bool over = i > 0 || m.renderQueue > 2450 || sh.Contains("alpha") || sh.Contains("eye");
+                        _cgDraws.Add(new CgDraw { R = r, M = m, Sub = Mathf.Min(i, mesh.subMeshCount - 1), Over = over, Queue = m.renderQueue });
+                    }
                 }
+                // in the order the game draws them: layers land on the skin under them
+                _cgDraws.Sort((x, y) => x.Queue.CompareTo(y.Queue));
                 return _cgDraws;
             }
 
             /// <summary>Our shader with this part's texture and colour.</summary>
-            private static Material CopyFor(Material src, Shader sh, Dictionary<Material, Material> cache)
+            private static Material CopyFor(Material src, bool over, Shader sh, Dictionary<Material, Material> cache)
             {
                 if (!cache.TryGetValue(src, out var m) || m == null) cache[src] = m = new Material(sh) { hideFlags = HideFlags.HideAndDontSave };
+                m.SetFloat("_KfOverlay", over ? 1 : 0);
                 if (src.HasProperty("_MainTex"))
                 {
                     m.SetTexture("_MainTex", src.GetTexture("_MainTex"));
@@ -600,6 +631,7 @@ namespace StudioEX.Bridge.Api
                 _charaLight.SetVectorArray("_KfLPos", _cgPos);
                 _charaLight.SetVectorArray("_KfLDir", _cgDir);
                 _charaLight.SetVectorArray("_KfLCol", _cgCol);
+                _charaLight.SetFloat("_KfCharaBase", Mathf.Clamp01(F("charaLight", "base")));
                 _charaLight.SetVector("_KfCharaLight", new Vector4(_cgCount, Mathf.Max(0f, F("charaLight", "strength")), B("charaLight", "toon") ? 1 : 0, Mathf.Clamp(F("charaLight", "softness"), 0.005f, 1f)));
                 Graphics.Blit(src, dst, _charaLight);
             }
@@ -692,7 +724,7 @@ namespace StudioEX.Bridge.Api
                 var passes = new List<object>(5); // a Material (one pass) or an Action for multi-pass effects
                 try
                 {
-                    if (_cgCount > 0 && _cgGeo != null && _charaLight != null) passes.Add((Action<RenderTexture, RenderTexture>)CharaLightPass);
+                    if (_cgReady && _cgGeo != null && _charaLight != null) passes.Add((Action<RenderTexture, RenderTexture>)CharaLightPass);
                     if (RtShade.Active != null && _ao != null && _accum != null) passes.Add((Action<RenderTexture, RenderTexture>)RtAo);
                     else if (B("ao", "on") && _ao != null) passes.Add((Action<RenderTexture, RenderTexture>)Ao);
                     if (B("fog", "on"))

@@ -83,9 +83,18 @@ namespace StudioEX.Bridge.Api
                 { "pixelLightCount", UnityEngine.QualitySettings.pixelLightCount }, { "quality", UnityEngine.QualitySettings.GetQualityLevel() },
                 { "renderingPath", cam != null ? cam.actualRenderingPath.ToString() : null }, { "camMask", cam != null ? cam.cullingMask : 0 },
                 { "lights", lights }, { "charaShaders", shaders }, { "charaLayers", CharaLayers() },
+                { "ambient", new Dictionary<string, object>
+                    {
+                        { "mode", UnityEngine.RenderSettings.ambientMode.ToString() }, { "intensity", (double)UnityEngine.RenderSettings.ambientIntensity },
+                        { "light", Rgb(UnityEngine.RenderSettings.ambientLight) }, { "sky", Rgb(UnityEngine.RenderSettings.ambientSkyColor) },
+                        { "equator", Rgb(UnityEngine.RenderSettings.ambientEquatorColor) }, { "ground", Rgb(UnityEngine.RenderSettings.ambientGroundColor) },
+                        { "reflection", (double)UnityEngine.RenderSettings.reflectionIntensity }, { "skybox", UnityEngine.RenderSettings.skybox != null ? UnityEngine.RenderSettings.skybox.name : null },
+                    } },
                 { "cameras", UnityEngine.Camera.allCameras.Select(c => (object)new Dictionary<string, object> { { "name", c.name }, { "mask", c.cullingMask }, { "depth", (double)c.depth }, { "main", c == cam } }).ToList() },
             };
         }
+
+        private static List<object> Rgb(UnityEngine.Color c) => new List<object> { (double)c.r, (double)c.g, (double)c.b };
 
         /// <summary>Per character: how many of its renderers sit on each layer (and which shaders), shown or not.</summary>
         private static object CharaLayers()

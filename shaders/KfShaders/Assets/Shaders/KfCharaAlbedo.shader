@@ -1,4 +1,4 @@
-// Character lights, step 2 (a replacement shader on a camera that sees characters only): each pixel's own colour
+// Character lights, step 2 (drawn for each shown character part, with its texture): each pixel's own colour
 // (its texture times its colour, without any lighting) — what a light shining on it brings out.
 Shader "Hidden/KeyframeStudio/CharaAlbedo"
 {
@@ -6,6 +6,7 @@ Shader "Hidden/KeyframeStudio/CharaAlbedo"
     {
         _MainTex ("", 2D) = "white" {}
         _Color ("", Color) = (1, 1, 1, 1)
+        _KfOverlay ("", Float) = 0
     }
     SubShader
     {
@@ -22,6 +23,7 @@ Shader "Hidden/KeyframeStudio/CharaAlbedo"
             sampler2D _MainTex;
             float4 _MainTex_ST;
             fixed4 _Color;
+            float _KfOverlay;
 
             struct v2f
             {
@@ -40,6 +42,7 @@ Shader "Hidden/KeyframeStudio/CharaAlbedo"
             fixed4 frag(v2f i) : SV_Target
             {
                 fixed4 t = tex2D(_MainTex, i.uv);
+                if (_KfOverlay > 0.5) clip(t.a - 0.5);
                 return fixed4(t.rgb * _Color.rgb, 1);
             }
             ENDCG

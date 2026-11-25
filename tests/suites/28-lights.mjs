@@ -153,6 +153,22 @@ export default async function (t) {
     await ok('fx.set', { effect: 'charaLight', values: { toon: false, strength: 0 } });
     await sleep(300);
     check('strength 0 = as without', diff(m0, await mean()) < 0.003);
+    // Built-in light: anime shaders are always fully lit; at 0 only lights light the character
+    const look = await ok('look.get');
+    t.defer(async () => { await req('look.set', { lights: { charaIntensity: look.lights.charaIntensity, mapIntensity: look.lights.mapIntensity } }); });
+    await ok('look.set', { lights: { charaIntensity: 0 } });
+    await sleep(300);
+    const lit = await mean();
+    await ok('fx.set', { effect: 'charaLight', values: { base: 0 } });
+    await sleep(400);
+    const dark = await mean();
+    check('built-in light 0, no light: the character goes dark', diff(lit, dark) > 0.05, diff(lit, dark).toFixed(4));
+    await ok('look.set', { lights: { charaIntensity: 1 } });
+    await sleep(400);
+    check("…and Studio's character light lights it as a real light", diff(dark, await mean()) > 0.03);
+    await ok('fx.set', { effect: 'charaLight', values: { base: 1 } });
+    await ok('look.set', { lights: { charaIntensity: look.lights.charaIntensity, mapIntensity: look.lights.mapIntensity } });
+    await sleep(300);
     await ok('fx.set', { effect: 'charaLight', values: { strength: 1, on: false } });
     await sleep(300);
     check('drawn by the shaders: the lights reach the characters\' layer', (await litChara()).every((x) => x), JSON.stringify(await litChara()));

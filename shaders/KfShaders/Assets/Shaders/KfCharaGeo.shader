@@ -1,12 +1,12 @@
-// Character lights, step 1 (a replacement shader on a camera that sees characters only): each pixel's surface
-// direction (world) and its distance from the camera. Not cut by texture alpha (the game's baked skin and clothes
-// textures don't keep coverage there): the light step checks this distance against the view's own depth instead.
+// Character lights, step 1 (drawn for each shown character part, with its texture): each pixel's surface
+// direction (world) and its distance from the camera. Solid parts are not cut by texture alpha (the baked skin and clothes
+// textures don't keep coverage there; the light step checks the view's own depth instead); layers over the skin are.
 Shader "Hidden/KeyframeStudio/CharaGeo"
 {
     Properties
     {
         _MainTex ("", 2D) = "white" {}
-        _Cutoff ("", Float) = 0.1
+        _KfOverlay ("", Float) = 0
     }
     SubShader
     {
@@ -22,6 +22,7 @@ Shader "Hidden/KeyframeStudio/CharaGeo"
 
             sampler2D _MainTex;
             float4 _MainTex_ST;
+            float _KfOverlay; // a layer over the skin or a cut-out part: cut by its texture, its distance stored negative
 
             struct v2f
             {
@@ -43,8 +44,9 @@ Shader "Hidden/KeyframeStudio/CharaGeo"
 
             float4 frag(v2f i, fixed facing : VFACE) : SV_Target
             {
+                if (_KfOverlay > 0.5) clip(tex2D(_MainTex, i.uv).a - 0.5);
                 float3 n = normalize(i.n) * (facing > 0 ? 1 : -1); // back faces (two-sided cloth) face the camera too
-                return float4(n, i.depth);
+                return float4(n, _KfOverlay > 0.5 ? -i.depth : i.depth);
             }
             ENDCG
         }
