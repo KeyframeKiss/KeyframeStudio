@@ -24,7 +24,7 @@ import { Icon } from './Icon';
 import { Inspector, useGettingStarted } from './Inspector';
 import { RenderPanel } from './RenderPanel';
 import { OutfitPanel } from './OutfitPanel';
-import { LightingPage } from './LightRigsPanel';
+import { LightingPage } from './LightingPage';
 import { LookPanel, Switch } from './LookPanel';
 import { FrameGuidesPanel, toggleGuides, useGuidesShowing } from './CameraToolsCards';
 import { CameraMenu, useCamLoader } from './CameraPanel';
@@ -499,14 +499,9 @@ export function LookWorkspace() {
             )}
             {tab === 'materials' && <MaterialsTab />}
             {tab === 'lighting' && (
-              <Page>
-                <Section title="Studio's lights" help="Studio's two built-in lights: one for the characters, one for the stage and items. Lights you add, rigs and projectors are below.">
-                  <div className="look-cards" style={{ '--n': 2 } as React.CSSProperties}>
-                    <LookPanel cards={['charaLight', 'mapLight']} />
-                  </div>
-                </Section>
+              <div className="subpage">
                 <LightingPage />
-              </Page>
+              </div>
             )}
           </ErrorBoundary>
           <Disconnected />
