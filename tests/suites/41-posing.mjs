@@ -204,7 +204,8 @@ export default async function (t) {
     await ok('undo'); // the reset
     await ok('undo'); // the size
     e = (await ok('posing.get', { id })).colliders.find((x) => x.path === c.path);
-    check('undo back to the start', !e.edited && Math.abs(e.radius - c.radius) < 1e-4, JSON.stringify(e));
+    // (marked changed as it was at the start: a Timeline track that played on it earlier marks it in KKPE)
+    check('undo back to the start', e.edited === c.edited && Math.abs(e.radius - c.radius) < 1e-4, JSON.stringify(e));
     const bad = await req('posing.collider', { id, path: 'nope/none', radius: 1 });
     check('an unknown collider is refused', !bad.ok);
   });
