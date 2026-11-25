@@ -4,6 +4,7 @@ import { Page, Section } from './Page';
 import { bridge } from '../bridge/client';
 import { call, displayName, showTab, toast, useStore } from '../state/store';
 import { Slider } from './CharacterPanel';
+import { TOPICS, nice, topicOf } from '../lib/materialProps';
 
 import { pressable } from '../lib/pressable';
 type RGBA = [number, number, number, number];
@@ -370,6 +371,7 @@ function MaterialsSection({ onRule }: { onRule: (r: MatRule) => void }) {
   const selection = useStore((s) => s.studioSelection);
   const [list, setList] = useState<ShaderInfo[] | null>(null);
   const [openShader, setOpenShader] = useState<string | null>(null);
+  const [openTopics, setOpenTopics] = useState<Set<string>>(new Set());
   const [query, setQuery] = useState('');
   const [parts, setParts] = useState<string[]>([]);
   const timer = useRef(0);
@@ -441,13 +443,27 @@ function MaterialsSection({ onRule }: { onRule: (r: MatRule) => void }) {
                 </span>
               </div>
               {isOpen && (
-                <div style={{ padding: '2px 0 8px 14px', display: 'grid', gap: 4 }}>
-                  {s.props
-                    .filter((p) => !q || s.shader.toLowerCase().includes(q) || p.name.toLowerCase().includes(q))
-                    .map((p) => (
-                      <div key={p.name} style={{ display: 'grid', gridTemplateColumns: '92px 1fr auto', gap: 6, alignItems: 'center' }}>
-                        <span style={{ color: p.mixed ? 'var(--accent)' : 'var(--text-2)', fontFamily: 'var(--mono)', fontSize: 10, overflow: 'hidden', textOverflow: 'ellipsis' }} title={`${p.name}${p.mixed ? ' (differs between materials)' : ''}`}>
-                          {p.name}
+                <div style={{ padding: '2px 0 8px 14px' }}>
+                  {TOPICS.map((topic) => {
+                    const ps = s.props.filter((p) => topicOf(p.name) === topic && (!q || s.shader.toLowerCase().includes(q) || p.name.toLowerCase().includes(q) || nice(p.name).toLowerCase().includes(q)));
+                    if (!ps.length) return null;
+                    const tk = `${s.shader}|${topic}`;
+                    const tOpen = !!q || openTopics.has(tk);
+                    const mixedN = ps.filter((p) => p.mixed).length;
+                    return (
+                      <div key={topic} className="shape-fold">
+                        <button className="shape-fold-head" aria-expanded={tOpen} onClick={() => setOpenTopics((o) => { const n = new Set(o); if (n.has(tk)) n.delete(tk); else n.add(tk); return n; })}>
+                          <span className={`chev ${tOpen ? 'open' : ''}`}>▸</span>
+                          <b>{topic}</b>
+                          <small>{ps.length}</small>
+                          {mixedN > 0 && <span className="shape-fold-sum">{mixedN} differ between materials</span>}
+                        </button>
+                        {tOpen && (
+                        <div style={{ display: 'grid', gap: 4, paddingBottom: 6 }}>
+                  {ps.map((p) => (
+                      <div key={p.name} style={{ display: 'grid', gridTemplateColumns: '120px 1fr auto', gap: 6, alignItems: 'center' }}>
+                        <span style={{ color: p.mixed ? 'var(--accent)' : 'var(--text-1)', fontSize: 11.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={`${p.name}${p.mixed ? ' (differs between materials)' : ''}`}>
+                          {nice(p.name)}
                         </span>
                         {p.type === 'color' ? (
                           <ColorInput value={p.value as RGBA} onChange={(c) => set(s.shader, p, c)} />
@@ -469,6 +485,11 @@ function MaterialsSection({ onRule }: { onRule: (r: MatRule) => void }) {
                         </span>
                       </div>
                     ))}
+                        </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>

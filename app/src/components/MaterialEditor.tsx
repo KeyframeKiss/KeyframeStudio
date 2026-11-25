@@ -6,6 +6,7 @@ import { ColorInput, Switch } from './LookPanel';
 import { Help } from './Help';
 import { Icon } from './Icon';
 import { BODY_GROUPS, type BodyGroup, materialName, partName, rendererName } from '../lib/kkNames';
+import { TOPICS, isSwitch, nice, topicOf } from '../lib/materialProps';
 
 // ---------------------------------------------------------------------------
 // Look › Materials: MaterialEditor for the selected character or item. Parts → renderers → materials on the left,
@@ -132,31 +133,6 @@ type Kind = 'float' | 'color' | 'keyword' | 'offset' | 'scale' | 'shader' | 'que
 const SHADOW_MODES = ['Off', 'On', 'TwoSided', 'ShadowsOnly'];
 const SHADOW_LABELS: Record<string, string> = { Off: 'Off', On: 'On', TwoSided: 'Two-sided', ShadowsOnly: 'Shadow only' };
 
-/** A material's values grouped by what they do, so 40 sliders aren't one list. Matched on the property name. */
-const TOPICS = ['Colors', 'Shadow and ramp', 'Shine', 'Rim light', 'Reflection and metal', 'Outline', 'Glow', 'Surface detail', 'Cut-out and drawing', 'Other'] as const;
-type Topic = (typeof TOPICS)[number];
-const TOPIC_RULES: [Topic, RegExp][] = [
-  ['Outline', /outline|linewidth|linecolor|linetex/i],
-  ['Glow', /emissi|glow/i],
-  ['Rim light', /rim/i],
-  ['Reflection and metal', /reflect|refl[A-Z_]|^refl|matcap|metal|roughness/i],
-  ['Shine', /specul|speclar|gloss|highlight/i],
-  ['Shadow and ramp', /shadow|ramp|shade|pointlight/i],
-  ['Cut-out and drawing', /cutoff|cull|zwrite|alphaoption|backface|premultipl|^alpha$/i],
-  ['Surface detail', /normal|detail|liquid|mask|nip|tessell|displace|^exp|expression/i],
-  ['Colors', /^(col\d|color\d*|overcolor\d*|maincolor|saturation|customambient|transparency|alpha_?[ab]?|colorinverse|colorsort|whiteoff|ambient)$/i],
-];
-function topicOf(name: string): Topic {
-  const n = name.replace(/^_+/, '');
-  for (const [t, re] of TOPIC_RULES) if (re.test(n)) return t;
-  return /col(or|our)/i.test(n) ? 'Colors' : 'Other';
-}
-/** On/off values drawn as 0..1 sliders by MaterialEditor ("Use ramp for lights"): shown as switches. */
-function isSwitch(p: FloatProp) {
-  const n = p.name.replace(/^_+/, '');
-  const binary = (p.min === undefined || p.min === 0) && (p.max === undefined || p.max === 1) && (p.value === 0 || p.value === 1);
-  return binary && /^(use|disable|enable|is[A-Z]|not?use|adjust)|(on|off|asdiffuse|overlayed|full|inverse|invert|sort)$/i.test(n);
-}
 /** A group's state in a few words: how many switches are on, the colours as dots. */
 function summaryOf(cs: ColorProp[], fs: FloatProp[]) {
   const sw = fs.filter(isSwitch);
@@ -169,11 +145,6 @@ function summaryOf(cs: ColorProp[], fs: FloatProp[]) {
   return parts.join(', ');
 }
 
-/** Words out of MaterialEditor's property names: "ShadowColor" → "Shadow color", "rimpower" stays. */
-function nice(p: string) {
-  const s = p.replace(/^_+/, '').replace(/([a-z])([A-Z])/g, '$1 $2').replace(/_/g, ' ');
-  return s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
-}
 
 /** The character / item the page edits: the first one selected in Studio. */
 function useTarget() {
