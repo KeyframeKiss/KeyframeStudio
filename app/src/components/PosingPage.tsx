@@ -67,10 +67,34 @@ const LIMB_LABEL: Record<Limb, string> = { body: 'Body (hips)', armL: 'Left arm'
 const LIMB_ORDER: Limb[] = ['armL', 'armR', 'body', 'legL', 'legR'];
 const EXTRA_LABEL: Record<string, string> = { neck: 'Neck', handL: 'Left fingers', handR: 'Right fingers', hair: 'Hair', chest: 'Bust', skirt: 'Skirt' };
 const MODE_WORD: Record<Mode, string> = { ik: 'Target', fk: 'Joints', anim: 'Animation' };
+type View = 'pose' | 'strength' | 'physics' | 'bones';
+const VIEWS: { id: View; label: string; hint: string }[] = [
+  { id: 'pose', label: 'Pose', hint: 'How each part is posed, copy a side, key the whole pose' },
+  { id: 'strength', label: 'Strength and joints', hint: 'Target strength, bend goals and joint correction (KKPE)' },
+  { id: 'physics', label: 'Physics', hint: 'Bust and buttocks, hair, skirt and accessories (KKPE)' },
+  { id: 'bones', label: 'Every bone', hint: 'Any bone by number (KKPE)' },
+];
 
 export function PosingPage({ id }: { id: number }) {
   const [p, setP] = useState<Posing | null>(null);
   const [withFace, setWithFace] = useState(keyPoseWithFace);
+  // one view at a time instead of six sections in one scroll; remembered
+  const [view, setViewState] = useState<View>(() => {
+    try {
+      const v = localStorage.getItem('kf.posing.view') as View | null;
+      return v && VIEWS.some((x) => x.id === v) ? v : 'pose';
+    } catch {
+      return 'pose';
+    }
+  });
+  const setView = (v: View) => {
+    setViewState(v);
+    try {
+      localStorage.setItem('kf.posing.view', v);
+    } catch {
+      /* not remembered; fine */
+    }
+  };
   const status = useStore((s) => s.status);
   const load = useCallback(() => call<Posing>('posing.get', { id }).then((r) => r && setP(r)), [id]);
   useEffect(() => {
@@ -127,6 +151,14 @@ export function PosingPage({ id }: { id: number }) {
 
   return (
     <div className="posing">
+      <div className="seg posing-views" role="tablist" aria-label="Posing">
+        {VIEWS.map((v) => (
+          <button key={v.id} role="tab" aria-selected={view === v.id} className={view === v.id ? 'on' : ''} title={v.hint} onClick={() => setView(v.id)}>
+            {v.label}
+          </button>
+        ))}
+      </div>
+      {view === 'pose' && (
       <Section
         title="How each part is posed"
         help="Joints (FK): you turn each joint yourself — exact bends. Target (IK): you place the hand, foot or hips and the joints follow — quick for touching things. Animation: the character's animation moves it. Switching keeps the pose on screen (nothing jumps). In Studio's view you can also just grab a joint's rings (that part goes to Joints) or a yellow target (that limb goes to Target)."
@@ -188,11 +220,12 @@ export function PosingPage({ id }: { id: number }) {
           </div>
         </div>
       </Section>
+      )}
 
-      {!kkpe ? (
-        <KkpeMissing state={p.kkpe} id={id} reload={load} />
-      ) : (
+      {view !== 'pose' && view !== 'bones' && !kkpe && <KkpeMissing state={p.kkpe} id={id} reload={load} />}
+      {kkpe && (
         <>
+          {view === 'pose' && (
           <Section title="Copy to the other side" help="Mirror one side's arm, hand (fingers) or leg onto the other — joints and target both. One undo step.">
             <div className="posing-copy">
               {(['arm', 'hand', 'leg'] as const).map((w) => (
@@ -208,7 +241,9 @@ export function PosingPage({ id }: { id: number }) {
               ))}
             </div>
           </Section>
+          )}
 
+          {view === 'strength' && (
           <Section
             title="Target strength"
             help="How firmly each part follows its target while that limb is posed by a target (IK): 1 = exactly, lower = the animation or joints pull it away. Elbows and knees: how firmly they point toward their bend goal (the target beside the elbow or knee in Studio's view) — raise it when a knee caves in or an elbow flips. Keyable: + Track › KKPE."
@@ -258,8 +293,9 @@ export function PosingPage({ id }: { id: number }) {
               })}
             </div>
           </Section>
+          )}
 
-          {p.joints && (
+          {view === 'strength' && p.joints && (
             <Section title="Joint correction" help="KKPE fixes the mesh where joints bend far: the crotch when the thighs spread or lift, the ankles when feet point. Saved with the character.">
               <div className="ed-options">
                 <SwitchCard on={p.joints.crotch} label="Crotch" onChange={(v) => call('posing.joints', { id, crotch: v }).then(load)} />
@@ -275,11 +311,11 @@ export function PosingPage({ id }: { id: number }) {
             </Section>
           )}
 
-          <PhysicsSection id={id} p={p} setP={setP} send={send} reload={load} />
+          {view === 'physics' && <PhysicsSection id={id} p={p} setP={setP} send={send} reload={load} />}
         </>
       )}
 
-      {p.kkpe !== 'missing' && <BonesSection id={id} />}
+      {view === 'bones' && (p.kkpe !== 'missing' ? <BonesSection id={id} /> : <KkpeMissing state={p.kkpe} id={id} reload={load} />)}
     </div>
   );
 }
@@ -358,6 +394,7 @@ function PhysicsSection({ id, p, setP, send, reload }: { id: number; p: Posing; 
   const list = p.dyn.filter((d) => !words || `${nice(d)} ${d.name}`.toLowerCase().includes(words));
   const kindOf = (d: DynRow) => (/hair/i.test(d.name) ? 'Hair' : /_sk_|skirt/i.test(d.name) ? 'Skirt' : /acs|acce/i.test(d.path) ? 'Accessories' : 'Other');
   const kinds = ['Hair', 'Skirt', 'Accessories', 'Other'].map((k) => ({ k, rows: list.filter((d) => kindOf(d) === k) })).filter((g) => g.rows.length);
+  const cur = p.dyn.find((d) => d.path === open) ?? list[0] ?? null;
   return (
     <Section title="Physics" help="Bust and buttock softness (gravity and force), and the swaying parts — hair, skirt, accessories — each with its own stiffness and weight. Through KKPE; saved with the character; keyable with + Track › KKPE.">
       {p.bust.length > 0 && (
@@ -385,63 +422,72 @@ function PhysicsSection({ id, p, setP, send, reload }: { id: number; p: Posing; 
         </div>
       )}
       {p.dyn.length > 0 && (
-        <div className="posing-dyn">
-          <div className="body-bar">
-            <input className="input search" placeholder={`Find a swaying part (${p.dyn.length}: hair, skirt…)`} value={q} onChange={(e) => setQ(e.target.value)} />
-          </div>
-          {kinds.map((g) => (
-            <div key={g.k}>
-              <div className="posing-dyn-kind">
-                {g.k} <small>{g.rows.length}</small>
-              </div>
-              {g.rows.map((d) => {
-            const isOpen = open === d.path;
-            return (
-              <div key={d.path} className={`body-row ${isOpen ? 'open' : ''}`}>
-                <div className="posing-dyn-head">
-                  <button className="body-row-head" aria-expanded={isOpen} onClick={() => setOpen(isOpen ? null : d.path)}>
-                    <Icon name={isOpen ? 'chevronDown' : 'chevronRight'} size={12} />
-                    <span className="body-name" title={d.path}>
-                      <b>{nice(d)}</b>
-                      <small>{d.name}</small>
-                    </span>
-                    {d.edited && <span className="body-dot" title="Changed" />}
-                  </button>
-                  <button className={`switch ${d.enabled ? 'on' : ''}`} aria-pressed={d.enabled} title={d.enabled ? 'Physics on' : 'Physics off'} onClick={() => dyn(d.path, { enabled: !d.enabled })}>
-                    <span />
-                  </button>
+        <div className="posing-dyn2">
+          <div className="posing-dyn-list">
+            <div className="body-bar">
+              <input className="input search" placeholder={`Find a swaying part (${p.dyn.length}: hair, skirt…)`} value={q} onChange={(e) => setQ(e.target.value)} />
+            </div>
+            {kinds.map((g) => (
+              <div key={g.k}>
+                <div className="body-subhead">
+                  {g.k} <small>{g.rows.length}</small>
                 </div>
-                {isOpen && (
-                  <div className="body-edit">
-                    {(['weight', 'stiffness', 'elasticity', 'damping', 'inertia', 'radius'] as const).map((k) => (
-                      <div key={k} className="posing-row">
-                        <span className="posing-row-label">{k[0].toUpperCase() + k.slice(1)}</span>
-                        <div className="posing-row-controls">
-                          <Slider value={d[k]} min={0} max={1} step={0.01} onChange={(v) => dyn(d.path, { [k]: v })} />
-                        </div>
-                      </div>
-                    ))}
-                    <div className="posing-row stacked">
-                      <span className="posing-row-label">Gravity</span>
-                      <Xyz v={d.gravity} step={0.001} onChange={(v) => dyn(d.path, { gravity: v })} />
-                    </div>
-                    <div className="posing-row stacked">
-                      <span className="posing-row-label">Force</span>
-                      <Xyz v={d.force} step={0.001} onChange={(v) => dyn(d.path, { force: v })} />
-                    </div>
-                    <div className="body-edit-last">
-                      <span className="spacer" />
-                      <button className="btn small solid" disabled={!d.edited} onClick={() => call('posing.dyn', { id, path: d.path, reset: true }).then(reload)}>
-                        Reset
-                      </button>
+                {g.rows.map((d) => (
+                  <div key={d.path} className={`posing-dyn-item ${cur?.path === d.path ? 'on' : ''}`}>
+                    <button className={`switch ${d.enabled ? 'on' : ''}`} aria-pressed={d.enabled} title={d.enabled ? 'Physics on' : 'Physics off'} onClick={() => dyn(d.path, { enabled: !d.enabled })}>
+                      <span />
+                    </button>
+                    <button className="posing-dyn-pick" aria-pressed={cur?.path === d.path} title={`${d.name}\n${d.path}`} onClick={() => setOpen(d.path)}>
+                      <span className="posing-dyn-name">{nice(d)}</span>
+                      <small className={d.edited ? 'changed' : ''}>
+                        weight {d.weight.toFixed(2)} · stiffness {d.stiffness.toFixed(2)}
+                      </small>
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+          {cur && (
+            <div className="posing-card posing-dyn-editor">
+              <header>
+                <b>{nice(cur)}</b>
+                <span className="spacer" />
+                <button className="btn small solid" disabled={!cur.edited} onClick={() => call('posing.dyn', { id, path: cur.path, reset: true }).then(reload)}>
+                  Reset
+                </button>
+              </header>
+              <small className="posing-dyn-raw">{cur.name}</small>
+              <SwitchCard on={cur.enabled} label="Sways (physics on)" onChange={(v) => dyn(cur.path, { enabled: v })} />
+              {(['weight', 'stiffness'] as const).map((k) => (
+                <div key={k} className="posing-row">
+                  <span className="posing-row-label">{k === 'weight' ? 'Weight' : 'Stiffness'}</span>
+                  <div className="posing-row-controls">
+                    <Slider value={cur[k]} min={0} max={1} step={0.01} onChange={(v) => dyn(cur.path, { [k]: v })} />
+                  </div>
+                </div>
+              ))}
+              <details className="face-more">
+                <summary>Bounce, drag, size, gravity and force</summary>
+                {(['elasticity', 'damping', 'inertia', 'radius'] as const).map((k) => (
+                  <div key={k} className="posing-row">
+                    <span className="posing-row-label">{{ elasticity: 'Bounce', damping: 'Drag', inertia: 'Inertia', radius: 'Size' }[k]}</span>
+                    <div className="posing-row-controls">
+                      <Slider value={cur[k]} min={0} max={1} step={0.01} onChange={(v) => dyn(cur.path, { [k]: v })} />
                     </div>
                   </div>
-                )}
-              </div>
-            );
-              })}
+                ))}
+                <div className="posing-row stacked">
+                  <span className="posing-row-label">Gravity</span>
+                  <Xyz v={cur.gravity} step={0.001} onChange={(v) => dyn(cur.path, { gravity: v })} />
+                </div>
+                <div className="posing-row stacked">
+                  <span className="posing-row-label">Force</span>
+                  <Xyz v={cur.force} step={0.001} onChange={(v) => dyn(cur.path, { force: v })} />
+                </div>
+              </details>
             </div>
-          ))}
+          )}
         </div>
       )}
     </Section>

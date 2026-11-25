@@ -11046,3 +11046,75 @@ a.btn {
   color: var(--text-3);
   font-size: 11px;
 }
+/* Character › Posing: one view at a time; Physics as a list and one editor */
+.posing-views {
+  align-self: flex-start;
+}
+.posing-dyn2 {
+  display: grid;
+  grid-template-columns: minmax(260px, 380px) minmax(280px, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+.posing-dyn-list {
+  border: 1px solid var(--line);
+  border-radius: var(--r-3);
+  background: var(--bg-1);
+  padding: 8px;
+  max-height: 70vh;
+  overflow: auto;
+}
+.posing-dyn-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 6px;
+  border-radius: var(--r-2);
+}
+.posing-dyn-item:hover {
+  background: var(--bg-2);
+}
+.posing-dyn-item.on {
+  background: color-mix(in srgb, var(--accent) 14%, var(--bg-2));
+}
+.posing-dyn-pick {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 4px 0;
+  border: 0;
+  background: none;
+  color: var(--text-1);
+  text-align: left;
+  cursor: pointer;
+}
+.posing-dyn-name {
+  font-size: var(--fs-sm);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.posing-dyn-pick small {
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+}
+.posing-dyn-pick small.changed {
+  color: var(--accent);
+}
+.posing-dyn-editor {
+  position: sticky;
+  top: 0;
+}
+.posing-dyn-raw {
+  margin-top: -6px;
+  color: var(--text-3);
+  font-family: var(--mono);
+  font-size: var(--fs-xs);
+}
+@media (max-width: 1100px) {
+  .posing-dyn2 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
