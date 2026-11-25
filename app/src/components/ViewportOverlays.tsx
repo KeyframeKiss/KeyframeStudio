@@ -23,7 +23,7 @@ interface Target {
 }
 
 interface GizmoState {
-  overlays: { on: boolean; skeleton: boolean; ik: boolean; accessories: boolean; highlight: boolean; lights: boolean; cameras: boolean; focus: boolean; allCharacters: boolean; labels: boolean };
+  overlays: { on: boolean; skeleton: boolean; ik: boolean; accessories: boolean; highlight: boolean; lights: boolean; cameras: boolean; focus: boolean; cameraRoute?: boolean; allCharacters: boolean; labels: boolean };
   gizmo: { on: boolean; world: boolean; snapMove: number; snapRot: number; snapScale: number; mode: number };
   pick: { characters: boolean; accessories: boolean; items: boolean; lights: boolean; cameras: boolean };
   target: Target | null;
@@ -173,7 +173,7 @@ export function OverlayOptions() {
       <div className="menu-sep" />
       <div className="menu-label">
         Overlays
-        <Help text="Drawn over Studio's view, on top of its effects so they stay sharp — never in renders, stills or videos. Blue joints are posed by FK; yellow diamonds are IK targets (solid when IK drives that limb; a hollow diamond around a joint — click its edge). Teal squares are accessories: click one to move, turn or scale it (saved with the outfit). The green reticle is where the depth of field focuses: drag it onto what should be sharp — drop it on the eyes to keep following them. Hover anything for its name." />
+        <Help text="Drawn over Studio's view, on top of its effects so they stay sharp — never in renders, stills or videos. Blue joints are posed by FK; yellow diamonds are IK targets (solid when IK drives that limb; a hollow diamond around a joint — click its edge). Teal squares are accessories: click one to move, turn or scale it (saved with the outfit). The green reticle is where the depth of field focuses: drag it onto what should be sharp — drop it on the eyes to keep following them. The orange line is the camera's route over its keys: drag a key's dot to move the camera there. Hover anything for its name." />
       </div>
       <div className="vo-grid">
         {check('Skeleton', o.skeleton, (v) => set({ overlays: { skeleton: v, on: true } }))}
@@ -183,6 +183,7 @@ export function OverlayOptions() {
         {check('Cameras', o.cameras, (v) => set({ overlays: { cameras: v, on: true } }))}
         {check('Accessories', o.accessories, (v) => set({ overlays: { accessories: v, on: true } }))}
         {check('Focus point', o.focus, (v) => set({ overlays: { focus: v, on: true } }), 'Where depth of field is focused (Look › Picture); drag it to refocus')}
+        {o.cameraRoute !== undefined && check('Camera route', o.cameraRoute, (v) => set({ overlays: { cameraRoute: v, on: true } }), 'Where the camera moves over its keys, with a handle on each key: drag one to put the camera elsewhere at that moment (Shift+drag moves what it looks at too). Look from outside the camera to see it.')}
         {check('Names on hover', o.labels, (v) => set({ overlays: { labels: v } }))}
       </div>
       {check('Every character, not just the selected', o.allCharacters, (v) => set({ overlays: { allCharacters: v } }))}

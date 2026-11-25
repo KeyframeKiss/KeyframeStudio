@@ -43,6 +43,60 @@ export default async function (t) {
     check('undo puts back the camera keys as they were', after.length === 1 && near(after[0][0], 1.5), after.map((k) => k[0]).join());
   });
 
+  // the camera's route in Studio's view: a handle on each key; drag one to put the camera elsewhere at that moment
+  if (t.hello.commands.includes('scene.backups'))
+    await t.step('camera route: drag a key in Studio’s view, one undo', async () => {
+      const sim = (a) => ok('gizmo.simulate', a);
+      const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+      const g0 = await ok('gizmo.get');
+      t.defer(async () => {
+        await sim({ end: true });
+        await ok('gizmo.set', { overlays: { on: g0.overlays.on, cameraRoute: g0.overlays.cameraRoute ?? true } });
+      });
+      await ok('gizmo.set', { overlays: { on: true, cameraRoute: true } });
+      await ok('timeline.seek', { t: 0 });
+      // a dolly from 1 s to 2 s: seen from the playhead (the first key), the second key is straight ahead
+      await ok('camera.move', { preset: 'dolly', amount: 0.5, duration: 1, t0: 1 });
+      await ok('timeline.seek', { t: 0 });
+      await sleep(400);
+      let r = await sim({ cameraKeys: true });
+      check('route and keys shown', r.shown && r.route > 8 && r.keys.length === 2, JSON.stringify({ shown: r.shown, route: r.route, keys: r.keys.length }));
+      const k = r.keys[1];
+      const k0 = r.keys[0];
+      const at = [k.screen[0], k.screen[1]];
+      check('the second key is on screen', k.screen[2] > 0 && at[0] > 50 && at[1] > 50, JSON.stringify(k.screen));
+      await sim({ at });
+      await sleep(150);
+      const h = await sim({ at });
+      check('hovering it: the camera key, and Studio’s camera held still', h.hover === 'CamKey' && h.cameraBlocked === true, JSON.stringify({ hover: h.hover, blocked: h.cameraBlocked }));
+      await sim({ at, press: true });
+      await sleep(150);
+      for (let i = 1; i <= 6; i++) {
+        await sim({ at: [at[0] + i * 12, at[1] + i * 4] });
+        await sleep(60);
+      }
+      await sim({ release: true });
+      await sleep(300);
+      r = await sim({ cameraKeys: true });
+      const k2 = r.keys[1];
+      const moved = Math.hypot(k2.eye[0] - k.eye[0], k2.eye[1] - k.eye[1], k2.eye[2] - k.eye[2]);
+      t.metric('camera moved', moved.toFixed(3), 'units');
+      check('the camera at that key moved', moved > 0.01, String(moved));
+      check('…still aimed at the same subject (pivot unchanged)', Math.hypot(k2.pivot[0] - k.pivot[0], k2.pivot[1] - k.pivot[1], k2.pivot[2] - k.pivot[2]) < 1e-4);
+      check('the other key untouched', Math.hypot(r.keys[0].eye[0] - k0.eye[0], r.keys[0].eye[1] - k0.eye[1], r.keys[0].eye[2] - k0.eye[2]) < 1e-5);
+      // the keyed values agree with the drawn handle: pivot + turn * distance = where the handle is
+      const c = await camTracks();
+      const rot = (await keysOf(c.rot)).find((x) => near(x[0], 2, 1e-3));
+      const zoom = (await keysOf(c.zoom)).find((x) => near(x[0], 2, 1e-3));
+      const pos = (await keysOf(c.pos)).find((x) => near(x[0], 2, 1e-3));
+      const eye = camPos(v3(pos[1]), quat(rot[1]), zoom[1].value ?? zoom[1]);
+      check('the keys say the camera stands where the handle was dropped', Math.hypot(eye[0] - k2.eye[0], eye[1] - k2.eye[1], eye[2] - k2.eye[2]) < 1e-3, JSON.stringify({ eye, k2: k2.eye }));
+      await ok('undo');
+      r = await sim({ cameraKeys: true });
+      check('one undo puts the key back', Math.hypot(r.keys[1].eye[0] - k.eye[0], r.keys[1].eye[1] - k.eye[1], r.keys[1].eye[2] - k.eye[2]) < 1e-4, JSON.stringify(r.keys[1].eye));
+      await ok('undo'); // the dolly
+    });
+
   await t.step('dolly and zoom', async () => {
     await ok('camera.move', { preset: 'dolly', amount: 0.5, duration: 1, t0: 0.5 });
     let c = await camTracks();

@@ -27,19 +27,19 @@ namespace StudioEX.Bridge.Api
         public static ViewportGizmos Instance;
 
         // ---------------- settings (from the app) ----------------
-        private bool _show, _skeleton = true, _ik = true, _acc = true, _highlight = true, _lights = true, _cameras = true, _focus = true;
+        private bool _show, _skeleton = true, _ik = true, _acc = true, _highlight = true, _lights = true, _cameras = true, _focus = true, _camRoute = true;
         private bool _gizmo, _allChars, _labels = true;
         private bool _pickChars = true, _pickAcc = true, _pickItems = true, _pickLights = true, _pickCameras = true;
         private bool _world; // object handles along the world's axes (else the object's own)
         private float _snapMove = 0.05f, _snapRot = 15f, _snapScale = 0.1f;
-        private bool Any => _gizmo || _show && (_skeleton || _ik || _acc || _highlight || _lights || _cameras || _focus);
+        private bool Any => _gizmo || _show && (_skeleton || _ik || _acc || _highlight || _lights || _cameras || _focus || _camRoute);
 
         // ---------------- what the handles act on ----------------
         private enum Kind { None, Bone, IK, Object, Accessory }
         private Kind _kind;
         private int _ociId = -1, _index = -1; // index: a bone (listBones), an IK target (listIKTarget) or an accessory slot
 
-        private enum H { None, AxisX, AxisY, AxisZ, Free, RingX, RingY, RingZ, RingView, ScaleX, ScaleY, ScaleZ, ScaleAll, Focus }
+        private enum H { None, AxisX, AxisY, AxisZ, Free, RingX, RingY, RingZ, RingView, ScaleX, ScaleY, ScaleZ, ScaleAll, Focus, CamKey }
         private H _hover, _drag;
         private List<Cand> _hoverList = new List<Cand>();
         private string _hoverPick; // the top of _hoverList: "joint:<oci>:<index>", "ik:..", "acc:<oci>:<slot>", "object:<oci>"
@@ -96,7 +96,7 @@ namespace StudioEX.Bridge.Api
         {
             return new Dictionary<string, object>
             {
-                { "overlays", new Dictionary<string, object> { { "on", _show }, { "skeleton", _skeleton }, { "ik", _ik }, { "accessories", _acc }, { "highlight", _highlight }, { "lights", _lights }, { "cameras", _cameras }, { "focus", _focus }, { "allCharacters", _allChars }, { "labels", _labels } } },
+                { "overlays", new Dictionary<string, object> { { "on", _show }, { "skeleton", _skeleton }, { "ik", _ik }, { "accessories", _acc }, { "highlight", _highlight }, { "lights", _lights }, { "cameras", _cameras }, { "focus", _focus }, { "cameraRoute", _camRoute }, { "allCharacters", _allChars }, { "labels", _labels } } },
                 { "gizmo", new Dictionary<string, object> { { "on", _gizmo }, { "world", _world }, { "snapMove", (double)_snapMove }, { "snapRot", (double)_snapRot }, { "snapScale", (double)_snapScale }, { "mode", StudioMode() } } },
                 { "pick", new Dictionary<string, object> { { "characters", _pickChars }, { "accessories", _pickAcc }, { "items", _pickItems }, { "lights", _pickLights }, { "cameras", _pickCameras } } },
                 { "target", TargetInfo() },
@@ -116,6 +116,7 @@ namespace StudioEX.Bridge.Api
                 if (o.Has("lights")) _lights = o.GetBool("lights");
                 if (o.Has("cameras")) _cameras = o.GetBool("cameras");
                 if (o.Has("focus")) _focus = o.GetBool("focus");
+                if (o.Has("cameraRoute")) _camRoute = o.GetBool("cameraRoute", true);
                 if (o.Has("allCharacters")) _allChars = o.GetBool("allCharacters");
                 if (o.Has("labels")) _labels = o.GetBool("labels", true);
             }
@@ -823,7 +824,7 @@ namespace StudioEX.Bridge.Api
                 return;
             }
             // hover: the focus marker, handles, then pickable things
-            _hover = overUi ? H.None : FocusHit(cam, m) ? H.Focus : _gizmo ? HitHandle(cam, m) : H.None;
+            _hover = overUi ? H.None : FocusHit(cam, m) ? H.Focus : CamKeyHit(cam, m) ? H.CamKey : _gizmo ? HitHandle(cam, m) : H.None;
             _hoverList = overUi ? new List<Cand>() : PickAt(cam, m, false);
             if (_spread != null && (overUi || (m - _spreadAt).magnitude > SpreadRadius() + ChipR + 26f)) CloseSpread();
             ModeRingStep(cam, m, overUi);
@@ -1414,6 +1415,7 @@ namespace StudioEX.Bridge.Api
         {
             CloseSpread();
             if (h == H.Focus) { BeginFocus(cam, m); return; }
+            if (h == H.CamKey) { BeginCamKey(cam, m); return; }
             if (!Frame(out var t, out var c, out var axes, out _)) return;
             var undo = Begin(t);
             TakeOver(t, undo);
@@ -1481,6 +1483,7 @@ namespace StudioEX.Bridge.Api
         private void Drag(Camera cam, Vector2 m)
         {
             if (_drag == H.Focus) { DragFocus(cam, m); return; }
+            if (_drag == H.CamKey) { DragCamKey(cam, m); return; }
             var t = _dragTgt;
             if (t?.T == null) { EndDrag(false); return; }
             var c = _startWorldPos;
@@ -1538,6 +1541,7 @@ namespace StudioEX.Bridge.Api
             var was = _drag;
             _drag = H.None;
             if (was == H.Focus) { EndFocus(keep); _down = false; return; }
+            if (was == H.CamKey) { EndCamKey(keep); _down = false; return; }
             bool click = keep && (was == H.Free || was == H.ScaleAll) && (_mLast - _m0).magnitude < 3f && _kind != Kind.Bone;
             if (_undo != null)
             {
@@ -1559,6 +1563,130 @@ namespace StudioEX.Bridge.Api
             _dragTgt = null;
             _down = false;
             Broadcast();
+        }
+
+        // ================================================================== the camera's route (camera keys)
+        // Where Studio's camera stands over the keyed camera move: a line with a handle on each key. Drag a key to put
+        // the camera somewhere else at that moment (it turns to keep aiming at its pivot); Shift moves the pivot along.
+
+        private List<CamKey> _ck = new List<CamKey>();
+        private List<Vector3> _route = new List<Vector3>();
+        private long _ckSig = long.MinValue;
+        private int _ckHot = -1, _ckDrag = -1;
+        private object _ckSnap;
+        private CamKey _ck0;
+        private Vector3 _ckPlaneN, _ckGrab;
+        private bool _ckMoved;
+
+        private bool CamRouteShown => _show && _camRoute && Singleton<Studio.Studio>.Instance?.ociCamera == null && _ck.Count >= 2;
+
+        private void RefreshCamRoute(bool force = false)
+        {
+            long sig = TimelineApi.Signature();
+            if (!force && sig == _ckSig && _drag != H.CamKey) return;
+            _ckSig = sig;
+            _ck = TimelineApi.CameraKeys();
+            _route = TimelineApi.CameraRoute();
+        }
+
+        private bool CamKeyHit(Camera cam, Vector2 m)
+        {
+            _ckHot = -1;
+            if (!_show || !_camRoute) return false;
+            RefreshCamRoute();
+            if (!CamRouteShown) return false;
+            float best = 11f;
+            for (int i = 0; i < _ck.Count; i++)
+                if (OnScreen(cam, _ck[i].Eye, out var s) && (s - m).magnitude < best && (cam.transform.position - _ck[i].Eye).sqrMagnitude > 0.01f)
+                {
+                    best = (s - m).magnitude;
+                    _ckHot = i;
+                }
+            return _ckHot >= 0;
+        }
+
+        private void BeginCamKey(Camera cam, Vector2 m)
+        {
+            if (_ckHot < 0 || _ckHot >= _ck.Count) return;
+            _ckSnap = TimelineApi.CameraEditBegin();
+            if (_ckSnap == null) return;
+            _ckDrag = _ckHot;
+            _ck0 = _ck[_ckDrag];
+            _ckPlaneN = cam.transform.forward;
+            var ray = cam.ScreenPointToRay(m);
+            var plane = new Plane(_ckPlaneN, _ck0.Eye);
+            _ckGrab = plane.Raycast(ray, out float d) ? ray.GetPoint(d) - _ck0.Eye : Vector3.zero;
+            _ckMoved = false;
+            _drag = H.CamKey;
+        }
+
+        private void DragCamKey(Camera cam, Vector2 m)
+        {
+            if (_ckDrag < 0 || _ckDrag >= _ck.Count) { EndDrag(false); return; }
+            var ray = cam.ScreenPointToRay(m);
+            var plane = new Plane(_ckPlaneN, _ck0.Eye);
+            if (!plane.Raycast(ray, out float d)) return;
+            var eye = ray.GetPoint(d) - _ckGrab;
+            var k = _ck0;
+            if (Shift)
+            {
+                // the whole key slides: camera and what it looks at, same view direction (a truck / crane by hand)
+                k.Pivot = _ck0.Pivot + (eye - _ck0.Eye);
+            }
+            else
+            {
+                // the camera moves, its pivot stays: turn to keep aiming at it, at the new distance
+                var look = _ck0.Pivot - eye;
+                if (look.sqrMagnitude < 1e-6f) return;
+                var up = _ck0.Rot * Vector3.up;
+                var fwd = look.normalized;
+                // Studio's camera looks along +Z from behind the pivot (distance is negative): forward = rot * +Z
+                k.Rot = Quaternion.LookRotation(_ck0.Dist <= 0f ? fwd : -fwd, up);
+                k.Dist = (_ck0.Dist <= 0f ? -1f : 1f) * look.magnitude;
+            }
+            TimelineApi.CameraEditSet(k);
+            _ck[_ckDrag] = k;
+            _route = TimelineApi.CameraRoute();
+            _ckMoved = _ckMoved || (k.Eye - _ck0.Eye).sqrMagnitude > 1e-8f;
+            _tag = "Camera at " + k.T.ToString("0.00") + " s · " + Mathf.Abs(k.Dist).ToString("0.00") + " m from its subject";
+            if (OnScreen(cam, k.Eye, out var s)) _tagAt = s;
+        }
+
+        private void EndCamKey(bool keep)
+        {
+            TimelineApi.CameraEditEnd(_ckSnap, keep && _ckMoved, "Move camera key");
+            _ckSnap = null;
+            _ckDrag = -1;
+            _ckSig = long.MinValue; // re-read after the edit
+            Broadcast();
+        }
+
+        private void DrawCamRoute(Camera cam)
+        {
+            var line = new Color(1f, 0.62f, 0.18f, 0.85f);
+            var shadow = new Color(0, 0, 0, 0.35f);
+            Vector2? prev = null;
+            foreach (var w in _route)
+            {
+                if (!OnScreen(cam, w, out var s)) { prev = null; continue; }
+                if (prev.HasValue) { Line(prev.Value, s, 3.5f, shadow); Line(prev.Value, s, 1.8f, line); }
+                prev = s;
+            }
+            for (int i = 0; i < _ck.Count; i++)
+            {
+                var k = _ck[i];
+                if (!OnScreen(cam, k.Eye, out var s)) continue;
+                bool hot = i == _ckDrag || (_drag == H.None && _hover == H.CamKey && i == _ckHot);
+                // which way it looks: a short line toward its pivot
+                if (OnScreen(cam, Vector3.Lerp(k.Eye, k.Pivot, 0.2f), out var aim))
+                {
+                    var dir = aim - s;
+                    if (dir.sqrMagnitude > 1f) Line(s, s + dir.normalized * Mathf.Min(28f, dir.magnitude), 1.6f, A(line, 0.8f));
+                }
+                if (i == _ckDrag && OnScreen(cam, k.Pivot, out var ps)) { Line(s, ps, 1f, A(Color.white, 0.35f)); Disc(ps, 3f, A(Color.white, 0.7f)); }
+                Circle2(s, hot ? 9f : 7f, 3.5f, shadow);
+                Disc(s, hot ? 7f : 5.5f, hot ? Color.white : line);
+            }
         }
 
         // ================================================================== focus point (depth of field)
@@ -1720,6 +1848,7 @@ namespace StudioEX.Bridge.Api
                 if (_show && _cameras) DrawCameras(cam);
                 if (_show && (_skeleton || _ik || _acc)) foreach (var c in Shown()) DrawRig(cam, c);
                 if (_gizmo) DrawGizmo(cam);
+                if (CamRouteShown) DrawCamRoute(cam);
                 if (FocusShown) DrawFocus(cam);
                 if (_spread != null) DrawSpread();
                 if (_modeRing) DrawModeRing();
@@ -2190,6 +2319,7 @@ namespace StudioEX.Bridge.Api
         private string HoverLabel()
         {
             if (_hover == H.Focus) return "Focus " + FxApi.Dof("focus").ToString("0.00") + " m — drag onto what should be sharp";
+            if (_hover == H.CamKey && _ckHot >= 0 && _ckHot < _ck.Count) return "Camera key at " + _ck[_ckHot].T.ToString("0.00") + " s — drag to move the camera there (it keeps aiming at its subject); Shift+drag moves the subject with it";
             if ((_hover == H.Free || _hover == H.ScaleAll) && _kind != Kind.Bone)
                 return (_hover == H.Free ? "Drag to move" : "Drag to scale") + "  ·  click: next mode  ·  hold still: pick one";
             if (_hoverPick == null) return null;
@@ -2240,6 +2370,16 @@ namespace StudioEX.Bridge.Api
                     { "boneWorld", a.Has("ik") && c.listIKTarget[index].boneObject != null ? V(c.listIKTarget[index].boneObject.position) : null },
                     { "fk", c.oiCharInfo.enableFK }, { "activeFK", c.oiCharInfo.activeFK.Select(x => (object)x).ToList() },
                     { "ik", c.oiCharInfo.enableIK }, { "activeIK", c.oiCharInfo.activeIK.Select(x => (object)x).ToList() },
+                };
+            }
+            if (a.Has("cameraKeys") && cam != null)
+            {
+                RefreshCamRoute(true);
+                return new Dictionary<string, object>
+                {
+                    { "shown", CamRouteShown },
+                    { "route", _route.Count },
+                    { "keys", _ck.Select(k => (object)new Dictionary<string, object> { { "t", (double)k.T }, { "eye", V(k.Eye) }, { "pivot", V(k.Pivot) }, { "screen", V(cam.WorldToScreenPoint(k.Eye)) } }).ToList() },
                 };
             }
             if (a.Has("focus") && cam != null)

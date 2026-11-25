@@ -86,6 +86,18 @@ namespace StudioEX.Bridge.Api
             Available ? PositionPathsImpl(ocis, camera) : new List<ViewportTools.PathInfo>();
         [MethodImpl(MethodImplOptions.NoInlining)]
         private static List<ViewportTools.PathInfo> PositionPathsImpl(HashSet<ObjectCtrlInfo> ocis, bool camera) => TimelineImpl.PositionPaths(ocis, camera);
+
+        // the camera's route and keys in the viewport (see CameraRoute.cs)
+        public static List<CamKey> CameraKeys() => Available ? CameraKeysImpl() : new List<CamKey>();
+        private static List<CamKey> CameraKeysImpl() => TimelineImpl.CameraKeys();
+        public static List<Vector3> CameraRoute() => Available ? CameraRouteImpl() : new List<Vector3>();
+        private static List<Vector3> CameraRouteImpl() => TimelineImpl.CameraRoute();
+        public static object CameraEditBegin() => Available ? CameraEditBeginImpl() : null;
+        private static object CameraEditBeginImpl() => TimelineImpl.CameraEditBegin();
+        public static void CameraEditSet(CamKey k) { if (Available) CameraEditSetImpl(k); }
+        private static void CameraEditSetImpl(CamKey k) => TimelineImpl.CameraEditSet(k);
+        public static void CameraEditEnd(object snap, bool keep, string label) { if (Available) CameraEditEndImpl(snap, keep, label); }
+        private static void CameraEditEndImpl(object snap, bool keep, string label) => TimelineImpl.CameraEditEnd(snap, keep, label);
         /// <summary>The object has an enabled Timeline track with at least two keys (something to trace).</summary>
         public static bool Animated(ObjectCtrlInfo oci) => Available && AnimatedImpl(oci);
         [MethodImpl(MethodImplOptions.NoInlining)] private static bool AnimatedImpl(ObjectCtrlInfo oci) => TimelineImpl.Animated(oci);
