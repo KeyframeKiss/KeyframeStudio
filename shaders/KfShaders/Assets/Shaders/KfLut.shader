@@ -1,4 +1,4 @@
-// LUT files: two 3D colour tables (.cube / PNG), each with a strength and "everything / light only / colour only",
+// Grading (baked by the bridge) and LUT files: two 3D colour tables (.cube / PNG), each with a strength and "everything / light only / colour only",
 // one after the other (chain) or mixed.
 Shader "Hidden/KeyframeStudio/Lut"
 {
@@ -7,6 +7,7 @@ Shader "Hidden/KeyframeStudio/Lut"
         _MainTex ("", 2D) = "white" {}
         _KfLutA ("", 3D) = "" {}
         _KfLutB ("", 3D) = "" {}
+        _KfLutG ("", 3D) = "" {}
     }
     SubShader
     {
@@ -21,6 +22,8 @@ Shader "Hidden/KeyframeStudio/Lut"
 
             sampler3D _KfLutA;
             sampler3D _KfLutB;
+            sampler3D _KfLutG;   // Grading (curves, colour by colour, split toning…) baked by the bridge
+            float4 _KfLutGInfo;  // x size, w on
             float4 _KfLutAInfo; // x size, y amount (0..1), z mode (0 everything, 1 light only, 2 colour only), w on
             float4 _KfLutBInfo; // the same for the second table
             float _KfLutCombine; // 0 chain (B after A), 1 mix (B's amount mixes A and B)
@@ -48,6 +51,7 @@ Shader "Hidden/KeyframeStudio/Lut"
             {
                 fixed4 src = tex2D(_MainTex, i.uv);
                 float3 c = ToFile(src.rgb);
+                if (_KfLutGInfo.w > 0.5) c = Look(_KfLutG, _KfLutGInfo.x, c);
                 float3 a = c;
                 if (_KfLutAInfo.w > 0.5) a = lerp(c, Use(c, Look(_KfLutA, _KfLutAInfo.x, c), _KfLutAInfo.z), _KfLutAInfo.y);
                 if (_KfLutBInfo.w < 0.5) return fixed4(FromFile(a), src.a);

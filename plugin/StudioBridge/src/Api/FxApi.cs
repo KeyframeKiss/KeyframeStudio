@@ -37,6 +37,8 @@ namespace StudioEX.Bridge.Api
             // LUT files (UserData/StudioEX/luts): mode 0 everything, 1 light only, 2 colour only; combine 0 chain, 1 mix
             { "lut", new Dictionary<string, object> {
                 { "on", false }, { "a", "" }, { "aAmount", 1f }, { "aMode", 0f }, { "b", "" }, { "bAmount", 1f }, { "bMode", 0f }, { "combine", 0f } } },
+            // curves, colour by colour, split toning, bleach bypass, density: baked into a colour table (GradingBake)
+            { "grading", GradingBake.Defaults() },
             // barrel (+) / pincushion (-), refitted to fill the frame
             { "distortion", new Dictionary<string, object> { { "on", false }, { "amount", 0.15f }, { "fit", true } } },
             { "aberration", new Dictionary<string, object> { { "on", false }, { "amount", 0.3f } } },
@@ -416,11 +418,16 @@ namespace StudioEX.Bridge.Api
                         _grade.SetVector("_KfWB", WhiteBalance(F("grade", "kelvin")));
                         passes.Add(_grade);
                     }
-                    if (B("lut", "on") && _lut != null)
+                    bool lutOn = B("lut", "on"), gradOn = B("grading", "on");
+                    if ((lutOn || gradOn) && _lut != null)
                     {
-                        var ta = LutFiles.Get((string)_fx["lut"]["a"], out int na);
-                        var tb = LutFiles.Get((string)_fx["lut"]["b"], out int nb);
-                        if (ta != null || tb != null)
+                        int na = 0, nb = 0;
+                        var ta = lutOn ? LutFiles.Get((string)_fx["lut"]["a"], out na) : null;
+                        var tb = lutOn ? LutFiles.Get((string)_fx["lut"]["b"], out nb) : null;
+                        var tg = gradOn ? GradingBake.Get(_fx["grading"]) : null;
+                        if (tg != null) _lut.SetTexture("_KfLutG", tg);
+                        _lut.SetVector("_KfLutGInfo", new Vector4(GradingBake.Size, 1, 0, tg != null ? 1 : 0));
+                        if (ta != null || tb != null || tg != null)
                         {
                             if (ta != null) _lut.SetTexture("_KfLutA", ta);
                             if (tb != null) _lut.SetTexture("_KfLutB", tb);

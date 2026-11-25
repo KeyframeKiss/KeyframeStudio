@@ -4,6 +4,7 @@ import { Page } from './Page';
 import { LookPanel, Switch } from './LookPanel';
 import { EffectsPage } from './EffectsPage';
 import { ScopesPanel } from './ScopesPanel';
+import { GradingCard, gradingSummary } from './GradingCard';
 import { bridge } from '../bridge/client';
 import { call, displayName, showTab, toast, useStore } from '../state/store';
 
@@ -41,6 +42,7 @@ interface Item {
 const ITEMS: Item[] = [
   { id: 'lut', title: 'Color grade', group: 'Colour', help: "Studio's LUT tints the whole picture (a second can blend in with KK_TwoLut); LUT files (.cube / PNG) from UserData/StudioEX/luts go on top.", studio: ['lut'], ours: ['lut'] },
   { id: 'grade', title: 'Colour correction', group: 'Colour', help: 'Exposure, white balance, contrast and saturation on the final picture, after the colour grade.', ours: ['grade'], toggle: { fx: 'grade' } },
+  { id: 'grading', title: 'Grading', group: 'Colour', help: 'Tone curves, each colour on its own, split toning and film looks, like a photo editor.', toggle: { fx: 'grading' } },
   { id: 'bloom', title: 'Bloom', group: 'Colour', help: 'Bright areas glow.', studio: ['bloom'], toggle: { studio: 'bloom' } },
   { id: 'dof', title: 'Depth of field', group: 'Lens', help: "Blur away from the focus. Keyframe Studio's follows a character's eyes and looks the same in stills; Studio's own is simpler. Use one of them.", ours: ['dof'], studio: ['dof'] },
   { id: 'vignette', title: 'Vignette', group: 'Lens', help: "Darkened corners. Keyframe Studio's has strength, roundness and colour; Studio's is on or off.", ours: ['vignette'], studio: ['vignette'] },
@@ -144,6 +146,8 @@ export function PicturePage() {
         const files = o('lut') ? [ours('lut')?.a, ours('lut')?.b].filter((x) => typeof x === 'string' && x).map((x) => String(x).replace(/^.*\//, '').replace(/\.(cube|png)$/i, '')) : [];
         return { on: true, text: [name(look?.luts, e?.lut ?? -1), (e?.lutBlend ?? 0) > 0 ? `→ ${name(look?.luts, e?.lut2 ?? -1)} ${n2(e?.lutBlend)}` : '', files.length ? `+ ${files.join(', ')}` : ''].filter(Boolean).join(' ') };
       }
+      case 'grading':
+        return { on: o('grading'), text: gradingSummary(ours('grading') as Parameters<typeof gradingSummary>[0]) };
       case 'bloom':
         return { on: s('bloom'), text: s('bloom') ? `Intensity ${n2(e?.bloomIntensity)}` : 'Off' };
       case 'sun':
@@ -260,6 +264,7 @@ export function PicturePage() {
               <p>{cur.help}</p>
             </header>
             <div className="pic-editor-cards">
+              {cur.id === 'grading' && <GradingCard />}
               {cur.ours && <EffectsPage key={`o${cur.id}`} only={cur.ours} />}
               {cur.studio && <LookPanel key={`s${cur.id}`} cards={cur.studio} />}
             </div>

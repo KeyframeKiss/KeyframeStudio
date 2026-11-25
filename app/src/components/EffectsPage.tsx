@@ -14,7 +14,7 @@ import { Col, Columns, Page, Section } from './Page';
 // scene, undoable, and every value can be animated.
 // ---------------------------------------------------------------------------
 
-type Value = number | boolean | number[] | string;
+export type Value = number | boolean | number[] | string;
 type Fx = Record<string, Record<string, Value>>;
 interface FxState {
   effects: Fx;
@@ -42,7 +42,7 @@ interface Xukmi {
   catalog: XukmiCatalog[];
 }
 
-interface Param {
+export interface Param {
   key: string;
   label: string;
   kind: 'float' | 'color' | 'bool' | 'choice' | 'chara' | 'lut';
@@ -451,7 +451,7 @@ function EffectCard({ def, values, onSet, onReset, doubles, tag }: { def: Effect
   );
 }
 
-function ParamRow({ effect, p, v, onSet }: { effect: string; p: Param; v: Value; onSet: (v: Record<string, Value>) => void }) {
+export function ParamRow({ effect, p, v, onSet }: { effect: string; p: Param; v: Value; onSet: (v: Record<string, Value>) => void }) {
   const hasTimeline = useStore((s) => !!s.tl);
   const nodes = useStore((s) => s.nodes);
   const animate = async () => {

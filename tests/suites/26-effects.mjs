@@ -103,6 +103,36 @@ export default async function (t) {
       await ok('fx.reset');
     });
 
+  // Grading (curves, colour by colour, split toning, film) baked into a colour table
+  if (t.hello.commands.includes('fx.luts') && t.hello.commands.includes('camera.mean'))
+    await t.step('grading: curves, split toning, bleach bypass, undo', async () => {
+      const mean = () => ok('camera.mean', { width: 96 });
+      const spread = (c) => Math.max(...c) - Math.min(...c);
+      await ok('fx.reset');
+      await sleep(250);
+      const before = await mean();
+      await ok('fx.set', { effect: 'grading', values: { on: true, curveAll: '0,1 1,0' } });
+      await sleep(300);
+      const inv = await mean();
+      check('an upside-down curve inverts the picture', [0, 1, 2].every((i) => near(inv[i], 1 - before[i], 0.06)), JSON.stringify({ before, inv }));
+      await ok('undo');
+      await sleep(250);
+      const back = await mean();
+      check('undo: the curve is straight again', [0, 1, 2].every((i) => near(back[i], before[i], 0.02)), JSON.stringify(back));
+      await ok('fx.set', { effect: 'grading', values: { on: true, curveAll: '0,0 1,1', shadowHue: 220, shadowAmount: 1, highlightHue: 220, highlightAmount: 1 } });
+      await sleep(300);
+      const blue = await mean();
+      check('split toning in blue: the picture turns blue', blue[2] - blue[0] > before[2] - before[0] + 0.03, JSON.stringify({ before, blue }));
+      await ok('fx.reset', { effect: 'grading' });
+      await ok('fx.set', { effect: 'grading', values: { on: true, bleach: 1 } });
+      await sleep(300);
+      const bleached = await mean();
+      check('bleach bypass: less colour', spread(bleached) < spread(before) * 0.85 + 0.005, JSON.stringify({ before, bleached }));
+      const g = (await ok('fx.get')).effects.grading;
+      check('grading values come back from the bridge (curves as text)', g.on === true && g.curveAll === '0,0 1,1' && near(g.bleach, 1), JSON.stringify({ on: g.on, curveAll: g.curveAll, bleach: g.bleach }));
+      await ok('fx.reset');
+    });
+
   await t.step('saved with the scene', async () => {
     await ok('fx.set', { effect: 'fog', values: { on: true, density: 0.123, far: [0.2, 0.3, 0.9, 0.5] } });
     const sceneDir = path.join(t.paths.userData, 'studio', 'scene');
