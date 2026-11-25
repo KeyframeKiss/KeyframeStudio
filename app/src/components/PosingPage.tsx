@@ -7,7 +7,7 @@ import { EmptyState, SwitchCard } from './EditorBits';
 import { DragNumber } from './DragNumber';
 import { Slider } from './CharacterPanel';
 import { Vec } from './AbmxSection';
-import { boneLabel } from '../lib/boneNames';
+import { REGIONS, boneLabel, boneRegion, type Region } from '../lib/boneNames';
 import { keyPoseWithFace, keyWholePose, setKeyPoseWithFace } from '../lib/keyPose';
 
 /**
@@ -518,6 +518,7 @@ function BonesSection({ id }: { id: number }) {
   const [sel, setSel] = useState<string | null>(null);
   const [vals, setVals] = useState<BoneVals | null>(null);
   const [mirror, setMirror] = useState(false);
+  const [region, setRegion] = useState<Region | 'All'>('All');
   const loadList = useCallback(() => call<BoneRow[]>('posing.bones', { id }).then((r) => r && setBones(r)), [id]);
   const loadBone = useCallback((name: string) => call<{ bones: BoneVals[] }>('face.get', { id, bones: [name] }).then((r) => setVals(r?.bones[0] ?? null)), [id]);
   useEffect(() => {
@@ -540,6 +541,13 @@ function BonesSection({ id }: { id: number }) {
     if (!bones) return [];
     return bones.filter((b) => (!editedOnly || b.edited) && (!words || b.name.toLowerCase().includes(words) || (b.label || boneLabel(b.name)).toLowerCase().includes(words)));
   }, [bones, words, editedOnly]);
+  // where to look first: the body's regions, with how many bones each has (after search / Changed only)
+  const counts = useMemo(() => {
+    const m = new Map<Region, number>();
+    for (const b of shown) m.set(boneRegion(b.name), (m.get(boneRegion(b.name)) ?? 0) + 1);
+    return m;
+  }, [shown]);
+  const inRegion = region === 'All' ? shown : shown.filter((b) => boneRegion(b.name) === region);
   const LIMIT = 200;
   const set = (ch: 'pos' | 'rot' | 'scale', v: [number, number, number]) => {
     if (!sel) return;
@@ -561,18 +569,28 @@ function BonesSection({ id }: { id: number }) {
           Changed only
         </button>
       </div>
+      <div className="ct-chips posing-bone-regions" role="group" aria-label="Region">
+        {(['All', ...REGIONS.filter((r) => r !== 'Accessories')] as (Region | 'All')[]).map((r) => {
+          const n = r === 'All' ? shown.length : counts.get(r) ?? 0;
+          if (r !== 'All' && !n) return null;
+          return (
+            <button key={r} className={`btn chip ${region === r ? 'on' : ''}`} aria-pressed={region === r} onClick={() => setRegion(r)}>
+              {r} <small>{n}</small>
+            </button>
+          );
+        })}
+      </div>
       <div className="posing-bones">
         <div className="posing-bone-list" role="listbox" aria-label="Bones">
-          {shown.slice(0, LIMIT).map((b) => (
-            <button key={b.name} role="option" aria-selected={sel === b.name} className={`posing-bone ${sel === b.name ? 'on' : ''}`} style={{ paddingLeft: 8 + Math.min(b.depth, 14) * (words ? 0 : 8) }} onClick={() => setSel(b.name)}>
+          {inRegion.slice(0, LIMIT).map((b) => (
+            <button key={b.name} role="option" aria-selected={sel === b.name} title={b.name} className={`posing-bone ${sel === b.name ? 'on' : ''}`} style={{ paddingLeft: 8 + Math.min(b.depth, 14) * (words || region !== 'All' ? 0 : 8) }} onClick={() => setSel(b.name)}>
               <span>{b.label || boneLabel(b.name)}</span>
-              <small>{b.name}</small>
               {b.fk && <span className="posing-tag">FK</span>}
               {b.edited && <span className="body-dot" />}
             </button>
           ))}
-          {shown.length > LIMIT && <div className="pn-note">{shown.length - LIMIT} more — narrow the search.</div>}
-          {bones && !shown.length && <div className="pn-note">No bone matches.</div>}
+          {inRegion.length > LIMIT && <div className="pn-note">{inRegion.length - LIMIT} more — pick a region or narrow the search.</div>}
+          {bones && !inRegion.length && <div className="pn-note">No bone matches.</div>}
         </div>
         <div className="posing-bone-edit">
           {!sel || !vals ? (

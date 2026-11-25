@@ -11118,3 +11118,10 @@ a.btn {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+.posing-bone-regions {
+  margin: 0 0 8px;
+}
+.posing-bone-regions small {
+  color: var(--text-3);
+  margin-left: 4px;
+}
