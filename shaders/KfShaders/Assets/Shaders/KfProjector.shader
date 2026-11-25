@@ -101,7 +101,7 @@ Shader "Hidden/KeyframeStudio/Projector"
                     float n = max(1, round(_KfCount / 3));
                     float2 g = abs(frac((p * 0.5 + 0.5) * (n + 1)) - 0.5);
                     float frame = 0.5 - max(g.x, g.y);                        // small near the frame bars
-                    return max(0.06 - frame, max(abs(p.x), abs(p.y)) - 0.9);
+                    return max(0.11 - frame, max(abs(p.x), abs(p.y)) - 0.86);
                 }
                 if (s == 6)                                                    // leaf dapple
                 {
@@ -109,6 +109,14 @@ Shader "Hidden/KeyframeStudio/Projector"
                     return max(0.52 - n, r - 1.0);
                 }
                 return r - 0.85;
+            }
+
+            // the outline the pattern sits in (blinds, window, leaves): where its shadow can fall at all
+            float Frame(float2 p)
+            {
+                int s = (int)round(_KfShape);
+                if (s == 5) return max(abs(p.x), abs(p.y)) - 0.97; // the window's outer frame around the panes
+                return length(p) - 1.0;
             }
 
             fixed4 frag(v2f i) : SV_Target
@@ -128,9 +136,14 @@ Shader "Hidden/KeyframeStudio/Projector"
 
                 float soft = max(0.005, _KfSoft * 0.5);
                 float mask = 1 - smoothstep(-soft, soft, Shape(p));
+                // blinds, window and leaves are where light gets through: as a shadow it's the rest of their outline
+                // (the slats, the frame, the leaves) that darkens
+                int shape = (int)round(_KfShape);
+                if (_KfMul > 0.5 && shape >= 4 && shape <= 6) mask = (1 - smoothstep(-max(soft, 0.12), max(soft, 0.12), Frame(p))) * (1 - mask);
                 float dist = saturate(i.uvFalloff.x);
                 mask *= lerp(1, 1 - dist, saturate(_KfFalloff));
-                mask *= saturate(i.normalDot.x * 4 + 0.25);
+                // only on what faces it, fading as surfaces turn edge-on (no streaks down them)
+                mask *= smoothstep(0.05, 0.45, i.normalDot.x);
                 float a = mask * _KfColor.a;
 
                 if (_KfMul > 0.5) return fixed4(lerp(float3(1, 1, 1), _KfColor.rgb, a), 1); // shadow / tint

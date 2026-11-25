@@ -285,7 +285,7 @@ namespace StudioEX.Bridge.Api
         private static string Title(ProjData d) =>
             "Projector · " + char.ToUpperInvariant(d.Shape[0]) + d.Shape.Substring(1) + (d.Mode == "light" ? "" : " " + d.Mode);
 
-        /// <summary>args: {values?} — a new projector above and in front of what the camera looks at, aimed at it.</summary>
+        /// <summary>args: {values?} — a new projector in front of what the camera looks at, up at a window's angle, aimed at it.</summary>
         private static object Add(Dictionary<string, object> a)
         {
             var d = new ProjData();
@@ -298,7 +298,9 @@ namespace StudioEX.Bridge.Api
             Vector3 toCam = Camera.main != null ? Camera.main.transform.position - target : Vector3.back;
             toCam.y = 0;
             if (toCam.sqrMagnitude < 1e-4f) toCam = Vector3.back;
-            var pos = target + toCam.normalized * 1.2f + Vector3.up * 2.6f;
+            // from the camera's side and a little to one side, about 35° up — like light through a window, so shapes
+            // land on the character's front instead of streaking down from overhead
+            var pos = target + (Quaternion.AngleAxis(30f, Vector3.up) * toCam.normalized) * 2.3f + Vector3.up * 1.6f;
             var rot = Quaternion.LookRotation(target - pos);
             f.objectInfo.changeAmount.pos = pos;
             f.objectInfo.changeAmount.rot = rot.eulerAngles;
