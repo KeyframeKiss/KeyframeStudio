@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { bridge } from '../bridge/client';
-import { toast } from '../state/store';
+import { listBones, toast, useStore } from '../state/store';
+import { abmxForJoint } from '../lib/abmxMatch';
 import { Help } from './Help';
 import { Icon } from './Icon';
 import { EmptyState, SwitchCard } from './EditorBits';
@@ -168,6 +169,34 @@ const store = {
   },
 };
 
+/** The joint or IK target last picked in Studio's view on this character (seq changes on every pick). */
+function useStudioJoint(oci: number): { name: string; label: string; seq: number } | null {
+  const status = useStore((s) => s.status);
+  const [joint, setJoint] = useState<{ name: string; label: string; seq: number } | null>(null);
+  useEffect(() => {
+    if (status !== 'open') return;
+    let alive = true;
+    let seq = 0;
+    let bones: { kind: string; index: number; name: string; label: string }[] | null = null;
+    const take = async (t: { kind: string; id: number; index: number } | null) => {
+      if (!t || t.id !== oci || (t.kind !== 'bone' && t.kind !== 'ik')) return;
+      bones ??= await listBones(oci).catch(() => []);
+      const b = bones.find((x) => x.kind === t.kind && x.index === t.index);
+      if (alive && b) setJoint({ name: b.name, label: b.label, seq: ++seq });
+    };
+    bridge
+      .request<{ target: { kind: string; id: number; index: number } | null }>('gizmo.get')
+      .then((g) => take(g?.target ?? null))
+      .catch(() => {});
+    const off = bridge.on('gizmo.target', (t) => void take(t as { kind: string; id: number; index: number } | null));
+    return () => {
+      alive = false;
+      off();
+    };
+  }, [oci, status]);
+  return joint;
+}
+
 /** The regions a person can point at on the figure. */
 const FIGURE: Region[] = ['Head & neck', 'Bust', 'Torso & hips', 'Arms & hands', 'Legs & feet'];
 
@@ -255,6 +284,19 @@ export function BodySliders({ id }: { id: number }) {
     if (row?.mods.length === 1) setSide(boneSide(row.mods[0].bone) === 'R' ? 'R' : 'L');
   }, [row?.key]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // follow the joint picked in Studio's view: its slider is picked, or one is offered to add
+  const joint = useStudioJoint(id);
+  const match = useMemo(() => (joint ? abmxForJoint(joint.name, all.flatMap((r) => r.mods.map((m) => m.bone)), bones) : null), [joint, all, bones]);
+  useEffect(() => {
+    if (!match?.has) return;
+    const r = all.find((x) => x.mods.some((m) => m.bone === match.bone));
+    if (!r) return;
+    setQuery('');
+    setRegion(r.region);
+    setPick(r.key);
+    if (r.mods.length === 1) setSide(boneSide(r.mods[0].bone) === 'R' ? 'R' : 'L');
+  }, [joint?.seq, match?.bone, match?.has]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const pickRegion = (r: Region) => {
     setRegion(r);
     setQuery('');
@@ -311,6 +353,24 @@ export function BodySliders({ id }: { id: number }) {
               </button>
             )}
           </header>
+          {joint && match && !match.has && (
+            <div className="body-add body-picked">
+              <span className="body-add-label" title={joint.name}>
+                Picked in Studio: {joint.label}
+              </span>
+              <button
+                className="btn small solid"
+                title={match.bone}
+                onClick={async () => {
+                  await add(match.bone);
+                  setQuery('');
+                  setRegion(boneRegion(match.bone, 1));
+                }}
+              >
+                <Icon name="plus" size={11} /> Add a slider for {boneLabel(match.bone)}
+              </button>
+            </div>
+          )}
           {addable.length > 0 && (
             <div className="body-add">
               <span className="body-add-label">Add a slider</span>
