@@ -30,6 +30,27 @@ export default async function (t) {
     check('absurd sizes refused', !(await req('still.capture', { width: 8000, height: 8000, supersample: 4 })).ok);
   });
 
+  // quality stills: many renders averaged, a real lens, 16-bit PNG (YuppiEffects-style, our own)
+  await t.step('quality stills: smooth, real lens, 16-bit PNG', async () => {
+    const t0 = Date.now();
+    const a = await t.studio.req('still.capture', { width: 480, height: 270, supersample: 1, format: 'png', samples: 16 }, 120000);
+    check('16 renders averaged: saved', a.ok && fs.existsSync(a.result.path) && a.result.provider === 'Keyframe Studio', JSON.stringify(a.error ?? a.result?.provider));
+    if (a.ok) made.push(a.result.path);
+    t.metric('16 renders at 480 × 270', ((Date.now() - t0) / 1000).toFixed(1), 's');
+    const b = await t.studio.req('still.capture', { width: 480, height: 270, supersample: 1, format: 'png', samples: 32, lens: true, fstop: 1.4, bits16: true }, 120000);
+    check('a lens still at 16 bits: saved', b.ok && fs.existsSync(b.result.path), JSON.stringify(b.error));
+    if (b.ok) {
+      made.push(b.result.path);
+      const buf = fs.readFileSync(b.result.path);
+      check('a 16-bit RGB PNG', buf[24] === 16 && buf[25] === 2, `bit depth ${buf[24]}, colour type ${buf[25]}`);
+      check('it says how it was made', buf.includes(Buffer.from('Keyframe Studio')) && buf.includes(Buffer.from('lens f/1.4')));
+      check('a real picture (not blank)', buf.length > 100000, String(buf.length));
+    }
+    check('16 bits is PNG only', !(await req('still.capture', { width: 320, height: 180, format: 'jpg', bits16: true })).ok);
+    const sc = await ok('camera.mean', { width: 64 });
+    check('Studio’s view is untouched afterwards', sc.every((v) => v > 0 && v < 1));
+  });
+
   if (st.screencap)
     await t.step('Screencap (installed)', async () => {
       await ok('still.set', { useScreencap: true });

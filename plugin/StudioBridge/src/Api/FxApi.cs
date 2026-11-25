@@ -58,6 +58,8 @@ namespace StudioEX.Bridge.Api
         private static Dictionary<string, Dictionary<string, object>> _fx = Clone(Defaults);
         private static string _bundleError;
         private static Material _fog, _grade, _sharpen, _lens, _dof, _lut, _bloom, _ao;
+        /// <summary>A quality still with a real lens makes its own blur: our depth of field steps aside while it renders.</summary>
+        internal static bool HoldDof;
 
         // values that are choices, not amounts: no Timeline tracks for them
         private static readonly HashSet<string> NotAnimated = new HashSet<string> { "dof.autoFocus", "dof.chara", "lut.aMode", "lut.bMode", "lut.combine" };
@@ -336,6 +338,26 @@ namespace StudioEX.Bridge.Api
 
         // for the viewport's focus marker
         internal static bool DofOn => B("dof", "on");
+
+        /// <summary>
+        /// Where depth of field focuses (its Eyes / View centre / Fixed setting), in metres along the view — used by
+        /// lens stills even while the depth-of-field effect itself is off.
+        /// </summary>
+        internal static float FocusDistance(Camera cam)
+        {
+            int mode = Mathf.RoundToInt(F("dof", "autoFocus"));
+            Vector3? p = null;
+            if (mode == 1) p = Singleton<Studio.Studio>.Instance?.cameraCtrl?.targetPos;
+            else if (mode == 2)
+            {
+                var c = SceneApi.FindOci(Mathf.RoundToInt(F("dof", "chara"))) as OCIChar
+                    ?? Singleton<Studio.Studio>.Instance?.dicObjectCtrl.OrderBy(kv => kv.Key).Select(kv => kv.Value as OCIChar).FirstOrDefault(x => x != null);
+                var eyes = c?.charInfo != null ? c.charInfo.GetComponentsInChildren<Transform>(true).FirstOrDefault(t => t.name == "cf_J_Eye_tz") ?? c.charInfo.objHeadBone?.transform : null;
+                if (eyes != null) p = eyes.position;
+            }
+            if (p.HasValue) return Mathf.Max(0.05f, Vector3.Dot(p.Value - cam.transform.position, cam.transform.forward));
+            return Mathf.Max(0.05f, F("dof", "focus"));
+        }
         internal static float Dof(string k) => F("dof", k);
         internal static void SetDof(Dictionary<string, object> values) => Set(new Dictionary<string, object> { { "effect", "dof" }, { "values", values } });
         private static bool B(string e, string k) => (bool)_fx[e][k];
@@ -471,7 +493,7 @@ namespace StudioEX.Bridge.Api
                         _fog.SetVector("_KfHeight", new Vector4(F("fog", "height"), F("fog", "heightFalloff"), B("fog", "sky") ? 1 : 0, F("fog", "skyDistance")));
                         passes.Add(_fog);
                     }
-                    if (B("dof", "on")) passes.Add((Action<RenderTexture, RenderTexture>)Dof);
+                    if (B("dof", "on") && !HoldDof) passes.Add((Action<RenderTexture, RenderTexture>)Dof);
                     if (B("sharpen", "on"))
                     {
                         _sharpen.SetFloat("_KfSharpness", F("sharpen", "amount"));

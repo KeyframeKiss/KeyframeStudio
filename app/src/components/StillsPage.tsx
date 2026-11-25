@@ -49,7 +49,7 @@ const KEY = 'kf.stills';
 
 function prefs() {
   try {
-    return JSON.parse(localStorage.getItem(KEY) ?? '{}') as Partial<{ size: string; supersample: number; transparent: boolean; format: string; quality: number }>;
+    return JSON.parse(localStorage.getItem(KEY) ?? '{}') as Partial<{ size: string; supersample: number; transparent: boolean; format: string; quality: number; samples: number; lens: boolean; fstop: number; bits16: boolean }>;
   } catch {
     return {};
   }
@@ -63,6 +63,11 @@ export function StillsPage() {
   const [transparent, setTransparent] = useState(prefs().transparent ?? false);
   const [format, setFormat] = useState(prefs().format ?? 'png');
   const [quality, setQuality] = useState(prefs().quality ?? 95);
+  // quality stills: many renders averaged, a real lens, 16 bits
+  const [samples, setSamples] = useState(prefs().samples ?? 1);
+  const [lens, setLens] = useState(prefs().lens ?? false);
+  const [fstop, setFstop] = useState(prefs().fstop ?? 2.8);
+  const [bits16, setBits16] = useState(prefs().bits16 ?? false);
   const [busy, setBusy] = useState(false);
   const [recent, setRecent] = useState<Shot[]>([]);
   // the header glows once when pictures are saved
@@ -71,11 +76,11 @@ export function StillsPage() {
 
   useEffect(() => {
     try {
-      localStorage.setItem(KEY, JSON.stringify({ size, supersample: ss, transparent, format, quality }));
+      localStorage.setItem(KEY, JSON.stringify({ size, supersample: ss, transparent, format, quality, samples, lens, fstop, bits16 }));
     } catch {
       /* private mode */
     }
-  }, [size, ss, transparent, format, quality]);
+  }, [size, ss, transparent, format, quality, samples, lens, fstop, bits16]);
 
   const load = useCallback(() => {
     bridge.request<Status>('still.status').then(setSt).catch(() => setSt(null));
@@ -107,7 +112,8 @@ export function StillsPage() {
 
   const def = SIZES.find((x) => x.label === size) ?? SIZES[0];
   const [w, h] = def.w ? [def.w, def.h!] : st.screen;
-  const opts = { width: w, height: h, supersample: ss, transparent: transparent && format === 'png', format, quality };
+  const fine = samples > 1 || lens || (bits16 && format === 'png');
+  const opts = { width: w, height: h, supersample: ss, transparent: transparent && format === 'png' && !fine, format, quality, samples, lens, fstop, bits16: bits16 && format === 'png' };
   // versions: one picture each (its size and framing); a scene without its own starts from the ones used last
   const current: RenderVersion = { label: def.label, w: def.w ?? 0, h: def.h ?? 0, framing: { mode: 'timeline' } };
   const versions: RenderVersion[] = savedVersions ?? lastVersions(STILL_LAST) ?? [current];
@@ -126,12 +132,13 @@ export function StillsPage() {
   const withVersions = { ...opts, versions: toWire(versions) };
   const canTransparent = st.screencap;
   const running = busy || st.batch.running;
-  const provider = st.screencap && (st.useScreencap || opts.transparent) ? 'Screencap' : 'Keyframe Studio';
+  const provider = !fine && st.screencap && (st.useScreencap || opts.transparent) ? 'Screencap' : 'Keyframe Studio';
 
   const take = async () => {
     setBusy(true);
     try {
-      const got = await bridge.request<Shot | Shot[]>('still.capture', withVersions);
+      // many renders take a while: wait longer than for a plain picture
+      const got = await bridge.request<Shot | Shot[]>('still.capture', withVersions, fine ? 300000 : 10000);
       const shots = Array.isArray(got) ? got : [got];
       setRecent((x) => [...shots, ...x].slice(0, 24));
       toast(shots.length === 1 ? `Saved ${shots[0].path.replace(/^.*[\\/]/, '')} (${shots[0].width}×${shots[0].height})` : `Saved ${shots.length} pictures (${versions.map((v) => v.label).join(', ')})`, 'done');
@@ -227,6 +234,54 @@ export function StillsPage() {
                   </button>
                 ))}
               </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="look-card">
+          <div className="look-card-head">
+            <div>
+              <b>
+                Quality
+                <Help text="Smooth: the picture is rendered many times, each nudged within its pixels, and averaged — clean edges, hair and effects, no flicker in fine detail. Real lens: each render also moves the camera across a lens opening while the focus distance stays sharp, for true depth of field (it focuses where Look › Picture › Depth of field says — a character's eyes, the view centre or a fixed distance — even with that effect off). Everything stays still while it renders. Takes a few seconds." />
+              </b>
+            </div>
+          </div>
+          <div className="look-card-body">
+            <div className="cleanup-row">
+              <span>Smooth</span>
+              <div className="seg">
+                {[
+                  { n: 1, label: 'Off', hint: 'One render' },
+                  { n: 16, label: '16', hint: '16 renders averaged: quick' },
+                  { n: 64, label: '64', hint: '64 renders averaged: clean' },
+                  { n: 256, label: '256', hint: '256 renders averaged: the smoothest lens blur' },
+                ].map((q) => (
+                  <button key={q.n} className={samples === q.n ? 'on' : ''} disabled={running} onClick={() => setSamples(q.n)} title={q.hint}>
+                    {q.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="cleanup-row">
+              <span>
+                Real lens blur <Help text="True depth of field from the lens itself: out-of-focus things blur by how far they are from the focus, with round highlights, and nothing bleeds around edges. Our own depth of field steps aside while it renders. Uses at least 64 renders." />
+              </span>
+              <Switch on={lens} onChange={setLens} />
+            </div>
+            {lens && (
+              <div className="cleanup-row">
+                <span>
+                  Aperture (f-stop) <Help text="Like a camera: lower = a wider opening and more blur (f/1.4 dreamy, f/2.8 portrait, f/8 mostly sharp)" />
+                </span>
+                <DragNumber value={fstop} step={0.05} digits={1} min={0.7} max={32} width={70} onCommit={(v) => setFstop(Math.max(0.7, Math.min(32, v)))} />
+              </div>
+            )}
+            <div className="cleanup-row">
+              <span>
+                16 bits per colour <Help text="PNG with 65,536 levels per colour instead of 256: smooth gradients that hold up to heavy editing afterwards. Bigger files." />
+              </span>
+              <Switch on={bits16 && format === 'png'} onChange={(v) => (format === 'png' ? setBits16(v) : toast('16-bit pictures are PNG only', 'error'))} />
             </div>
           </div>
         </div>

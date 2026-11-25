@@ -61,6 +61,11 @@ namespace StudioEX.Bridge.Api
         {
             public int Width, Height, Supersample = 2, Quality = 95;
             public bool Transparent, Jpg;
+            // quality stills: renders averaged (1 = one render), real lens blur (f-stop), 16 bits per channel (PNG)
+            public int Samples = 1;
+            public bool Lens, Bits16;
+            public float FStop = 2.8f;
+            public bool Quality2 => Samples > 1 || Lens || Bits16;
         }
 
         private static Opts Options(Dictionary<string, object> a)
@@ -73,7 +78,13 @@ namespace StudioEX.Bridge.Api
                 Transparent = a.GetBool("transparent"),
                 Jpg = a.GetString("format") == "jpg",
                 Quality = Mathf.Clamp(a.GetInt("quality", 95), 50, 100),
+                Samples = Mathf.Clamp(a.GetInt("samples", 1), 1, 1024),
+                Lens = a.GetBool("lens"),
+                FStop = Mathf.Clamp(a.GetFloat("fstop", 2.8f), 0.7f, 32f),
+                Bits16 = a.GetBool("bits16"),
             };
+            if (o.Lens && o.Samples < 16) o.Samples = 64; // a lens needs many views to look smooth
+            if (o.Bits16 && o.Jpg) throw new BridgeException("16-bit pictures are PNG only");
             if (o.Width < 16 || o.Height < 16) throw new BridgeException("That size is too small");
             if ((long)o.Width * o.Supersample * o.Height * o.Supersample > 8192L * 8192L) throw new BridgeException("Too big: lower the size or the quality (supersampling)");
             if (o.Transparent && o.Jpg) throw new BridgeException("JPG can't be transparent — use PNG");
@@ -87,7 +98,7 @@ namespace StudioEX.Bridge.Api
         private static object CaptureVersion(Opts baseOpts, Dictionary<string, object> v, string name, bool nameIt)
         {
             int w = v.GetInt("width", 0), h = v.GetInt("height", 0);
-            var o = new Opts { Width = w >= 16 ? w : Screen.width, Height = h >= 16 ? h : Screen.height, Supersample = baseOpts.Supersample, Quality = baseOpts.Quality, Transparent = baseOpts.Transparent, Jpg = baseOpts.Jpg };
+            var o = new Opts { Width = w >= 16 ? w : Screen.width, Height = h >= 16 ? h : Screen.height, Supersample = baseOpts.Supersample, Quality = baseOpts.Quality, Transparent = baseOpts.Transparent, Jpg = baseOpts.Jpg, Samples = baseOpts.Samples, Lens = baseOpts.Lens, FStop = baseOpts.FStop, Bits16 = baseOpts.Bits16 };
             if ((long)o.Width * o.Supersample * o.Height * o.Supersample > 8192L * 8192L) o.Supersample = Math.Max(1, (int)Math.Floor(Math.Sqrt(8192.0 * 8192.0 / ((long)o.Width * o.Height))));
             var before = RenderFraming.Active;
             RenderFraming.Active = RenderFraming.From(v.ContainsKey("framing") ? v["framing"] as Dictionary<string, object> : null);
@@ -105,7 +116,7 @@ namespace StudioEX.Bridge.Api
             if (RenderApi.Busy()) throw new BridgeException("VideoExport is recording");
             Texture2D tex = null;
             string provider;
-            bool theirs = ScreencapInstalled && (_useScreencap || o.Transparent);
+            bool theirs = ScreencapInstalled && (_useScreencap || o.Transparent) && !o.Quality2; // quality stills are ours
             if (theirs && (tex = ScreencapCapture(o)) != null) provider = "Screencap";
             else
             {
@@ -118,7 +129,9 @@ namespace StudioEX.Bridge.Api
                 Directory.CreateDirectory(Folder);
                 string safe = string.IsNullOrEmpty(name) ? "" : "-" + new string(name.Select(ch => Path.GetInvalidFileNameChars().Contains(ch) ? '_' : ch).ToArray());
                 string file = Path.Combine(Folder, "KeyframeStudio-" + DateTime.Now.ToString("yyyyMMdd-HHmmss-fff") + safe + (o.Jpg ? ".jpg" : ".png"));
-                File.WriteAllBytes(file, o.Jpg ? tex.EncodeToJPG(o.Quality) : tex.EncodeToPNG());
+                if (_last16 != null && o.Bits16 && !o.Jpg) File.WriteAllBytes(file, _last16);
+                else File.WriteAllBytes(file, o.Jpg ? tex.EncodeToJPG(o.Quality) : tex.EncodeToPNG());
+                _last16 = null;
                 return new Dictionary<string, object>
                 {
                     { "path", file }, { "folder", Folder }, { "provider", provider },
@@ -147,10 +160,134 @@ namespace StudioEX.Bridge.Api
         internal static Texture2D RenderCamera(int width, int height, int supersample) =>
             OurCapture(new Opts { Width = width, Height = height, Supersample = Mathf.Clamp(supersample, 1, 4) });
 
+        private static byte[] _last16; // the 16-bit PNG of the picture just taken (written instead of the 8-bit one)
+
+        /// <summary>The distance a still's lens focuses at: depth of field's focus setting (eyes, view centre or fixed).</summary>
+        private static float StillFocus(Camera cam) => FxApi.FocusDistance(cam);
+
+        private static float Halton(int i, int b)
+        {
+            float f = 1f, r = 0f;
+            while (i > 0) { f /= b; r += f * (i % b); i /= b; }
+            return r;
+        }
+
+        /// <summary>
+        /// A quality still: Studio's camera rendered many times in this one frame (so nothing moves between them), each
+        /// nudged within its pixel and — with a lens — moved across the lens opening while the focus distance stays
+        /// sharp, all averaged in floats, then scaled down. Returns the picture (8 bits) and keeps a 16-bit PNG if asked.
+        /// </summary>
+        private static Texture2D QualityCapture(Opts o, Camera cam)
+        {
+            int s = o.Supersample, w = o.Width * s, h = o.Height * s;
+            var acc = RenderTexture.GetTemporary(w, h, 0, RenderTextureFormat.ARGBFloat);
+            var one = RenderTexture.GetTemporary(w, h, 24, RenderTextureFormat.ARGBHalf);
+            var prevActive = RenderTexture.active;
+            RenderTexture.active = acc;
+            GL.Clear(false, true, Color.clear);
+            RenderTexture.active = prevActive;
+            var mat = new Material(FxApi.GetShader("Accum")) { hideFlags = HideFlags.HideAndDontSave };
+            int n = o.Samples;
+            mat.SetFloat("_KfWeight", 1f / n);
+            var t = cam.transform;
+            var pos0 = t.position;
+            var proj0 = cam.projectionMatrix;
+            var prevTarget = cam.targetTexture;
+            float focus = StillFocus(cam);
+            // a full-frame lens of this field of view: focal length (m), and the opening's radius at this f-stop
+            float fl = 0.012f / Mathf.Tan(cam.fieldOfView * 0.5f * Mathf.Deg2Rad);
+            float radius = o.Lens ? fl / o.FStop * 0.5f : 0f;
+            var dof = cam.GetComponent<DepthOfField>();
+            bool dofWas = dof != null && dof.enabled;
+            if (o.Lens) { FxApi.HoldDof = true; if (dof != null) dof.enabled = false; } // the lens makes the blur itself
+            float spin = UnityEngine.Random.value * 6.2831853f;
+            try
+            {
+                for (int k = 0; k < n; k++)
+                {
+                    float jx = (Halton(k + 1, 2) - 0.5f) * s, jy = (Halton(k + 1, 3) - 0.5f) * s;
+                    float dx = 0f, dy = 0f;
+                    if (radius > 0f)
+                    {
+                        float r = Mathf.Sqrt((k + 0.5f) / n) * radius, a = spin + k * 2.39996323f;
+                        dx = Mathf.Cos(a) * r;
+                        dy = Mathf.Sin(a) * r;
+                    }
+                    t.position = pos0 + t.right * dx + t.up * dy;
+                    var m = proj0;
+                    m[0, 2] += -proj0[0, 0] * dx / focus - 2f * jx / w;
+                    m[1, 2] += -proj0[1, 1] * dy / focus - 2f * jy / h;
+                    cam.projectionMatrix = m;
+                    cam.targetTexture = one;
+                    cam.Render();
+                    Graphics.Blit(one, acc, mat);
+                }
+            }
+            finally
+            {
+                t.position = pos0;
+                cam.ResetProjectionMatrix();
+                cam.targetTexture = prevTarget;
+                cam.ResetAspect();
+                FxApi.HoldDof = false;
+                if (dof != null) dof.enabled = dofWas;
+                UnityEngine.Object.Destroy(mat);
+                RenderTexture.ReleaseTemporary(one);
+            }
+            // scale down in floats
+            var cur = acc;
+            while (cur.width / 2 >= o.Width && cur.height / 2 >= o.Height)
+            {
+                var half = RenderTexture.GetTemporary(cur.width / 2, cur.height / 2, 0, RenderTextureFormat.ARGBFloat);
+                half.filterMode = cur.filterMode = FilterMode.Bilinear;
+                Graphics.Blit(cur, half);
+                RenderTexture.ReleaseTemporary(cur);
+                cur = half;
+            }
+            var fin = RenderTexture.GetTemporary(o.Width, o.Height, 0, RenderTextureFormat.ARGBFloat);
+            cur.filterMode = FilterMode.Bilinear;
+            Graphics.Blit(cur, fin);
+            RenderTexture.ReleaseTemporary(cur);
+            bool linear = QualitySettings.activeColorSpace == ColorSpace.Linear;
+            var prev = RenderTexture.active;
+            try
+            {
+                RenderTexture.active = fin;
+                var ft = new Texture2D(o.Width, o.Height, TextureFormat.RGBAFloat, false, true);
+                ft.ReadPixels(new Rect(0, 0, o.Width, o.Height), 0, 0);
+                var px = ft.GetPixels();
+                UnityEngine.Object.Destroy(ft);
+                Func<float, float> enc = v => linear ? Mathf.LinearToGammaSpace(Mathf.Clamp01(v)) : Mathf.Clamp01(v);
+                if (o.Bits16 && !o.Jpg)
+                {
+                    int W = o.Width, H = o.Height;
+                    var notes = new Dictionary<string, string>
+                    {
+                        { "Software", "Keyframe Studio" },
+                        { "Comment", "samples " + n + (o.Lens ? ", lens f/" + o.FStop.ToString("0.#") + " focused at " + focus.ToString("0.00") + " m" : "") },
+                    };
+                    _last16 = Png16.Encode(W, H, (x, y, c) => { var p = px[(H - 1 - y) * W + x]; return enc(c == 0 ? p.r : c == 1 ? p.g : p.b); }, false, notes);
+                }
+                var tex = new Texture2D(o.Width, o.Height, TextureFormat.RGB24, false);
+                var c8 = new Color32[px.Length];
+                for (int i = 0; i < px.Length; i++)
+                    c8[i] = new Color32((byte)(enc(px[i].r) * 255f + 0.5f), (byte)(enc(px[i].g) * 255f + 0.5f), (byte)(enc(px[i].b) * 255f + 0.5f), 255);
+                tex.SetPixels32(c8);
+                tex.Apply();
+                return tex;
+            }
+            finally
+            {
+                RenderTexture.active = prev;
+                RenderTexture.ReleaseTemporary(fin);
+            }
+        }
+
         /// <summary>Render Studio's camera at (size × supersample) and scale down in halving steps (smooth, no shimmer).</summary>
         private static Texture2D OurCapture(Opts o)
         {
             var cam = Camera.main ?? throw new BridgeException("No camera");
+            if (o.Quality2) return QualityCapture(o, cam);
             int w = o.Width * o.Supersample, h = o.Height * o.Supersample;
             var big = RenderTexture.GetTemporary(w, h, 24, RenderTextureFormat.ARGB32);
             var prevTarget = cam.targetTexture;
