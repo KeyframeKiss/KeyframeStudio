@@ -11174,3 +11174,12 @@ a.btn {
   max-height: 70vh;
   overflow: auto;
 }
+/* Outfit › accessories: Solo shows on hover (and while soloing) */
+.outfit-acc > .btn.small:not(.on) {
+  opacity: 0;
+  transition: opacity var(--t-fast, 0.12s) ease;
+}
+.outfit-acc:hover > .btn.small,
+.outfit-acc:focus-within > .btn.small {
+  opacity: 1;
+}

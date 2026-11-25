@@ -124,6 +124,7 @@ export function OutfitPanel() {
     return [...AREAS.map(([k]) => k), 'Other'].filter((k) => m.has(k)).map((k) => [k, m.get(k)!] as const);
   }, [st, query]);
 
+  const [openAreas, setOpenAreas] = useState<Set<string>>(new Set());
   const setGroup = (items: CharaState['accessories'], on: boolean) => st && set({ accessoriesVisible: visArray(st, (a) => (items.includes(a) ? on : a.visible)), undoLabel: on ? 'Show accessories' : 'Hide accessories' });
   const soloOn = async (slot: number) => {
     if (!st) return;
@@ -229,16 +230,37 @@ export function OutfitPanel() {
         <input className="input" placeholder="Find an accessory…" value={query} onChange={(e) => setQuery(e.target.value)} style={{ width: '100%', marginBottom: 6 }} />
         {groups.map(([area, items]) => {
           const anyOn = items.some((a) => a.visible);
+          // many accessories: each area folds to one line ("8 of 10 shown") until opened
+          const many = st.accessories.length > 12;
+          const isOpen = !many || !!query.trim() || openAreas.has(area);
           return (
             <div key={area} className="outfit-group">
               <div className="outfit-group-head">
+                {many && (
+                  <button
+                    className="toggle"
+                    style={{ opacity: 1 }}
+                    aria-expanded={isOpen}
+                    title={isOpen ? 'Close' : 'Open'}
+                    onClick={() =>
+                      setOpenAreas((o) => {
+                        const n = new Set(o);
+                        if (n.has(area)) n.delete(area);
+                        else n.add(area);
+                        return n;
+                      })
+                    }
+                  >
+                    <Icon name={isOpen ? 'chevronDown' : 'chevronRight'} size={12} />
+                  </button>
+                )}
                 <button className={`toggle eye ${anyOn ? '' : 'off'}`} style={{ opacity: 1 }} title={anyOn ? `Hide all ${area.toLowerCase()} accessories` : `Show all ${area.toLowerCase()} accessories`} onClick={() => setGroup(items, !anyOn)}>
                   <Icon name={anyOn ? 'eye' : 'eyeOff'} size={13} />
                 </button>
                 <b>{area}</b>
-                <small>{items.length}</small>
+                <small>{many ? `${items.filter((a) => a.visible).length} of ${items.length} shown` : items.length}</small>
               </div>
-              {items.map((a) => (
+              {isOpen && items.map((a) => (
                 <div key={a.slot} className={`outfit-acc ${a.visible ? '' : 'hidden'}`}>
                   <button className={`toggle eye ${a.visible ? '' : 'off'}`} style={{ opacity: 1 }} onClick={() => set({ accessory: { slot: a.slot, visible: !a.visible } })} title={a.visible ? 'Hide' : 'Show'}>
                     <Icon name={a.visible ? 'eye' : 'eyeOff'} size={13} />
