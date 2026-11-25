@@ -11141,3 +11141,6 @@ a.btn {
 .tr-item .tr-actions:has(.btn.primary) {
   opacity: 1;
 }
+.ms-area {
+  padding: 8px 10px;
+}

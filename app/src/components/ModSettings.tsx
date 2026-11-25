@@ -26,6 +26,20 @@ interface PluginCfg {
   entries: Entry[];
 }
 
+/** A plugin's area, from its name and id, so 100+ plugins aren't one alphabetical column. Order of the checks matters. */
+const AREAS = ['Changed from default', 'Keyframe Studio', 'Studio and posing', 'Animation and physics', 'Character and maker', 'Graphics', 'Fixes and tools', 'Other'] as const;
+function areaOf(p: PluginCfg): (typeof AREAS)[number] {
+  const s = `${p.name} ${p.guid}`;
+  if (/studioex|keyframe/i.test(s)) return 'Keyframe Studio';
+  if (/anim|motion|dynamic ?bone|physics|collider|shaking|jiggle/i.test(s)) return 'Animation and physics';
+  if (/studio|timeline|kkpe|hspe|pose|ik|advik|fk|camera|gizmo|guide|screencap|scene|vnge|drag|hideallui|node|item layer|move axis/i.test(s)) return 'Studio and posing';
+  if (/maker|accessor|cloth|coordinate|character|card|outfit|hair|body|bust|breast|uncensor|skin|tan|overlay|pregnan|face|eye|eyebrow|bulge|height/i.test(s)) return 'Character and maker';
+  if (/graphic|shader|material|light|colou?r|bloom|lut|render|post|fx|reflect|alias|fps|resolution|texture|fade/i.test(s)) return 'Graphics';
+  if (/fix|unlock|api|patch|enable|cheat|config|translat|autosave|loader|util|core|tweak|log|resize|sideload|zipmod|embed|export|default/i.test(s)) return 'Fixes and tools';
+  return 'Other';
+}
+const changedIn = (p: PluginCfg) => p.entries.some((e) => e.value !== e.default);
+
 /** Every BepInEx plugin setting, searchable — replaces the in-game F1 configuration window. */
 export function ModSettings() {
   const [plugins, setPlugins] = useState<PluginCfg[] | null>(null);
@@ -33,6 +47,7 @@ export function ModSettings() {
   const [sel, setSel] = useState<string | null>(null);
   const [onlyChanged, setOnlyChanged] = useState(false);
   const [advanced, setAdvanced] = useState(false);
+  const [openAreas, setOpenAreas] = useState<Set<string>>(new Set(['Changed from default']));
 
   const status = useStore((s) => s.status);
   useEffect(() => {
@@ -93,12 +108,40 @@ export function ModSettings() {
           <div style={{ flex: 1, display: 'grid', gridTemplateColumns: q || onlyChanged ? '1fr' : '260px 1fr', minHeight: 0 }}>
             {!(q || onlyChanged) && (
               <div className="panel-body" style={{ borderRight: '1px solid var(--line)' }}>
-                {filtered.map((p) => (
-                  <div {...pressable} key={p.guid} className={`tree-row ${p.guid === (sel ?? filtered[0]?.guid) ? 'selected' : ''}`} style={{ paddingLeft: 10 }} onClick={() => setSel(p.guid)} title={`${p.guid} v${p.version}`}>
-                    <span className="name">{p.name}</span>
-                    <span className="sub">{p.entries.length}</span>
-                  </div>
-                ))}
+                {AREAS.map((area) => {
+                  const list = area === 'Changed from default' ? filtered.filter((p) => changedIn(plugins.find((x) => x.guid === p.guid) ?? p)) : filtered.filter((p) => areaOf(p) === area);
+                  if (!list.length) return null;
+                  const cur = sel ?? filtered[0]?.guid;
+                  const isOpen = openAreas.has(area) || (area !== 'Changed from default' && list.some((p) => p.guid === cur) && !openAreas.has(`!${area}`));
+                  const toggle = () =>
+                    setOpenAreas((o) => {
+                      const n = new Set(o);
+                      if (isOpen) {
+                        n.delete(area);
+                        n.add(`!${area}`);
+                      } else {
+                        n.add(area);
+                        n.delete(`!${area}`);
+                      }
+                      return n;
+                    });
+                  return (
+                    <div key={area}>
+                      <button className="shape-fold-head ms-area" aria-expanded={isOpen} onClick={toggle}>
+                        <span className={`chev ${isOpen ? 'open' : ''}`}>▸</span>
+                        <b>{area}</b>
+                        <small>{list.length}</small>
+                      </button>
+                      {isOpen &&
+                        list.map((p) => (
+                          <div {...pressable} key={p.guid} className={`tree-row ${p.guid === cur ? 'selected' : ''}`} style={{ paddingLeft: 22 }} onClick={() => setSel(p.guid)} title={`${p.guid} v${p.version}`}>
+                            <span className="name">{p.name}</span>
+                            <span className="sub">{p.entries.length}</span>
+                          </div>
+                        ))}
+                    </div>
+                  );
+                })}
               </div>
             )}
             <div className="panel-body" style={{ padding: '4px 0' }}>
