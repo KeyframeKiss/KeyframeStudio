@@ -11183,3 +11183,19 @@ a.btn {
 .outfit-acc:focus-within > .btn.small {
   opacity: 1;
 }
+/* Library › Objects: the game's groups, then mods' under their own (closed) heading */
+.items-kind + .items-kind {
+  margin-top: 6px;
+  border-top: 1px solid var(--line-soft);
+}
+.items-kind-head {
+  padding: 8px 6px;
+}
+.items-kind-head:disabled {
+  cursor: default;
+  opacity: 1;
+}
+.items-kind-find {
+  margin: 2px 0 6px;
+  width: 100%;
+}

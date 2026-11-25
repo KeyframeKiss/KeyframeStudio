@@ -87,6 +87,8 @@ export function ItemLibrary() {
   );
 
   const items = cat?.items ?? [];
+  const [modsOpen, setModsOpen] = useState(false);
+  const [modQuery, setModQuery] = useState('');
   const groups = useMemo(() => {
     const m = new Map<number, { name: string; count: number; cats: Map<number, { name: string; count: number }> }>();
     for (const i of items) {
@@ -223,7 +225,24 @@ export function ItemLibrary() {
             <span>Everything</span>
             <small>{items.length.toLocaleString()}</small>
           </button>
-          {groups.map(([g, gi]) => (
+          {/* the game's own groups, then mods' (group ids above 15) under their own heading, closed to start */}
+          {(['Game', 'Mods'] as const).map((kind) => {
+            const list = groups.filter(([g]) => (kind === 'Game' ? g <= 15 : g > 15));
+            if (!list.length) return null;
+            const mq = modQuery.trim().toLowerCase();
+            const sorted = kind === 'Mods' ? [...list].filter(([, gi]) => !mq || (gi.name || '').toLowerCase().includes(mq)).sort((x, y) => (x[1].name || '').localeCompare(y[1].name || '')) : list;
+            const isOpen = kind === 'Game' || modsOpen;
+            return (
+              <div key={kind} className="items-kind">
+                <button className="shape-fold-head items-kind-head" aria-expanded={isOpen} onClick={() => kind === 'Mods' && setModsOpen(!isOpen)} disabled={kind === 'Game'}>
+                  {kind === 'Mods' && <span className={`chev ${isOpen ? 'open' : ''}`}>▸</span>}
+                  <b>{kind === 'Game' ? 'Game' : 'Mods'}</b>
+                  <small>{list.length} groups</small>
+                </button>
+                {isOpen && kind === 'Mods' && list.length > 20 && (
+                  <input className="input search items-kind-find" placeholder={`Find a mod group (${list.length})…`} value={modQuery} onChange={(e) => setModQuery(e.target.value)} />
+                )}
+                {isOpen && sorted.map(([g, gi]) => (
             <div key={g}>
               <button
                 className={`items-node ${group === g && category == null ? 'on' : ''}`}
@@ -260,7 +279,10 @@ export function ItemLibrary() {
                   </button>
                 ))}
             </div>
-          ))}
+                ))}
+              </div>
+            );
+          })}
         </div>
       </aside>
 
