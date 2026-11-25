@@ -71,6 +71,7 @@ export function ProjectorsPanel({ onChanged }: { onChanged?: () => void } = {}) 
   const status = useStore((s) => s.status);
   const revision = useStore((s) => s.revision);
   const [items, setItems] = useState<Proj[] | null>(null);
+  const [pick, setPick] = useState<number | null>(null);
   const [xk, setXk] = useState<XukmiCatalog[]>([]);
 
   const load = useCallback(() => {
@@ -121,6 +122,7 @@ export function ProjectorsPanel({ onChanged }: { onChanged?: () => void } = {}) 
     });
   };
 
+  const cur = items?.find((x) => x.id === pick) ?? items?.[0] ?? null;
   return (
     <Section
       title="Projectors"
@@ -164,8 +166,26 @@ export function ProjectorsPanel({ onChanged }: { onChanged?: () => void } = {}) 
       {!items ? null : items.length === 0 ? (
         <div className="pn-note">No projectors in this scene — add one: window light, blinds, leaf shadows, a heart spot…</div>
       ) : (
+        <>
+          {/* several: one line each, the picked one's settings below (not a stack of full cards) */}
+          {items.length > 1 && (
+            <div className="pj-list">
+              {items.map((p) => (
+                <div key={p.id} className={`pj-item ${cur?.id === p.id ? 'on' : ''}`}>
+                  <Switch on={p.visible} onChange={(on) => setNodeVisible(p.id, on)} />
+                  <button className="pj-pick" aria-pressed={cur?.id === p.id} onClick={() => setPick(p.id)}>
+                    <span>{p.name.replace(/^Projector · /, '')}</span>
+                    <small>
+                      {SHAPES.find((x) => x.id === p.values.shape)?.label ?? p.values.shape} · {MODES.find((x) => x.id === p.values.mode)?.label ?? p.values.mode}
+                    </small>
+                  </button>
+                  <span className="pj-swatch" style={{ background: `rgb(${p.values.color.slice(0, 3).map((c) => Math.round(Math.min(1, c) * 255)).join(',')})` }} />
+                </div>
+              ))}
+            </div>
+          )}
         <div className="fx-cards">
-          {items.map((p) => (
+          {(cur ? [cur] : []).map((p) => (
             <ProjectorCard
               key={p.id}
               p={p}
@@ -181,6 +201,7 @@ export function ProjectorsPanel({ onChanged }: { onChanged?: () => void } = {}) 
             />
           ))}
         </div>
+        </>
       )}
     </Section>
   );

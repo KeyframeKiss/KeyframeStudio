@@ -11199,3 +11199,48 @@ a.btn {
   margin: 2px 0 6px;
   width: 100%;
 }
+/* Look › Lighting › Projectors: several as one-line rows, the picked one's card below */
+.pj-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 10px;
+  max-width: 560px;
+}
+.pj-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 10px;
+  border-radius: var(--r-2);
+}
+.pj-item:hover {
+  background: var(--bg-2);
+}
+.pj-item.on {
+  background: color-mix(in srgb, var(--accent) 14%, var(--bg-2));
+}
+.pj-pick {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 4px 0;
+  border: 0;
+  background: none;
+  color: var(--text-1);
+  text-align: left;
+  cursor: pointer;
+}
+.pj-pick small {
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+}
+.pj-swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  border: 1px solid var(--line);
+  flex: none;
+}
