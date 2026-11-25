@@ -48,24 +48,26 @@ namespace StudioEX.Bridge.Api
         private readonly List<KKABMX.Core.BoneModifier> _mods;
         private readonly string _bone;
         private readonly bool _reset;
+        private readonly string _label;
 
-        public AbmxUndo(Studio.OCIChar chara, KKABMX.Core.BoneController ctrl, string bone, bool reset)
+        public AbmxUndo(Studio.OCIChar chara, KKABMX.Core.BoneController ctrl, string bone, bool reset, string label = null)
         {
             _chara = chara;
             _ctrl = ctrl;
             _bone = bone;
             _reset = reset;
+            _label = label;
             _mods = ctrl.GetAllModifiers().Select(m => m.Clone()).ToList();
         }
 
-        public string Label => "Body slider " + _bone;
+        public string Label => _label ?? "Body slider " + _bone;
 
         public bool Absorbs(IUndoEntry newer) => newer is AbmxUndo n && n._ctrl == _ctrl && n._bone == _bone && !n._reset && !_reset;
 
         public IUndoEntry Restore()
         {
             if (_ctrl == null) throw new InvalidOperationException("character deleted");
-            var inverse = new AbmxUndo(_chara, _ctrl, _bone, _reset);
+            var inverse = new AbmxUndo(_chara, _ctrl, _bone, _reset, _label);
             foreach (var m in _ctrl.GetAllModifiers().ToList())
             {
                 m.Reset();
@@ -121,14 +123,31 @@ namespace StudioEX.Bridge.Api
             return result;
         }
 
-        /// <summary>args: {id, bone, location?, scale?, length?, position?, rotation?, reset?}</summary>
+        /// <summary>
+        /// args: {id, bone, location?, scale?, length?, position?, rotation?, reset?}, or {id, items: [ {bone, location?,
+        /// scale?, …, reset?}, … ]} to change several bones (both sides of a body part, a whole region) as one undo step.
+        /// Repeated changes to the same bone(s) merge into one step, so a drag is one undo.
+        /// </summary>
         public static object Set(Studio.OCIChar c, Dictionary<string, object> a)
         {
             var ctrl = Controller(c);
+            var items = a.Has("items") ? a.GetList("items").OfType<Dictionary<string, object>>().ToList() : new List<Dictionary<string, object>> { a };
+            if (items.Count == 0) throw new BridgeException("Nothing to change");
+            foreach (var i in items)
+                if (string.IsNullOrEmpty(i.GetString("bone"))) throw new BridgeException("Missing bone name");
+            var reset = items.Any(i => i.GetBool("reset"));
+            var key = string.Join("+", items.Select(i => i.GetString("bone")).ToArray());
+            var label = items.Count == 1 ? null : reset ? "Reset " + items.Count + " body sliders" : "Body sliders, both sides";
+            UndoStack.Push(new AbmxUndo(c, ctrl, key, reset, label));
+            foreach (var i in items) Apply(c, ctrl, i);
+            ctrl.NeedsFullRefresh = true;
+            return Get(c, false);
+        }
+
+        private static void Apply(Studio.OCIChar c, KKABMX.Core.BoneController ctrl, Dictionary<string, object> a)
+        {
             string bone = a.GetString("bone");
-            if (string.IsNullOrEmpty(bone)) throw new BridgeException("Missing bone name");
             var location = (KKABMX.Core.BoneLocation)a.GetInt("location", (int)KKABMX.Core.BoneLocation.BodyTop);
-            UndoStack.Push(new AbmxUndo(c, ctrl, bone, a.GetBool("reset")));
             if (a.GetBool("reset"))
             {
                 var existing = ctrl.GetModifier(bone, location);
@@ -137,19 +156,14 @@ namespace StudioEX.Bridge.Api
                     existing.Reset();
                     ctrl.RemoveModifier(existing);
                 }
-                ctrl.NeedsFullRefresh = true;
-                return Get(c, false);
+                return;
             }
             var mod = ctrl.GetOrAddModifier(bone, location);
-            {
-                var d = mod.GetModifier(Coord(c));
-                if (a.Has("scale")) d.ScaleModifier = V(a.GetList("scale"), d.ScaleModifier);
-                if (a.Has("length")) d.LengthModifier = a.GetFloat("length", 1f);
-                if (a.Has("position")) d.PositionModifier = V(a.GetList("position"), d.PositionModifier);
-                if (a.Has("rotation")) d.RotationModifier = V(a.GetList("rotation"), d.RotationModifier);
-            }
-            ctrl.NeedsFullRefresh = true;
-            return Get(c, false);
+            var d = mod.GetModifier(Coord(c));
+            if (a.Has("scale")) d.ScaleModifier = V(a.GetList("scale"), d.ScaleModifier);
+            if (a.Has("length")) d.LengthModifier = a.GetFloat("length", 1f);
+            if (a.Has("position")) d.PositionModifier = V(a.GetList("position"), d.PositionModifier);
+            if (a.Has("rotation")) d.RotationModifier = V(a.GetList("rotation"), d.RotationModifier);
         }
     }
 }

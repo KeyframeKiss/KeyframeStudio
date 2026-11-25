@@ -5,7 +5,6 @@ import { displayName, selectedCharacters, showTab, toast, useStore } from '../st
 import { Icon } from './Icon';
 import { AnimationBrowser } from './AnimationBrowser';
 import { applyAnimation } from '../lib/animation';
-import { AbmxSection } from './AbmxSection';
 
 type Named = { name: string; nameEn?: string };
 export interface CharaState {
@@ -291,9 +290,12 @@ export function CharacterPanel({ bare, sections = ['anim', 'pose', 'face', 'outf
       )}
 
       {has('abmx') && state.abmx && (
-        <CollapsibleSection open={!!open.abmx} onToggle={() => tog('abmx')} title="Body sliders (ABMX)">
-          <AbmxSection id={primary} />
-        </CollapsibleSection>
+        <div className="cp-link-row">
+          <span>Body sliders</span>
+          <button className="btn solid" style={{ height: 22, fontSize: 11 }} title="Size, length and shape of each body part (ABMX): Character › Body" onClick={() => showTab('pose', 'body')}>
+            Body ›
+          </button>
+        </div>
       )}
 
       {browse && (

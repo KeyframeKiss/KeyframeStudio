@@ -18,6 +18,31 @@ export default async function (t) {
     await ok('abmx.set', { id: chara.id, bone: 'cf_j_head', location: 1, scale: [1.2, 1.2, 1.2] });
     const r3 = await ok('abmx.set', { id: chara.id, bone: 'cf_j_head', location: 1, reset: true });
     check('abmx reset', !r3.modifiers.find((x) => x.bone === 'cf_j_head'));
+
+    // Character › Body: both sides of a part in one call (mirrored), one undo step; a drag merges; a region resets at once
+    const L = 'cf_s_thigh01_L', R = 'cf_s_thigh01_R';
+    const was = (await ok('abmx.get', { id: chara.id })).modifiers;
+    const find = (list, b) => list.find((x) => x.bone === b);
+    const both = (s, px) => ok('abmx.set', { id: chara.id, items: [{ bone: L, location: 1, scale: [s, 1, s], position: [px, 0, 0] }, { bone: R, location: 1, scale: [s, 1, s], position: [-px, 0, 0] }] });
+    let r4 = await both(1.3, 0.01);
+    check('both sides changed in one call', t.near(find(r4.modifiers, L)?.scale[0], 1.3, 1e-4) && t.near(find(r4.modifiers, R)?.scale[0], 1.3, 1e-4) && t.near(find(r4.modifiers, R)?.position[0], -0.01, 1e-5));
+    await both(1.35, 0.012); // the same part again, as while dragging: merges
+    r4 = await both(1.4, 0.014);
+    await ok('undo');
+    const back = (await ok('abmx.get', { id: chara.id })).modifiers;
+    const same = (a, b) => (!a && !b) || (a && b && a.scale.every((v, i) => t.near(v, b.scale[i], 1e-4)));
+    check('one undo puts both sides back, the whole drag at once', same(find(back, L), find(was, L)) && same(find(back, R), find(was, R)), JSON.stringify([find(back, L)?.scale, find(was, L)?.scale]));
+    await both(1.3, 0.01);
+    await ok('abmx.set', { id: chara.id, bone: 'cf_j_head', location: 1, scale: [1.1, 1.1, 1.1] });
+    const r5 = await ok('abmx.set', { id: chara.id, items: [L, R, 'cf_j_head'].map((bone) => ({ bone, location: 1, reset: true })) });
+    check('reset several parts at once', ![L, R, 'cf_j_head'].some((b) => find(r5.modifiers, b)));
+    await ok('undo');
+    const r6 = (await ok('abmx.get', { id: chara.id })).modifiers;
+    check('one undo brings all of them back', [L, R, 'cf_j_head'].every((b) => find(r6, b)));
+    await ok('undo');
+    await ok('undo');
+    const end = (await ok('abmx.get', { id: chara.id })).modifiers;
+    check('and back to how the character came', same(find(end, L), find(was, L)) && !find(end, 'cf_j_head'), JSON.stringify(find(end, L)?.scale));
   });
 
   await t.step('poses', async () => {

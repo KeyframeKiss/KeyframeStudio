@@ -9888,11 +9888,12 @@ a.btn {
   line-height: 16px;
 }
 
-/* Character › Body: body sliders by region */
+/* Character › Body: where to look (figure + regions) | the region's parts | the picked part's editor */
 .body-page {
   display: flex;
   flex-direction: column;
   gap: var(--sp-3);
+  container-type: inline-size;
 }
 .body-bar {
   display: flex;
@@ -9913,32 +9914,309 @@ a.btn {
   flex-wrap: wrap;
   align-items: center;
   gap: 6px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line-soft);
 }
-.body-groups {
-  columns: 3 320px;
-  column-gap: 10px;
+.body3 {
+  display: grid;
+  grid-template-columns: 200px minmax(0, 1fr) minmax(300px, 360px);
+  gap: 12px;
+  align-items: start;
 }
-.body-group {
-  break-inside: avoid;
-  margin-bottom: 10px;
+.body-nav,
+.body-editor {
+  position: sticky;
+  top: 0;
+}
+.body-nav {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+.body-fig {
+  width: 120px;
+}
+.body-fig-part {
+  cursor: pointer;
+  outline: none;
+}
+.body-fig-part > circle,
+.body-fig-part > rect {
+  fill: var(--bg-3);
+  stroke: var(--line);
+  transition: fill var(--t-fast, 0.12s) ease;
+}
+.body-fig-part:hover > circle,
+.body-fig-part:hover > rect,
+.body-fig-part:focus-visible > circle,
+.body-fig-part:focus-visible > rect {
+  fill: var(--bg-4, var(--line));
+}
+.body-fig-part.on > circle,
+.body-fig-part.on > rect {
+  fill: var(--accent);
+  stroke: var(--accent);
+}
+.body-fig-part.none:not(.on) > circle,
+.body-fig-part.none:not(.on) > rect {
+  opacity: 0.45;
+}
+.body-regions {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.body-region {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: var(--r-2);
+  background: none;
+  color: var(--text-1);
+  font-size: var(--fs-sm);
+  text-align: left;
+  cursor: pointer;
+}
+.body-region span {
+  flex: 1;
+}
+.body-region small {
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+}
+.body-region:hover {
+  background: var(--bg-2);
+}
+.body-region.on {
+  background: var(--bg-2);
+  color: var(--text-0);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+.body-list,
+.body-ed {
   background: var(--bg-1);
   border: 1px solid var(--line);
   border-radius: var(--r-3);
+}
+.body-list {
   overflow: hidden;
 }
-.body-group > header {
+.body-list-head {
   display: flex;
   align-items: baseline;
   gap: 8px;
-  padding: 10px 12px 6px;
+  padding: 10px 12px 8px;
+  border-bottom: 1px solid var(--line-soft);
 }
-.body-group > header b {
+.body-list-head b {
   font-size: var(--fs-md);
 }
-.body-group > header small {
+.body-list-head small {
   color: var(--text-3);
   font-size: var(--fs-xs);
 }
+.body-list-head .spacer {
+  flex: 1;
+}
+.body-items {
+  display: flex;
+  flex-direction: column;
+  padding: 4px;
+}
+.body-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: var(--r-2);
+  background: none;
+  color: var(--text-1);
+  font-size: var(--fs-sm);
+  text-align: left;
+  cursor: pointer;
+}
+.body-item:hover {
+  background: var(--bg-2);
+}
+.body-item.on {
+  background: color-mix(in srgb, var(--accent) 14%, var(--bg-2));
+  color: var(--text-0);
+}
+.body-item-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.body-item-sides,
+.body-item-extra {
+  flex: none;
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+}
+.body-item-extra {
+  font-style: italic;
+}
+.body-item-size {
+  flex: none;
+  min-width: 72px;
+  text-align: right;
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+}
+.body-item-size.changed {
+  color: var(--text-0);
+  font-weight: 600;
+}
+.body-editor-empty {
+  padding: 24px 16px;
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+  text-align: center;
+  border: 1px dashed var(--line);
+  border-radius: var(--r-3);
+}
+.body-ed {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+}
+.body-ed-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.body-ed-head b {
+  font-size: var(--fs-md);
+  color: var(--text-0);
+}
+.body-ed-head small {
+  color: var(--text-3);
+  font-family: var(--mono);
+  font-size: var(--fs-xs);
+  overflow-wrap: anywhere;
+}
+.body-ed-sides {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.body-ed-differ {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 8px 10px;
+  border-radius: var(--r-2);
+  background: var(--bg-2);
+  color: var(--text-2);
+  font-size: var(--fs-xs);
+}
+.body-ed-field {
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+}
+.body-ed-field > .body-ed-xyz {
+  grid-column: 2 / -1;
+}
+.body-ed-label {
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+}
+.body-ed-range {
+  width: 100%;
+  accent-color: var(--accent);
+}
+.body-ed-xyz {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+}
+.body-ed-field > .dragnum[style*='width'] {
+  grid-column: 3;
+}
+.body-ed-field:has(> .body-ed-label + .dragnum) > .dragnum {
+  grid-column: 2;
+  justify-self: start;
+}
+.body-ed-more {
+  border-top: 1px solid var(--line-soft);
+  padding-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.body-ed-more > summary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-1);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  cursor: pointer;
+}
+.body-ed-more[open] > summary {
+  margin-bottom: 10px;
+}
+.body-ed-foot {
+  display: flex;
+  justify-content: flex-end;
+  border-top: 1px solid var(--line-soft);
+  padding-top: 10px;
+}
+/* narrower: the regions become a row of chips above, list and editor side by side */
+@container (max-width: 900px) {
+  .body3 {
+    grid-template-columns: minmax(0, 1fr) minmax(260px, 320px);
+  }
+  .body-nav {
+    grid-column: 1 / -1;
+    position: static;
+  }
+  .body-fig {
+    display: none;
+  }
+  .body-regions {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  .body-region {
+    width: auto;
+    background: var(--bg-2);
+  }
+  .body-region.on {
+    box-shadow: inset 0 -2px 0 var(--accent);
+  }
+}
+/* narrowest: one column, the editor before the list */
+@container (max-width: 600px) {
+  .body3 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .body-editor {
+    position: static;
+    order: 1;
+  }
+  .body-list {
+    order: 2;
+  }
+}
+/* rows Posing › Every bone uses */
 .body-row + .body-row {
   border-top: 1px solid var(--line-soft);
 }
@@ -10074,10 +10352,12 @@ a.btn {
   align-items: center;
   gap: 8px;
 }
-.cam-menu-moves > summary::-webkit-details-marker {
+.cam-menu-moves > summary::-webkit-details-marker,
+.body-ed-more > summary::-webkit-details-marker {
   display: none;
 }
-.cam-menu-moves > summary::before {
+.cam-menu-moves > summary::before,
+.body-ed-more > summary::before {
   content: '';
   width: 5px;
   height: 5px;
@@ -10086,7 +10366,8 @@ a.btn {
   transform: rotate(-45deg);
   transition: transform var(--t-fast, 0.12s) ease;
 }
-.cam-menu-moves[open] > summary::before {
+.cam-menu-moves[open] > summary::before,
+.body-ed-more[open] > summary::before {
   transform: rotate(45deg);
 }
 .cam-menu-moves[open] > summary {
@@ -10420,4 +10701,25 @@ a.btn {
 }
 .posing-keyface {
   margin-top: 6px;
+}
+/* side panel: a line that sends to a page */
+.cp-link-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--line-soft);
+  color: var(--text-1);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+.body-subhead {
+  padding: 8px 8px 2px;
+  color: var(--text-2);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+}
+.body-subhead:first-child {
+  padding-top: 2px;
 }
