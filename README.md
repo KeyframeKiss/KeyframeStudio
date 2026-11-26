@@ -32,7 +32,8 @@ editor beside it — ideal on a second monitor:
 - **A real timeline.** Dope sheet and graph editor, keys you drag and snap, easing curves, folders, search, undo for everything.
 - **Longer motions from Studio's own.** The Motion builder strings animations, poses and your clips together, blended, with feet that stay planted.
 - **Pose where you look.** Click a joint in Studio's view and turn it on its rings; drag IK targets, props, lights, cameras and accessories.
-- **Everything else in one place.** Faces and lip-sync, looks and effects, lighting rigs, cameras and shots, audio, rendering with several versions at once.
+- **Light like a 3D program.** Scene lights that really reach characters, rigs around a character, and a lighting maker where you drag lights and watch Studio follow.
+- **Everything else in one place.** Faces and lip-sync, looks, grading and effects, cameras and shots, audio, videos and quality stills with several versions at once.
 - **Nothing locked in.** Animations are stored by the existing **Timeline** plugin, so scenes stay compatible with vanilla Timeline and other people's setups.
 
 ## A quick look
@@ -67,19 +68,19 @@ paths and onion-skin ghosts, folders (an eye mutes a whole folder or object), se
 <table>
   <tr>
     <td width="50%"><img src="docs/images/app-face.png" alt="Animate › Face: expressions keyed at the playhead with a close-up"></td>
-    <td width="50%"><img src="docs/images/app-look-picture.png" alt="Look › Picture: a short list of effects with switches, grouped into colour, lens and atmosphere, and the picked effect's settings beside it"></td>
+    <td width="50%"><img src="docs/images/app-look-picture.png" alt="Look › Picture: the list of effects grouped into colour, lens and atmosphere, with Grading picked and its tone curve beside it"></td>
   </tr>
   <tr>
     <td><b>Face</b> — expressions keyed at the playhead, lip-sync from audio with vowel shapes, natural blinks.</td>
-    <td><b>Look</b> — every render setting, built-in effects (fog, colour, depth of field, grain…), materials, lighting rigs, presets.</td>
+    <td><b>Look</b> — every render setting, built-in effects (grading with tone curves, LUTs, fog, depth of field, grain…), materials, lighting, presets.</td>
   </tr>
   <tr>
-    <td><img src="docs/images/app-output.png" alt="Shoot › Output: a video's sizes, frame rate, file type and framing"></td>
-    <td><img src="docs/images/app-view-options.png" alt="The View options: overlays, handles, paths and ghosts"></td>
+    <td><img src="docs/images/app-output.png" alt="Shoot › Output: still pictures with sizes to pick several of, quality settings (smoothing, real lens blur, ray-traced shade, 16 bits per colour), file type and framing"></td>
+    <td><img src="docs/images/app-view-options.png" alt="The View options: the selected object's numbers, handles, overlays including the camera route, and what a click selects"></td>
   </tr>
   <tr>
-    <td><b>Shoot</b> — shots and cameras, audio clips, video renders (straight to video, several sizes and framings from one render, audio mixed in), stills.</td>
-    <td><b>View</b> — overlays, handles, motion paths and ghosts, toggled from the bottom bar.</td>
+    <td><b>Shoot</b> — shots and cameras, audio clips, video renders (straight to video, several sizes and framings from one render, audio mixed in), quality stills (many renders averaged, real lens blur, ray-traced shade, 16-bit).</td>
+    <td><b>View</b> — overlays, handles, motion paths, ghosts and the camera route, toggled from the bottom bar.</td>
   </tr>
 </table>
 
@@ -91,6 +92,17 @@ The **Motion builder** puts Studio's animations, poses and your motion clips in 
 and blends each into the next. Drag, trim and blend the blocks; set speed, mirror and **Feet planted**, which keeps
 a foot still while it's down, so Studio's on-the-spot walks and runs really cross the floor. It's all built into
 ordinary keys you can edit, as one undo step.
+
+### Lighting you can see and drag
+
+<p align="center"><img src="docs/images/app-lighting-maker.png" alt="Look › Lighting: Studio's lights, lights on characters and a three-point rig in one list; the rig open in the lighting maker, its lights drawn from above and from the side, and the key light's place, colour, strength, reach and cone below" width="860"></p>
+
+**Look › Lighting** lists Studio's own lights, lights on characters and every light, rig and projector in the scene,
+each with a switch, and opens one editor for the one you pick. In the **lighting maker** a rig's lights are drawn
+from above and from the side: drag one and it moves in Studio as you drag, drop in spot, point or sun lights, set
+each one's place in degrees and metres, and save the rig to fit any character. **Lights on characters** makes scene
+lights reach characters like in any 3D program, whatever shader they use, and **Built-in light** turns down the anime
+shaders' always-lit look until only your lights light them.
 
 ## Get started
 
